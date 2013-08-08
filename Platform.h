@@ -42,7 +42,8 @@ Licence: GPL
 // Platform-specific includes
 
 #include <Arduino.h>
-
+#include <Ethernet.h>
+#include <SD.h>
 
 /**************************************************************************************************/
 
@@ -217,10 +218,10 @@ class Platform
   // Communications and data storage; opening something unsupported returns -1.
   
   char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
-  //int OpenFile(char* fileName, boolean write); // Open a local file (for example on an SD card).
-  int OpenFile(char* directory, char* fileName, boolean write); // Open a local file (for example on an SD card).
+  //int OpenFile(char* fileName, bool write); // Open a local file (for example on an SD card).
+  int OpenFile(char* directory, char* fileName, bool write); // Open a local file (for example on an SD card).
   void GoToEnd(int file); // Position the file at the end (so you can write on the end).
-  boolean Read(int file, char& b);     // Read a single byte from a file into b, 
+  bool Read(int file, char& b);     // Read a single byte from a file into b,
                                              // returned value is false for EoF, true otherwise
   void WriteString(int file, char* s);  // Write the string to a file.
   void Write(int file, char b);  // Write the byte b to a file.
@@ -230,7 +231,7 @@ class Platform
   char* GetSysDir();  // Where the system files are
   char* GetTempDir(); // Where temporary files are
   void Close(int file); // Close a file or device, writing any unwritten buffer contents first.
-  boolean DeleteFile(char* directory, char* fileName); // Delete a file
+  bool DeleteFile(char* directory, char* fileName); // Delete a file
   
   char ClientRead(); // Read a byte from the client
   void SendToClient(char* message); // Send string to the host
@@ -240,8 +241,8 @@ class Platform
   
   void Message(char type, char* message);        // Send a message.  Messages may simply flash an LED, or, 
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
-  boolean SerialAvailable();  // Byte available from (for example) USB?
-  boolean SerialRead(char& b); // Read a serial byte into b; result is true unless no byte is available 
+  bool SerialAvailable();  // Byte available from (for example) USB?
+  bool SerialRead(char& b); // Read a serial byte into b; result is true unless no byte is available
   
   // Movement
   
@@ -274,7 +275,7 @@ class Platform
   float PidMin(int8_t heater);
   float PidMax(int8_t heater);
   float DMix(int8_t heater);
-  boolean UsePID(int8_t heater);
+  bool UsePID(int8_t heater);
   float HeatSampleTime();
 
 //-------------------------------------------------------------------------------------------------------
@@ -283,7 +284,7 @@ class Platform
   
   float lastTime;
   
-  boolean active;
+  bool active;
   
   // Load settings from local storage
   
@@ -302,7 +303,7 @@ class Platform
   int8_t stepPins[DRIVES];
   int8_t directionPins[DRIVES];
   int8_t enablePins[DRIVES];
-  boolean disableDrives[DRIVES];
+  bool disableDrives[DRIVES];
   int8_t lowStopPins[DRIVES];
   int8_t highStopPins[DRIVES];
   float maxFeedrates[DRIVES];  
@@ -323,7 +324,7 @@ class Platform
   float thermistorBetas[HEATERS];
   float thermistorSeriesRs[HEATERS];
   float thermistorInfRs[HEATERS];
-  boolean usePID[HEATERS];
+  bool usePID[HEATERS];
   float pidKis[HEATERS];
   float pidKds[HEATERS];
   float pidKps[HEATERS];
@@ -338,7 +339,7 @@ class Platform
 // Files
 
   File* files;
-  boolean* inUse;
+  bool* inUse;
   char* webDir;
   char* gcodeDir;
   char* sysDir;
@@ -403,14 +404,14 @@ inline char* Platform::GetTempDir()
 
 // Byte available from (for example) USB?
 
-inline boolean Platform::SerialAvailable()
+inline bool Platform::SerialAvailable()
 {
   return Serial.available() > 0;
 }
 
 // Read a serial byte into b; result is true unless no byte is available
 
-inline boolean Platform::SerialRead(char& b)
+inline bool Platform::SerialRead(char& b)
 {
   int incomingByte = Serial.read();
   if(incomingByte < 0)
@@ -500,7 +501,7 @@ inline float Platform::HeatSampleTime()
   return heatSampleTime; 
 }
 
-inline boolean Platform::UsePID(int8_t heater)
+inline bool Platform::UsePID(int8_t heater)
 {
   return usePID[heater];
 }

@@ -36,9 +36,9 @@ extern RepRap reprap;
 // Functions and globals not part of any class
 
 char* ftoa(char *a, const float& f, int prec);
-boolean StringEndsWith(char* string, char* ending);
-boolean StringStartsWith(char* string, char* starting);
-boolean StringEquals(char* s1, char* s2);
+bool StringEndsWith(char* string, char* ending);
+bool StringStartsWith(char* string, char* starting);
+bool StringEquals(char* s1, char* s2);
 int StringContains(char* string, char* match);
 
 extern char scratchString[30];

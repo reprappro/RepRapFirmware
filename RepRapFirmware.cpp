@@ -237,7 +237,7 @@ char* ftoa(char *a, const float& f, int prec)
 
 // String testing
 
-boolean StringEndsWith(char* string, char* ending)
+bool StringEndsWith(char* string, char* ending)
 {
   int j = strlen(string);
   int k = strlen(ending);
@@ -247,7 +247,7 @@ boolean StringEndsWith(char* string, char* ending)
   return(StringEquals(&string[j - k], ending));
 }
 
-boolean StringEquals(char* s1, char* s2)
+bool StringEquals(char* s1, char* s2)
 {
   int i = 0;
   while(s1[i] && s2[i])
@@ -260,7 +260,7 @@ boolean StringEquals(char* s1, char* s2)
   return !(s1[i] || s2[i]);
 }
 
-boolean StringStartsWith(char* string, char* starting)
+bool StringStartsWith(char* string, char* starting)
 { 
   int j = strlen(string);
   int k = strlen(starting);

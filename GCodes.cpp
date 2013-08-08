@@ -130,7 +130,7 @@ void GCodes::Diagnostics()
   platform->Message(HOST_MESSAGE, "GCodes Diagnostics:\n");
 }
 
-boolean GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
+bool GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
 {
   // Last one gone?
   
@@ -151,7 +151,7 @@ boolean GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
   return true;  
 }
 
-boolean GCodes::Push()
+bool GCodes::Push()
 {
   if(stackPointer >= STACK)
   {
@@ -170,7 +170,7 @@ boolean GCodes::Push()
   return true;
 }
 
-boolean GCodes::Pop()
+bool GCodes::Pop()
 {
   if(stackPointer <= 0)
   {
@@ -206,7 +206,7 @@ boolean GCodes::Pop()
 // If the Move class can't receive the move (i.e. things have to wait)
 // this returns false, otherwise true.
 
-boolean GCodes::SetUpMove(GCodeBuffer *gb)
+bool GCodes::SetUpMove(GCodeBuffer *gb)
 {
   // Last one gone yet?
   
@@ -263,7 +263,7 @@ boolean GCodes::SetUpMove(GCodeBuffer *gb)
 
 // The Move class calls this function to find what to do next.
 
-boolean GCodes::ReadMove(float* m, boolean& ce)
+bool GCodes::ReadMove(float* m, bool& ce)
 {
     if(!moveAvailable)
       return false; 
@@ -276,12 +276,12 @@ boolean GCodes::ReadMove(float* m, boolean& ce)
 }
 
 
-boolean GCodes::ReadHeat(float* h)
+bool GCodes::ReadHeat(float* h)
 {
 
 }
 
-boolean GCodes::DoHome()
+bool GCodes::DoHome()
 {
   // Treat more or less like any other move
   // Do one axis at a time, starting with X.
@@ -371,7 +371,7 @@ void GCodes::QueueFileToPrint(char* fileName)
 // Function to handle dwell delays.  Return true for
 // Dwell finished, false otherwise.
 
-boolean GCodes::DoDwell(GCodeBuffer *gb)
+bool GCodes::DoDwell(GCodeBuffer *gb)
 {
   unsigned long dwell;
   
@@ -405,7 +405,7 @@ boolean GCodes::DoDwell(GCodeBuffer *gb)
   return false;
 }
 
-boolean GCodes::SetOffsets(GCodeBuffer *gb)
+bool GCodes::SetOffsets(GCodeBuffer *gb)
 {
   int8_t head;
   if(gb->Seen('P'))
@@ -425,11 +425,11 @@ boolean GCodes::SetOffsets(GCodeBuffer *gb)
 // otherwise false.  It is called repeatedly for a given
 // GCode until it returns true for that code.
 
-boolean GCodes::ActOnGcode(GCodeBuffer *gb)
+bool GCodes::ActOnGcode(GCodeBuffer *gb)
 {
   int code;
   float value;
-  boolean result = true;
+  bool result = true;
   
   if(gb->Seen('G'))
   {
@@ -594,7 +594,7 @@ boolean GCodes::ActOnGcode(GCodeBuffer *gb)
     if(code == selectedHead)
       return result;
       
-    boolean ok = false;
+    bool ok = false;
     for(int8_t i = AXES; i < DRIVES; i++)
     {
       if(selectedHead == i - AXES)
@@ -642,9 +642,9 @@ void GCodeBuffer::Init()
   inComment = false;   
 }
 
-boolean GCodeBuffer::Put(char c)
+bool GCodeBuffer::Put(char c)
 {
-  boolean result = false;
+  bool result = false;
   
   gcodeBuffer[gcodePointer] = c;
   
@@ -681,7 +681,7 @@ boolean GCodeBuffer::Put(char c)
 // Is 'c' in the G Code string?
 // Leave the pointer there for a subsequent read.
 
-boolean GCodeBuffer::Seen(char c)
+bool GCodeBuffer::Seen(char c)
 {
   readPointer = 0;
   while(gcodeBuffer[readPointer])

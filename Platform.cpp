@@ -44,7 +44,7 @@ Platform::Platform(RepRap* r)
   // Files
  
   files = new File[MAX_FILES];
-  inUse = new boolean[MAX_FILES];
+  inUse = new bool[MAX_FILES];
   for(int8_t i=0; i < MAX_FILES; i++)
     buf[i] = new byte[FILE_BUF_LEN];
   
@@ -340,7 +340,7 @@ char* Platform::FileList(char* directory)
 }
 
 // Delete a file
-boolean Platform::DeleteFile(char* directory, char* fileName)
+bool Platform::DeleteFile(char* directory, char* fileName)
 {
   CombineName(scratchString, directory, fileName);
   return SD.remove(scratchString);
@@ -348,7 +348,7 @@ boolean Platform::DeleteFile(char* directory, char* fileName)
 
 // Open a local file (for example on an SD card).
 
-int Platform::OpenFile(char* directory, char* fileName, boolean write)
+int Platform::OpenFile(char* directory, char* fileName, bool write)
 {
   CombineName(scratchString, directory, fileName);
   int result = -1;
@@ -420,7 +420,7 @@ void Platform::Close(int file)
 }
 
 
-boolean Platform::Read(int file, char& b)
+bool Platform::Read(int file, char& b)
 {
   if(!inUse[file])
   {

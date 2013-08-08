@@ -33,7 +33,7 @@ Licence: GPL
 
 
 
-boolean Webserver::MatchBoundary(char c)
+bool Webserver::MatchBoundary(char c)
 {
   if(!postBoundary[0])
     return false;
@@ -61,7 +61,7 @@ boolean Webserver::MatchBoundary(char c)
 
 // Feeding G Codes to the GCodes class
 
-boolean Webserver::GCodeAvailable()
+bool Webserver::GCodeAvailable()
 {
   return gcodeAvailable;
 }
@@ -80,7 +80,7 @@ byte Webserver::ReadGCode()
 }
 
 
-boolean Webserver::LoadGcodeBuffer(char* gc, boolean convertWeb)
+bool Webserver::LoadGcodeBuffer(char* gc, bool convertWeb)
 {
   char scratchString[STRING_LENGTH];
   if(gcodeAvailable)
@@ -191,7 +191,7 @@ void Webserver::SendFile(char* nameOfFileToSend)
 {
   char scratchString[STRING_LENGTH];
   char sLen[POST_LENGTH];
-  boolean zip = false;
+  bool zip = false;
     
   if(StringStartsWith(nameOfFileToSend, KO_START))
     GetJsonResponse(&nameOfFileToSend[KO_FIRST]);
@@ -283,7 +283,7 @@ void Webserver::CheckPassword()
   gotPassword = StringEndsWith(clientQualifier, password);
 }
 
-void Webserver::JsonReport(boolean ok, char* request)
+void Webserver::JsonReport(bool ok, char* request)
 {
   if(ok)
   {

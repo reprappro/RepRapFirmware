@@ -43,7 +43,7 @@ class PID
     float lastTemperature;
     float temp_iState;
     float temp_dState;
-    boolean active;
+    bool active;
     int8_t heater;
 };
 
@@ -67,7 +67,7 @@ class Heat
   
     Platform* platform;
     GCodes* gCodes;
-    boolean active;
+    bool active;
     PID* pids[HEATERS];
     float lastTime;
 };
