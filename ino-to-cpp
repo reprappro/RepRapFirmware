@@ -1,6 +1,0 @@
-mv GCodes.ino  GCodes.cpp
-mv Heat.ino  Heat.cpp
-mv Move.ino  Move.cpp
-mv Platform.ino  Platform.cpp
-mv RepRapFirmware.ino  RepRapFirmware.cpp
-mv Webserver.ino  Webserver.cpp

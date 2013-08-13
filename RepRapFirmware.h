@@ -2,7 +2,7 @@
 
 RepRapFirmware - Main Include
 
-This includes all the other include files in the right order and defines some globals.  
+This includes all the other include files in the right order and defines some globals.
 No other definitions or information should be in here.
 
 -----------------------------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ extern char scratchString[30];
 
 #include "Configuration.h"
 #include "Platform.h"
-#include "Webserver.h" 
+#include "Webserver.h"
 #include "GCodes.h"
 #include "Move.h"
 #include "Heat.h"
