@@ -48,7 +48,10 @@ Platform::Platform(RepRap* r)
   for(int8_t i=0; i < MAX_FILES; i++)
     buf[i] = new byte[FILE_BUF_LEN];
   
-  server = new EthernetServer(HTTP_PORT);
+  line = new Line();
+  network = new Network();
+
+  //server = new EthernetServer(HTTP_PORT);
   
   active = false;
 }
@@ -115,6 +118,7 @@ void Platform::Init()
     gcodeDir = GCODE_DIR;
     sysDir = SYS_DIR;
     tempDir = TEMP_DIR;
+    configFile = CONFIG_FILE;
   }
   
   for(i = 0; i < DRIVES; i++)
@@ -160,34 +164,37 @@ void Platform::Init()
     inUse[i] = false;
   }
   
-  // Network
-
-  mac = MAC;
-  //server = new EthernetServer(HTTP_PORT);
-  
-  // disable SD SPI while starting w5100
-  // or you will have trouble
-  pinMode(SD_SPI, OUTPUT);
-  digitalWrite(SD_SPI,HIGH);   
-
-  ipAddress = { IP0, IP1, IP2, IP3 };
-  //Ethernet.begin(mac, *(new IPAddress(IP0, IP1, IP2, IP3)));
-  Ethernet.begin(mac, ipAddress);
-  server->begin();
-  
-  //Serial.print("server is at ");
-  //Serial.println(Ethernet.localIP());
-  
-  // this corrects a bug in the Ethernet.begin() function
-  // even tho the call to Ethernet.localIP() does the same thing
-  digitalWrite(ETH_B_PIN, HIGH);
-  
-  clientStatus = 0;
-  client = 0;
+//  // Network
+//
+//  mac = MAC;
+//  //server = new EthernetServer(HTTP_PORT);
+//
+//  // disable SD SPI while starting w5100
+//  // or you will have trouble
+//  pinMode(SD_SPI, OUTPUT);
+//  digitalWrite(SD_SPI,HIGH);
+//
+//  ipAddress = { IP0, IP1, IP2, IP3 };
+//  //Ethernet.begin(mac, *(new IPAddress(IP0, IP1, IP2, IP3)));
+//  Ethernet.begin(mac, ipAddress);
+//  server->begin();
+//
+//  //Serial.print("server is at ");
+//  //Serial.println(Ethernet.localIP());
+//
+//  // this corrects a bug in the Ethernet.begin() function
+//  // even tho the call to Ethernet.localIP() does the same thing
+//  digitalWrite(ETH_B_PIN, HIGH);
+//
+//  clientStatus = 0;
+//  client = 0;
  
   if (!SD.begin(SD_SPI)) 
      Message(HOST_MESSAGE, "SD initialization failed.");
-  // SD.begin() returns with the SPI disabled, so you need not disable it here  
+  // SD.begin() returns with the SPI disabled, so you need not disable it here
+
+  network->Init();
+  line->Init();
   
   InitialiseInterrupts();
   
@@ -451,7 +458,7 @@ void Platform::Write(int file, char b)
   //files[file].write(b);
 }
 
-void Platform::WriteString(int file, char* b)
+void Platform::Write(int file, char* b)
 {
   if(!inUse[file])
   {
@@ -464,22 +471,10 @@ void Platform::WriteString(int file, char* b)
   //files[file].print(b);
 }
 
-// Send something to the network client
-
-void Platform::SendToClient(char* message)
-{
-  if(client)
-  {
-    client.print(message);
-  } else
-    Message(HOST_MESSAGE, "Attempt to send string to disconnected client.\n");
-}
-
 
 
 void Platform::Message(char type, char* message)
 {
-  char scratchString[STRING_LENGTH];
   switch(type)
   {
   case FLASH_LED:
@@ -496,7 +491,7 @@ void Platform::Message(char type, char* message)
   
     int m = OpenFile(GetWebDir(), MESSAGE_FILE, true);
     GoToEnd(m);
-    WriteString(m, message);
+    Write(m, message);
     Serial.print(message);
     Close(m);
     
@@ -509,18 +504,95 @@ void Platform::Message(char type, char* message)
 //***************************************************************************************************
 
 
-
-
 void Platform::Spin()
 {
   if(!active)
     return;
     
-   ClientMonitor();
+   //ClientMonitor();
+   network->Spin();
+   line->Spin();
+
    if(Time() - lastTime < 2.0)
      return;
    lastTime = Time();
 }
+
+Line::Line()
+{
+}
+
+Network::Network()
+{
+}
+
+void Network::Write(char b)
+{
+  if(client)
+  {
+    client.write(b);
+  } else
+    reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to send byte to disconnected client.");
+}
+
+void Network::Write(char* s)
+{
+  if(client)
+  {
+    client.print(s);
+  } else
+	  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to send string to disconnected client.\n");
+}
+
+int Network::Read(char& b)
+{
+  if(client)
+  {
+    b = client.read();
+    return true;
+  }
+
+  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
+  b = '\n'; // good idea??
+  return 0;
+}
+
+void Network::Spin()
+{
+  clientStatus = 0;
+
+  if(!client)
+  {
+    client = server->available();
+    if(!client)
+      return;
+    //else
+      //Serial.println("new client");
+  }
+
+  clientStatus |= clientLive;
+
+  if(!client.connected())
+    return;
+
+  clientStatus |= clientConnected;
+
+  if (!client.available())
+    return;
+
+  clientStatus |= byteAvailable;
+}
+
+void Network::Close()
+{
+  if (client)
+  {
+    client.stop();
+    //Serial.println("client disconnected");
+  } else
+	  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to disconnect non-existent client.");
+}
+
 
 
 

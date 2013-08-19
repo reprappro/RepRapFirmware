@@ -207,45 +207,45 @@ void Webserver::SendFile(char* nameOfFileToSend)
     writing = true;
   } 
   
-  platform->SendToClient("HTTP/1.1 200 OK\n");
+  platform->GetNetwork()->Write("HTTP/1.1 200 OK\n");
   
-  platform->SendToClient("Content-Type: ");
+  platform->GetNetwork()->Write("Content-Type: ");
   
   if(StringEndsWith(nameOfFileToSend, ".png"))
-    platform->SendToClient("image/png\n");
+	  platform->GetNetwork()->Write("image/png\n");
   else if(StringEndsWith(nameOfFileToSend, ".ico"))
-    platform->SendToClient("image/x-icon\n");
+	  platform->GetNetwork()->Write("image/x-icon\n");
   else if (jsonPointer >=0)
-    platform->SendToClient("application/json\n");
+	  platform->GetNetwork()->Write("application/json\n");
   else if(StringEndsWith(nameOfFileToSend, ".js"))
-    platform->SendToClient("application/javascript\n");
+	  platform->GetNetwork()->Write("application/javascript\n");
   else if(StringEndsWith(nameOfFileToSend, ".zip"))
   {
-    platform->SendToClient("application/zip\n");
+	  platform->GetNetwork()->Write("application/zip\n");
     zip = true;
   } else
-    platform->SendToClient("text/html\n");
+	  platform->GetNetwork()->Write("text/html\n");
     
   if (jsonPointer >=0)
   {
-    platform->SendToClient("Content-Length: ");
+	  platform->GetNetwork()->Write("Content-Length: ");
     sprintf(sLen, "%d", strlen(jsonResponse));
-    platform->SendToClient(sLen);
-    platform->SendToClient("\n");
+    platform->GetNetwork()->Write(sLen);
+    platform->GetNetwork()->Write("\n");
   }
     
   if(zip)
   {
-    platform->SendToClient("Content-Encoding: gzip\n");
-    platform->SendToClient("Content-Length: ");
+	platform->GetNetwork()->Write("Content-Encoding: gzip\n");
+	platform->GetNetwork()->Write("Content-Length: ");
     sprintf(sLen, "%llu", platform->Length(fileBeingSent));
-    platform->SendToClient(sLen);
-    platform->SendToClient("\n");    
+    platform->GetNetwork()->Write(sLen);
+    platform->GetNetwork()->Write("\n");
   }
     
-  platform->SendToClient("Connnection: close\n");
+  platform->GetNetwork()->Write("Connnection: close\n");
 
-  platform->SendToClient('\n');
+  platform->GetNetwork()->Write('\n');
 }
 
 void Webserver::WriteByte()
@@ -255,7 +255,7 @@ void Webserver::WriteByte()
     if(jsonPointer >= 0)
     {
       if(jsonResponse[jsonPointer])
-        platform->SendToClient(jsonResponse[jsonPointer++]);
+    	  platform->GetNetwork()->Write(jsonResponse[jsonPointer++]);
       else
       {
         jsonPointer = -1;
@@ -265,7 +265,7 @@ void Webserver::WriteByte()
     } else
     {
       if(platform->Read(fileBeingSent, b))
-        platform->SendToClient(b);
+    	  platform->GetNetwork()->Write(b);
       else
       { 
         platform->Close(fileBeingSent);    
@@ -601,11 +601,13 @@ void Webserver::Spin()
     return;         
   }
   
-  if(platform->ClientStatus() & CONNECTED)
+  char c;
+
+  if(platform->GetNetwork()->Status() & clientConnected)
   {
-    if(platform->ClientStatus() & AVAILABLE) 
+    if(platform->GetNetwork()->Status() & byteAvailable)
     {
-      char c = platform->ClientRead();
+    	platform->GetNetwork()->Read(c);
 //        Serial.print(c);
 
       if(receivingPost && postFile >= 0)
@@ -625,14 +627,14 @@ void Webserver::Spin()
     }
   }  
    
-  if (platform->ClientStatus() & CLIENT) 
+  if (platform->GetNetwork()->Status() & clientLive)
   {
     if(needToCloseClient)
     {
       if(platform->Time() - clientCloseTime < CLIENT_CLOSE_DELAY)
         return;
       needToCloseClient = false;  
-      platform->DisconnectClient();
+      platform->GetNetwork()->Close();
     }   
   }
 }

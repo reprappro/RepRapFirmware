@@ -130,9 +130,10 @@ Licence: GPL
 #define GCODE_DIR "gcodes/" // Ditto - g-codes
 #define SYS_DIR "sys/" // Ditto - system files
 #define TEMP_DIR "tmp/" // Ditto - temporary files
+#define CONFIG_FILE "config.g" // The file that sets the machine's parameters
 #define FILE_LIST_SEPARATOR ','
 #define FILE_LIST_BRACKET '"'
-#define FILE_LIST_LENGTH 1000 // Maximum lenght of file list
+#define FILE_LIST_LENGTH 1000 // Maximum length of file list
 
 #define FLASH_LED 'F' // Type byte of a message that is to flash an LED; the next two bytes define 
                       // the frequency and M/S ratio.
@@ -190,6 +191,82 @@ enum EndStopHit
   highHit = 2
 };
 
+enum IOStatus
+{
+  nothing = 0,
+  byteAvailable = 1,
+  atEoF = 2,
+  clientLive = 4,
+  clientConnected = 8
+};
+
+
+class InputOutput
+{
+public:
+	void TakeInputFrom(InputOutput* altIp);
+	void SendOutputTo(InputOutput* altOp);
+
+protected:
+	InputOutput* alternateInput;
+	InputOutput* alternateOutput;
+};
+
+class Network: public InputOutput
+{
+public:
+	Network();
+	void Init();
+	void Spin();
+	int8_t Status(); // Returns OR of IOStatus
+	int Read(char& b);
+	void Write(char b);
+	void Write(char* s);
+	void Close();
+
+private:
+	byte mac[MAC_BYTES];
+	byte ipAddress[IP_BYTES];
+	EthernetServer* server;
+	EthernetClient client;
+	int8_t clientStatus;
+};
+
+class Line: public InputOutput
+{
+public:
+	Line();
+	void Init();
+	void Spin();
+	int8_t Status(); // Returns OR of IOStatus
+	int Read(char& b);
+	void Write(char b);
+	void Write(char* s);
+
+private:
+};
+
+class FileStore: public InputOutput
+{
+public:
+	FileStore();
+	int8_t Status(); // Returns OR of IOStatus
+	int Read(char& b);
+	void Write(char b);
+	void Write(char* s);
+	int Open(char* DevicePath, bool write);
+	void Close();
+	char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
+	void GoToEnd(); // Position the file at the end (so you can write on the end).
+	unsigned long Length(); // File size in bytes
+	bool DeleteMe(); // Delete this file
+
+private:
+};
+
+
+
+
 class Platform
 {   
   public:
@@ -217,32 +294,36 @@ class Platform
   
   // Communications and data storage; opening something unsupported returns -1.
   
+  Network* GetNetwork();
+  Line* GetLine();
+
   char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
   //int OpenFile(char* fileName, bool write); // Open a local file (for example on an SD card).
   int OpenFile(char* directory, char* fileName, bool write); // Open a local file (for example on an SD card).
   void GoToEnd(int file); // Position the file at the end (so you can write on the end).
   bool Read(int file, char& b);     // Read a single byte from a file into b,
                                              // returned value is false for EoF, true otherwise
-  void WriteString(int file, char* s);  // Write the string to a file.
+  void Write(int file, char* s);  // Write the string to a file.
   void Write(int file, char b);  // Write the byte b to a file.
   unsigned long Length(int file); // File size in bytes
   char* GetWebDir(); // Where the htm etc files are
   char* GetGCodeDir(); // Where the gcodes are
   char* GetSysDir();  // Where the system files are
   char* GetTempDir(); // Where temporary files are
+  char* GetConfigFile(); // Where the configuration is stored (in the system dir).
   void Close(int file); // Close a file or device, writing any unwritten buffer contents first.
   bool DeleteFile(char* directory, char* fileName); // Delete a file
   
-  char ClientRead(); // Read a byte from the client
-  void SendToClient(char* message); // Send string to the host
-  void SendToClient(char b); // Send byte to the host
-  int ClientStatus(); // Check client's status
-  void DisconnectClient(); //Disconnect the client  
+  //char ClientRead(); // Read a byte from the client
+  //void SendToClient(char* message); // Send string to the host
+  //void SendToClient(char b); // Send byte to the host
+  //int ClientStatus(); // Check client's status
+  //void DisconnectClient(); //Disconnect the client
   
   void Message(char type, char* message);        // Send a message.  Messages may simply flash an LED, or, 
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
-  bool SerialAvailable();  // Byte available from (for example) USB?
-  bool SerialRead(char& b); // Read a serial byte into b; result is true unless no byte is available
+  //bool SerialAvailable();  // Byte available from (for example) USB?
+  //bool SerialRead(char& b); // Read a serial byte into b; result is true unless no byte is available
   
   // Movement
   
@@ -290,8 +371,6 @@ class Platform
   
   bool LoadFromStore();
   
-  int GetRawTemperature(byte heater);
-  
   void InitialiseInterrupts();
   
   char* CombineName(char* result, char* directory, char* fileName);
@@ -319,6 +398,8 @@ class Platform
   
 // HEATERS - Bed is assumed to be the first
 
+  int GetRawTemperature(byte heater);
+
   int8_t tempSensePins[HEATERS];
   int8_t heatOnPins[HEATERS];
   float thermistorBetas[HEATERS];
@@ -336,6 +417,10 @@ class Platform
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
 
+// Serial/USB
+
+  Line* line;
+
 // Files
 
   File* files;
@@ -344,6 +429,7 @@ class Platform
   char* gcodeDir;
   char* sysDir;
   char* tempDir;
+  char* configFile;
   byte* buf[MAX_FILES];
   int bPointer[MAX_FILES];
   char fileList[FILE_LIST_LENGTH];
@@ -351,13 +437,15 @@ class Platform
   
 // Network connection
 
-  void ClientMonitor();
+  Network* network;
+
+  //void ClientMonitor();
   
-  byte mac[MAC_BYTES];
-  byte ipAddress[IP_BYTES];
-  EthernetServer* server;
-  EthernetClient client;
-  int clientStatus;
+  //byte mac[MAC_BYTES];
+  //byte ipAddress[IP_BYTES];
+  //EthernetServer* server;
+  //EthernetClient client;
+  //int clientStatus;
 };
 
 inline float Platform::Time()
@@ -398,27 +486,119 @@ inline char* Platform::GetTempDir()
   return tempDir;
 }
 
+
+inline char* Platform::GetConfigFile()
+{
+  return configFile;
+}
+
 //****************************************************************************************************************
+
+inline Network* Platform::GetNetwork()
+{
+	return network;
+}
+
+inline Line* Platform::GetLine()
+{
+	return line;
+}
+
+inline void Line::Init()
+{
+	alternateInput = NULL;
+	alternateOutput = NULL;
+}
+
+inline void Line::Spin()
+{
+}
+
+inline int8_t Line::Status()
+{
+//	if(alternateInput != NULL)
+//		return alternateInput->Status();
+
+	if(Serial.available() > 0)
+		return byteAvailable;
+	return nothing;
+}
+
+inline int Line::Read(char& b)
+{
+//  if(alternateInput != NULL)
+//	return alternateInput->Read(b);
+
+  int incomingByte = Serial.read();
+  if(incomingByte < 0)
+    return 0;
+  b = (char)incomingByte;
+  return true;
+}
+
+inline void Network::Init()
+{
+	alternateInput = NULL;
+	alternateOutput = NULL;
+
+	mac = MAC;
+
+	// disable SD SPI while starting w5100
+	// or you will have trouble
+	pinMode(SD_SPI, OUTPUT);
+	digitalWrite(SD_SPI,HIGH);
+
+	ipAddress = { IP0, IP1, IP2, IP3 };
+	//Ethernet.begin(mac, *(new IPAddress(IP0, IP1, IP2, IP3)));
+	Ethernet.begin(mac, ipAddress);
+	server->begin();
+
+	//Serial.print("server is at ");
+	//Serial.println(Ethernet.localIP());
+
+	// this corrects a bug in the Ethernet.begin() function
+	// even tho the call to Ethernet.localIP() does the same thing
+	digitalWrite(ETH_B_PIN, HIGH);
+
+	clientStatus = 0;
+	client = 0;
+}
+
+
+inline int8_t Network::Status()
+{
+  return clientStatus;
+}
+
+
+
+
+
+
+
+
+
+
 
 // Serial input
 
 // Byte available from (for example) USB?
 
-inline bool Platform::SerialAvailable()
-{
-  return Serial.available() > 0;
-}
+//inline bool Platform::SerialAvailable()
+//{
+//  return Serial.available() > 0;
+//}
 
 // Read a serial byte into b; result is true unless no byte is available
 
-inline bool Platform::SerialRead(char& b)
-{
-  int incomingByte = Serial.read();
-  if(incomingByte < 0)
-    return false;
-  b = (char)incomingByte;
-  return true;
-}
+//inline bool Platform::SerialRead(char& b)
+//{
+//  int incomingByte = Serial.read();
+//  if(incomingByte < 0)
+//    return false;
+//  b = (char)incomingByte;
+//  return true;
+//}
 
 //*****************************************************************************************************************
 
@@ -577,64 +757,64 @@ inline void Platform::SetInterrupt(float s) // Seconds
 
 // Network connection
 
-inline int Platform::ClientStatus()
-{
-  return clientStatus;
-}
-
-inline void Platform::SendToClient(char b)
-{
-  if(client)
-  {
-    client.write(b);
-  } else
-    Message(HOST_MESSAGE, "Attempt to send byte to disconnected client.");
-}
-
-inline char Platform::ClientRead()
-{
-  if(client)
-    return client.read();
-    
-  Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
-  return '\n'; // good idea?? 
-}
-
-inline void Platform::ClientMonitor()
-{
-  clientStatus = 0;
-  
-  if(!client)
-  {
-    client = server->available();
-    if(!client)
-      return;
-    //else
-      //Serial.println("new client");
-  }
-    
-  clientStatus |= CLIENT;
-    
-  if(!client.connected())
-    return;
-    
-  clientStatus |= CONNECTED;
-    
-  if (!client.available())
-    return;
-    
-  clientStatus |= AVAILABLE;
-}
-
-inline void Platform::DisconnectClient()
-{
-  if (client)
-  {
-    client.stop();
-    //Serial.println("client disconnected");
-  } else
-      Message(HOST_MESSAGE, "Attempt to disconnect non-existent client.");
-}
+//inline int Platform::ClientStatus()
+//{
+//  return clientStatus;
+//}
+//
+//inline void Platform::SendToClient(char b)
+//{
+//  if(client)
+//  {
+//    client.write(b);
+//  } else
+//    Message(HOST_MESSAGE, "Attempt to send byte to disconnected client.");
+//}
+//
+//inline char Platform::ClientRead()
+//{
+//  if(client)
+//    return client.read();
+//
+//  Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
+//  return '\n'; // good idea??
+//}
+//
+//inline void Platform::ClientMonitor()
+//{
+//  clientStatus = 0;
+//
+//  if(!client)
+//  {
+//    client = server->available();
+//    if(!client)
+//      return;
+//    //else
+//      //Serial.println("new client");
+//  }
+//
+//  clientStatus |= CLIENT;
+//
+//  if(!client.connected())
+//    return;
+//
+//  clientStatus |= CONNECTED;
+//
+//  if (!client.available())
+//    return;
+//
+//  clientStatus |= AVAILABLE;
+//}
+//
+//inline void Platform::DisconnectClient()
+//{
+//  if (client)
+//  {
+//    client.stop();
+//    //Serial.println("client disconnected");
+//  } else
+//      Message(HOST_MESSAGE, "Attempt to disconnect non-existent client.");
+//}
 
 
 

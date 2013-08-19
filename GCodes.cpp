@@ -101,9 +101,9 @@ void GCodes::Spin()
     return;
   }
   
-  if(platform->SerialAvailable())
+  if(platform->GetLine()->Status() & byteAvailable)
   {
-    platform->SerialRead(b);
+	  platform->GetLine()->Read(b);
     if(serialGCode->Put(b))
       serialGCode->SetFinished(ActOnGcode(serialGCode));
     return;
