@@ -504,12 +504,6 @@ inline Line* Platform::GetLine()
 	return line;
 }
 
-inline void Line::Init()
-{
-	alternateInput = NULL;
-	alternateOutput = NULL;
-}
-
 inline void Line::Spin()
 {
 }
@@ -536,38 +530,46 @@ inline int Line::Read(char& b)
   return true;
 }
 
-inline void Network::Init()
+inline void Line::Write(char b)
 {
-	alternateInput = NULL;
-	alternateOutput = NULL;
+	Serial.print(b);
+}
 
-	mac = MAC;
-
-	// disable SD SPI while starting w5100
-	// or you will have trouble
-	pinMode(SD_SPI, OUTPUT);
-	digitalWrite(SD_SPI,HIGH);
-
-	ipAddress = { IP0, IP1, IP2, IP3 };
-	//Ethernet.begin(mac, *(new IPAddress(IP0, IP1, IP2, IP3)));
-	Ethernet.begin(mac, ipAddress);
-	server->begin();
-
-	//Serial.print("server is at ");
-	//Serial.println(Ethernet.localIP());
-
-	// this corrects a bug in the Ethernet.begin() function
-	// even tho the call to Ethernet.localIP() does the same thing
-	digitalWrite(ETH_B_PIN, HIGH);
-
-	clientStatus = 0;
-	client = 0;
+inline void Line::Write(char* b)
+{
+	Serial.print(b);
 }
 
 
 inline int8_t Network::Status()
 {
   return clientStatus;
+}
+
+inline void Network::Spin()
+{
+  clientStatus = 0;
+
+  if(!client)
+  {
+    client = server->available();
+    if(!client)
+      return;
+    //else
+      //Serial.println("new client");
+  }
+
+  clientStatus |= clientLive;
+
+  if(!client.connected())
+    return;
+
+  clientStatus |= clientConnected;
+
+  if (!client.available())
+    return;
+
+  clientStatus |= byteAvailable;
 }
 
 
