@@ -50,8 +50,6 @@ Platform::Platform(RepRap* r)
   
   line = new Line();
   network = new Network();
-
-  //server = new EthernetServer(HTTP_PORT);
   
   active = false;
 }
@@ -162,34 +160,10 @@ void Platform::Init()
     inUse[i] = false;
   }
   
-  network->Init();
   line->Init();
 
-//  // Network
-//
-//  mac = MAC;
-//  //server = new EthernetServer(HTTP_PORT);
-//
-//  // disable SD SPI while starting w5100
-//  // or you will have trouble
-//  pinMode(SD_SPI, OUTPUT);
-//  digitalWrite(SD_SPI,HIGH);
-//
-//  ipAddress = { IP0, IP1, IP2, IP3 };
-//  //Ethernet.begin(mac, *(new IPAddress(IP0, IP1, IP2, IP3)));
-//  Ethernet.begin(mac, ipAddress);
-//  server->begin();
-//
-//  //Serial.print("server is at ");
-//  //Serial.println(Ethernet.localIP());
-//
-//  // this corrects a bug in the Ethernet.begin() function
-//  // even tho the call to Ethernet.localIP() does the same thing
-//  digitalWrite(ETH_B_PIN, HIGH);
-//
-//  clientStatus = 0;
-//  client = 0;
- 
+  network->Init();
+
   if (!SD.begin(SD_SPI)) 
      Message(HOST_MESSAGE, "SD initialization failed.");
   // SD.begin() returns with the SPI disabled, so you need not disable it here
@@ -504,10 +478,9 @@ void Platform::Message(char type, char* message)
 
 void Platform::Spin()
 {
-  if(!active)
-    return;
+   if(!active)
+     return;
     
-   //ClientMonitor();
    network->Spin();
    line->Spin();
 

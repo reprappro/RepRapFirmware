@@ -5696,7 +5696,7 @@ OUTPUT(/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.elf elf32-littl
  .debug_abbrev  0x000093c9      0x4cd /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(CDC.cpp.o)
  .debug_abbrev  0x00009896      0x4ac /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(HID.cpp.o)
 
-.debug_info     0x00000000    0x4c25e
+.debug_info     0x00000000    0x4c257
  .debug_info    0x00000000      0x5fb /home/ensab/Pro/Git/RepRapFirmware/Release/arduino/syscalls_sam3.c.o
  .debug_info    0x000005fb     0x103f ./Libraries/SPI/SPI.cpp.o
  .debug_info    0x0000163a     0x1fd0 ./Libraries/SD/utility/Sd2Card.cpp.o
@@ -5715,32 +5715,32 @@ OUTPUT(/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.elf elf32-littl
  .debug_info    0x0001d91d     0x4c51 ./GCodes.cpp.o
  .debug_info    0x0002256e     0x4270 ./Heat.cpp.o
  .debug_info    0x000267de     0x5653 ./Move.cpp.o
- .debug_info    0x0002be31     0x6b69 ./Platform.cpp.o
- .debug_info    0x0003299a     0x4142 ./RepRapFirmware.cpp.o
- .debug_info    0x00036adc     0x44d1 ./Webserver.cpp.o
- .debug_info    0x0003afad     0x11fb /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(variant.cpp.o)
- .debug_info    0x0003c1a8      0x8ce /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(IPAddress.cpp.o)
- .debug_info    0x0003ca76     0x1989 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Print.cpp.o)
- .debug_info    0x0003e3ff      0x195 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(RingBuffer.cpp.o)
- .debug_info    0x0003e594     0x19a2 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(UARTClass.cpp.o)
- .debug_info    0x0003ff36     0x1a8a /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USARTClass.cpp.o)
- .debug_info    0x000419c0      0x205 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WMath.cpp.o)
- .debug_info    0x00041bc5     0x2307 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WString.cpp.o)
- .debug_info    0x00043ecc       0x38 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cxxabi-compat.cpp.o)
- .debug_info    0x00043f04      0x23f /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(itoa.c.o)
- .debug_info    0x00044143      0x2f7 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring.c.o)
- .debug_info    0x0004443a     0x167e /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_analog.c.o)
- .debug_info    0x00045ab8      0x8a4 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_digital.c.o)
- .debug_info    0x0004635c       0x64 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(hooks.c.o)
- .debug_info    0x000463c0     0x1149 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WInterrupts.c.o)
- .debug_info    0x00047509      0x21b /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cortex_handlers.c.o)
- .debug_info    0x00047724      0x28e /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(main.cpp.o)
- .debug_info    0x000479b2     0x1587 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USBCore.cpp.o)
- .debug_info    0x00048f39      0x354 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Reset.cpp.o)
- .debug_info    0x0004928d     0x21a6 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(CDC.cpp.o)
- .debug_info    0x0004b433      0xe2b /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(HID.cpp.o)
+ .debug_info    0x0002be31     0x6b62 ./Platform.cpp.o
+ .debug_info    0x00032993     0x4142 ./RepRapFirmware.cpp.o
+ .debug_info    0x00036ad5     0x44d1 ./Webserver.cpp.o
+ .debug_info    0x0003afa6     0x11fb /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(variant.cpp.o)
+ .debug_info    0x0003c1a1      0x8ce /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(IPAddress.cpp.o)
+ .debug_info    0x0003ca6f     0x1989 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Print.cpp.o)
+ .debug_info    0x0003e3f8      0x195 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(RingBuffer.cpp.o)
+ .debug_info    0x0003e58d     0x19a2 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(UARTClass.cpp.o)
+ .debug_info    0x0003ff2f     0x1a8a /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USARTClass.cpp.o)
+ .debug_info    0x000419b9      0x205 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WMath.cpp.o)
+ .debug_info    0x00041bbe     0x2307 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WString.cpp.o)
+ .debug_info    0x00043ec5       0x38 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cxxabi-compat.cpp.o)
+ .debug_info    0x00043efd      0x23f /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(itoa.c.o)
+ .debug_info    0x0004413c      0x2f7 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring.c.o)
+ .debug_info    0x00044433     0x167e /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_analog.c.o)
+ .debug_info    0x00045ab1      0x8a4 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_digital.c.o)
+ .debug_info    0x00046355       0x64 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(hooks.c.o)
+ .debug_info    0x000463b9     0x1149 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WInterrupts.c.o)
+ .debug_info    0x00047502      0x21b /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cortex_handlers.c.o)
+ .debug_info    0x0004771d      0x28e /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(main.cpp.o)
+ .debug_info    0x000479ab     0x1587 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USBCore.cpp.o)
+ .debug_info    0x00048f32      0x354 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Reset.cpp.o)
+ .debug_info    0x00049286     0x21a6 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(CDC.cpp.o)
+ .debug_info    0x0004b42c      0xe2b /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(HID.cpp.o)
 
-.debug_line     0x00000000     0xcd47
+.debug_line     0x00000000     0xcd44
  .debug_line    0x00000000      0x335 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino/syscalls_sam3.c.o
  .debug_line    0x00000335      0x4a1 ./Libraries/SPI/SPI.cpp.o
  .debug_line    0x000007d6      0x74e ./Libraries/SD/utility/Sd2Card.cpp.o
@@ -5759,30 +5759,30 @@ OUTPUT(/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.elf elf32-littl
  .debug_line    0x00005775      0x82c ./GCodes.cpp.o
  .debug_line    0x00005fa1      0x462 ./Heat.cpp.o
  .debug_line    0x00006403      0xa84 ./Move.cpp.o
- .debug_line    0x00006e87      0xb09 ./Platform.cpp.o
- .debug_line    0x00007990      0x425 ./RepRapFirmware.cpp.o
- .debug_line    0x00007db5      0x66b ./Webserver.cpp.o
- .debug_line    0x00008420      0x41b /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(variant.cpp.o)
- .debug_line    0x0000883b      0x411 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(IPAddress.cpp.o)
- .debug_line    0x00008c4c      0x543 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Print.cpp.o)
- .debug_line    0x0000918f      0x149 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(RingBuffer.cpp.o)
- .debug_line    0x000092d8      0x497 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(UARTClass.cpp.o)
- .debug_line    0x0000976f      0x49a /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USARTClass.cpp.o)
- .debug_line    0x00009c09      0x15c /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WMath.cpp.o)
- .debug_line    0x00009d65      0x769 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WString.cpp.o)
- .debug_line    0x0000a4ce       0x7d /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cxxabi-compat.cpp.o)
- .debug_line    0x0000a54b       0xd8 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(itoa.c.o)
- .debug_line    0x0000a623      0x2ad /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring.c.o)
- .debug_line    0x0000a8d0      0x418 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_analog.c.o)
- .debug_line    0x0000ace8      0x2da /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_digital.c.o)
- .debug_line    0x0000afc2       0x93 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(hooks.c.o)
- .debug_line    0x0000b055      0x409 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WInterrupts.c.o)
- .debug_line    0x0000b45e      0x241 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cortex_handlers.c.o)
- .debug_line    0x0000b69f      0x256 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(main.cpp.o)
- .debug_line    0x0000b8f5      0x614 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USBCore.cpp.o)
- .debug_line    0x0000bf09      0x34d /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Reset.cpp.o)
- .debug_line    0x0000c256      0x5ad /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(CDC.cpp.o)
- .debug_line    0x0000c803      0x544 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(HID.cpp.o)
+ .debug_line    0x00006e87      0xb06 ./Platform.cpp.o
+ .debug_line    0x0000798d      0x425 ./RepRapFirmware.cpp.o
+ .debug_line    0x00007db2      0x66b ./Webserver.cpp.o
+ .debug_line    0x0000841d      0x41b /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(variant.cpp.o)
+ .debug_line    0x00008838      0x411 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(IPAddress.cpp.o)
+ .debug_line    0x00008c49      0x543 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Print.cpp.o)
+ .debug_line    0x0000918c      0x149 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(RingBuffer.cpp.o)
+ .debug_line    0x000092d5      0x497 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(UARTClass.cpp.o)
+ .debug_line    0x0000976c      0x49a /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USARTClass.cpp.o)
+ .debug_line    0x00009c06      0x15c /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WMath.cpp.o)
+ .debug_line    0x00009d62      0x769 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WString.cpp.o)
+ .debug_line    0x0000a4cb       0x7d /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cxxabi-compat.cpp.o)
+ .debug_line    0x0000a548       0xd8 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(itoa.c.o)
+ .debug_line    0x0000a620      0x2ad /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring.c.o)
+ .debug_line    0x0000a8cd      0x418 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_analog.c.o)
+ .debug_line    0x0000ace5      0x2da /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(wiring_digital.c.o)
+ .debug_line    0x0000afbf       0x93 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(hooks.c.o)
+ .debug_line    0x0000b052      0x409 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(WInterrupts.c.o)
+ .debug_line    0x0000b45b      0x241 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(cortex_handlers.c.o)
+ .debug_line    0x0000b69c      0x256 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(main.cpp.o)
+ .debug_line    0x0000b8f2      0x614 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(USBCore.cpp.o)
+ .debug_line    0x0000bf06      0x34d /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(Reset.cpp.o)
+ .debug_line    0x0000c253      0x5ad /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(CDC.cpp.o)
+ .debug_line    0x0000c800      0x544 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar(HID.cpp.o)
 
 .debug_loc      0x00000000     0xcf6d
  .debug_loc     0x00000000       0xf4 /home/ensab/Pro/Git/RepRapFirmware/Release/arduino/syscalls_sam3.c.o

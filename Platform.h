@@ -163,12 +163,6 @@ Licence: GPL
   
 #define HTTP_PORT 80
 
-// Connection statuses - ORed
-
-#define CLIENT 1
-#define CONNECTED 2
-#define AVAILABLE 4
-
 // Seconds to wait after serving a page
  
 #define CLIENT_CLOSE_DELAY 0.001
@@ -191,6 +185,11 @@ enum EndStopHit
   highHit = 2
 };
 
+/***************************************************************************************************/
+
+// Input and output - these are ORed into an int8_t
+// By the Status() functions of the IO classes.
+
 enum IOStatus
 {
   nothing = 0,
@@ -200,6 +199,7 @@ enum IOStatus
   clientConnected = 8
 };
 
+// All IO is done by classes derived from this class.
 
 class InputOutput
 {
@@ -211,6 +211,8 @@ protected:
 	InputOutput* alternateInput;
 	InputOutput* alternateOutput;
 };
+
+// This class handles the network - typically an ethernet.
 
 class Network: public InputOutput
 {
@@ -232,6 +234,8 @@ private:
 	int8_t clientStatus;
 };
 
+// This class handles serial I/O - typically via USB
+
 class Line: public InputOutput
 {
 public:
@@ -246,15 +250,18 @@ public:
 private:
 };
 
+// This class handles input from, and output to, files.
+
 class FileStore: public InputOutput
 {
 public:
 	FileStore();
+	void Init();
 	int8_t Status(); // Returns OR of IOStatus
 	int Read(char& b);
 	void Write(char b);
 	void Write(char* s);
-	int Open(char* DevicePath, bool write);
+	int Open(char* filePath, bool write);
 	void Close();
 	char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
 	void GoToEnd(); // Position the file at the end (so you can write on the end).
@@ -265,7 +272,9 @@ private:
 };
 
 
+/***************************************************************************************************************/
 
+// The main class that defines the RepRap machine for the benefit of the other classes
 
 class Platform
 {   
@@ -298,7 +307,6 @@ class Platform
   Line* GetLine();
 
   char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
-  //int OpenFile(char* fileName, bool write); // Open a local file (for example on an SD card).
   int OpenFile(char* directory, char* fileName, bool write); // Open a local file (for example on an SD card).
   void GoToEnd(int file); // Position the file at the end (so you can write on the end).
   bool Read(int file, char& b);     // Read a single byte from a file into b,
@@ -314,16 +322,8 @@ class Platform
   void Close(int file); // Close a file or device, writing any unwritten buffer contents first.
   bool DeleteFile(char* directory, char* fileName); // Delete a file
   
-  //char ClientRead(); // Read a byte from the client
-  //void SendToClient(char* message); // Send string to the host
-  //void SendToClient(char b); // Send byte to the host
-  //int ClientStatus(); // Check client's status
-  //void DisconnectClient(); //Disconnect the client
-  
   void Message(char type, char* message);        // Send a message.  Messages may simply flash an LED, or, 
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
-  //bool SerialAvailable();  // Byte available from (for example) USB?
-  //bool SerialRead(char& b); // Read a serial byte into b; result is true unless no byte is available
   
   // Movement
   
@@ -438,14 +438,6 @@ class Platform
 // Network connection
 
   Network* network;
-
-  //void ClientMonitor();
-  
-  //byte mac[MAC_BYTES];
-  //byte ipAddress[IP_BYTES];
-  //EthernetServer* server;
-  //EthernetClient client;
-  //int clientStatus;
 };
 
 inline float Platform::Time()
