@@ -44,7 +44,7 @@ endif
 
 # Add inputs and outputs from these tool invocations to the build variables 
 AR += \
-/home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar \
+/ \
 
 ELF += \
 RepRapFirmware.elf \
@@ -53,7 +53,7 @@ EEP += \
 RepRapFirmware.eep \
 
 FLASH_IMAGE += \
-Release/RepRapFirmware.bin \
+Release/RepRapFirmware.hex \
 
 
 # All Target
@@ -63,19 +63,19 @@ all: RepRapFirmware
 RepRapFirmware: $(FLASH_IMAGE)
 	@echo 'Building target: $@'
 	@echo 'Printing size:'
-	"/usr/local/arduino-1.5.2/hardware/tools/g++_arm_none_eabi/bin/arm-none-eabi-size" -A "/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.elf"
+	${JANTJE.SIZE.SWITCH}
 	@echo 'Finished building target: $@'
 	@echo ' '
 
-/home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar: $(AR_OBJ)
+/: $(AR_OBJ)
 	@echo 'Starting archiver'
-	"/usr/local/arduino-1.5.2/hardware/tools/g++_arm_none_eabi/bin/arm-none-eabi-ar" rcs "/home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar"   $(AR_OBJ)
+	$(AR_OBJ)
 	@echo 'Finished building: $@'
 	@echo ' '
 
 RepRapFirmware.elf: $(LINK_OBJ) $(AR)
 	@echo 'Starting combiner'
-	"/usr/local/arduino-1.5.2/hardware/tools/g++_arm_none_eabi/bin/arm-none-eabi-g++" -Os -Wl,--gc-sections -mcpu=cortex-m3 "-T/usr/local/arduino-1.5.2/hardware/arduino/sam/variants/arduino_due_x/linker_scripts/gcc/flash.ld" "-Wl,-Map,/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.map" -o "/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.elf" "-L/home/ensab/Pro/Git/RepRapFirmware/Release" -lm -lgcc -mthumb -Wl,--cref -Wl,--check-sections -Wl,--gc-sections -Wl,--entry=Reset_Handler -Wl,--unresolved-symbols=report-all -Wl,--warn-common -Wl,--warn-section-align -Wl,--warn-unresolved-symbols -Wl,--start-group "/home/ensab/Pro/Git/RepRapFirmware/Release/arduino/syscalls_sam3.c.o"   $(LINK_OBJ) $(AR)  "/usr/local/arduino-1.5.2/hardware/arduino/sam/variants/arduino_due_x/libsam_sam3x8e_gcc_rel.a" "/home/ensab/Pro/Git/RepRapFirmware/Release/arduino.ar" -Wl,--end-group
+	$(LINK_OBJ) $(AR)
 	@echo 'Finished building: $@'
 	@echo ' '
 
@@ -85,9 +85,9 @@ RepRapFirmware.eep: $(ELF)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Release/RepRapFirmware.bin: $(EEP)
+Release/RepRapFirmware.hex: $(EEP)
 	@echo 'Create Flash image (ihex format)'
-	"/usr/local/arduino-1.5.2/hardware/tools/g++_arm_none_eabi/bin/arm-none-eabi-objcopy" -O binary "/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.elf" "/home/ensab/Pro/Git/RepRapFirmware/Release/RepRapFirmware.bin"
+	${A.RECIPE.OBJCOPY.HEX.PATTERN}
 	@echo 'Finished building: $@'
 	@echo ' '
 

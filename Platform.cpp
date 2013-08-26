@@ -43,10 +43,15 @@ Platform::Platform(RepRap* r)
   
   // Files
  
-  files = new File[MAX_FILES];
-  inUse = new bool[MAX_FILES];
+  //files = new File[MAX_FILES];
+  //inUse = new bool[MAX_FILES];
+  
+  massStorage = new MassStorage(this);
+  
   for(int8_t i=0; i < MAX_FILES; i++)
-    buf[i] = new byte[FILE_BUF_LEN];
+    files[i] = new FileStore(this);
+    
+    //buf[i] = new byte[FILE_BUF_LEN];
   
   line = new Line();
   network = new Network();
@@ -151,22 +156,21 @@ void Platform::Init()
       pinMode(heatOnPins[i], OUTPUT);
     thermistorInfRs[i] = ( thermistorInfRs[i]*exp(-thermistorBetas[i]/(25.0 - ABS_ZERO)) );
   }  
-
-  // Files
- 
+  
   for(i=0; i < MAX_FILES; i++)
-  {
-    bPointer[i] = 0;
-    inUse[i] = false;
-  }
+    files[i]->Init();
+ 
+//  for(i=0; i < MAX_FILES; i++)
+//  {
+//    bPointer[i] = 0;
+//    inUse[i] = false;
+//  }
   
   line->Init();
 
   network->Init();
 
-  if (!SD.begin(SD_SPI)) 
-     Message(HOST_MESSAGE, "SD initialization failed.");
-  // SD.begin() returns with the SPI disabled, so you need not disable it here
+  massStorage->Init();
   
   InitialiseInterrupts();
   
@@ -244,12 +248,24 @@ void Platform::SetHeater(int8_t heater, const float& power)
   
 */
 
-char* Platform::CombineName(char* result, char* directory, char* fileName)
+MassStorage::MassStorage(Platform* p)
+{
+   platform = p;
+}
+
+void MassStorage::Init()
+{
+  if (!SD.begin(SD_SPI)) 
+     platform->Message(HOST_MESSAGE, "SD initialization failed.\n");
+  // SD.begin() returns with the SPI disabled, so you need not disable it here  
+}
+
+char* MassStorage::CombineName(char* directory, char* fileName)
 {
   int out = 0;
   int in = 0;
   
-  result[out] = '/';
+  scratchString[out] = '/';
   out++;
   
   if(directory != NULL)
@@ -258,30 +274,40 @@ char* Platform::CombineName(char* result, char* directory, char* fileName)
       in++;
     while(directory[in] != 0 && directory[in] != '\n' && directory[in] != '/')
     {
-      result[out] = directory[in];
-      out++;
+      scratchString[out] = directory[in];
       in++;
+      out++;
+      if(out >= STRING_LENGTH)
+      {
+         platform->Message(HOST_MESSAGE, "CombineName() buffer overflow.");
+         out = 0;
+      }
     }
   }
   
-  result[out] = '/';
+  scratchString[out] = '/';
   out++;
   
   in = 0;
   while(fileName[in] != 0 && fileName[in] != '\n' && fileName[in] != '/')
   {
-    result[out] = fileName[in];
-    out++;
+    scratchString[out] = fileName[in];
     in++;
+    out++;
+    if(out >= STRING_LENGTH)
+    {
+       platform->Message(HOST_MESSAGE, "CombineName() buffer overflow.");
+       out = 0;
+    }
   }
-  result[out] = 0;
+  scratchString[out] = 0;
   
-  return result;
+  return scratchString;
 }
 
 // List the flat files in a directory.  No sub-directories or recursion.
 
-char* Platform::FileList(char* directory)
+char* MassStorage::FileList(char* directory)
 {
   File dir, entry;
   dir = SD.open(directory);
@@ -299,9 +325,9 @@ char* Platform::FileList(char* directory)
       q++;
       if(p >= FILE_LIST_LENGTH - 10) // Caution...
       {
-        Message(HOST_MESSAGE, "FileList - directory: ");
-        Message(HOST_MESSAGE, directory);
-        Message(HOST_MESSAGE, " has too many files!\n");
+        platform->Message(HOST_MESSAGE, "FileList - directory: ");
+        platform->Message(HOST_MESSAGE, directory);
+        platform->Message(HOST_MESSAGE, " has too many files!\n");
         return "";
       }
     }
@@ -319,130 +345,186 @@ char* Platform::FileList(char* directory)
 }
 
 // Delete a file
-bool Platform::DeleteFile(char* directory, char* fileName)
+bool MassStorage::Delete(char* directory, char* fileName)
 {
-  CombineName(scratchString, directory, fileName);
-  return SD.remove(scratchString);
+  return SD.remove(CombineName(directory, fileName));
+}
+
+//------------------------------------------------------------------------------------------------
+
+
+FileStore::FileStore(Platform* p)
+{
+   platform = p;  
+}
+
+
+void FileStore::Init()
+{
+  bPointer = 0;
+  inUse = false;  
+}
+
+
+void FileStore::Close()
+{
+  if(bPointer != 0)
+    file.write(buf, bPointer);
+  bPointer = 0;
+  file.close();
+  platform->ReturnFileStore(this);
+  inUse = false;
 }
 
 // Open a local file (for example on an SD card).
+// This is protected - only Platform can access it.
 
-int Platform::OpenFile(char* directory, char* fileName, bool write)
+bool FileStore::Open(char* directory, char* fileName, bool write)
 {
-  CombineName(scratchString, directory, fileName);
-  int result = -1;
-  for(int i = 0; i < MAX_FILES; i++)
-    if(!inUse[i])
-    {
-      result = i;
-      break;
-    }
-  if(result < 0)
-  {
-      Message(HOST_MESSAGE, "Max open file count exceeded.\n");
-      return -1;    
-  }
+  char* location = platform->GetMassStorage()->CombineName(directory, fileName);
   
-  if(!SD.exists(scratchString))
+  if(!SD.exists(location))
   {
     if(!write)
     {
-      Message(HOST_MESSAGE, "File: ");
-      Message(HOST_MESSAGE, fileName);
-      Message(HOST_MESSAGE, " not found for reading.\n");
-      return -1;
+      platform->Message(HOST_MESSAGE, "File: ");
+      platform->Message(HOST_MESSAGE, fileName);
+      platform->Message(HOST_MESSAGE, " not found for reading.\n");
+      return false;
     }
-    files[result] = SD.open(scratchString, FILE_WRITE);
-    bPointer[result] = 0;
+    file = SD.open(location, FILE_WRITE);
+    bPointer = 0;
   } else
   {
     if(write)
     {
-      files[result] = SD.open(scratchString, FILE_WRITE);
-      bPointer[result] = 0;
+      file = SD.open(location, FILE_WRITE);
+      bPointer = 0;
     } else
-      files[result] = SD.open(scratchString, FILE_READ);
+      file = SD.open(location, FILE_READ);
   }
 
-  inUse[result] = true;
-  return result;
-}
-
-void Platform::GoToEnd(int file)
-{
-  if(!inUse[file])
-  {
-    Message(HOST_MESSAGE, "Attempt to seek on a non-open file.\n");
-    return;
-  }
-  unsigned long e = files[file].size();
-  files[file].seek(e);
-}
-
-unsigned long Platform::Length(int file)
-{
-  if(!inUse[file])
-  {
-    Message(HOST_MESSAGE, "Attempt to size non-open file.\n");
-    return 0;
-  }
-  return files[file].size();  
-}
-
-void Platform::Close(int file)
-{ 
-  if(bPointer[file] != 0)
-    files[file].write(buf[file], bPointer[file]);
-  bPointer[file] = 0;
-  files[file].close();
-  inUse[file] = false;
-}
-
-
-bool Platform::Read(int file, char& b)
-{
-  if(!inUse[file])
-  {
-    Message(HOST_MESSAGE, "Attempt to read from a non-open file.\n");
-    return false;
-  }
-    
-  if(!files[file].available())
-    return false;
-  b = (char) files[file].read();
+  inUse = true;
   return true;
 }
 
-void Platform::Write(int file, char b)
+void FileStore::GoToEnd()
 {
-  if(!inUse[file])
+  if(!inUse)
   {
-    Message(HOST_MESSAGE, "Attempt to write byte to a non-open file.\n");
+    platform->Message(HOST_MESSAGE, "Attempt to seek on a non-open file.\n");
     return;
   }
-  (buf[file])[bPointer[file]] = b;
-  bPointer[file]++;
-  if(bPointer[file] >= FILE_BUF_LEN)
-  {
-    files[file].write(buf[file], FILE_BUF_LEN);
-    bPointer[file] = 0;
-  } 
-  //files[file].write(b);
+  unsigned long e = file.size();
+  file.seek(e);
 }
 
-void Platform::Write(int file, char* b)
+unsigned long FileStore::Length()
 {
-  if(!inUse[file])
+  if(!inUse)
   {
-    Message(HOST_MESSAGE, "Attempt to write string to a non-open file.\n");
+    platform->Message(HOST_MESSAGE, "Attempt to size non-open file.\n");
+    return 0;
+  }
+  return file.size();  
+}
+
+int8_t FileStore::Status()
+{
+  if(!inUse)
+    return nothing;
+    
+  if(file.available())
+    return byteAvailable;
+    
+  return nothing;
+}
+
+bool FileStore::Read(char& b)
+{
+  if(!inUse)
+  {
+    platform->Message(HOST_MESSAGE, "Attempt to read from a non-open file.\n");
+    return false;
+  }
+    
+  if(!(Status() & byteAvailable))
+    return false;
+  int c = file.read();
+  if(c < 0)
+    return false;
+    
+  b = (char) c;
+  return true;
+}
+
+void FileStore::Write(char b)
+{
+  if(!inUse)
+  {
+    platform->Message(HOST_MESSAGE, "Attempt to write byte to a non-open file.\n");
+    return;
+  }
+  buf[bPointer] = b;
+  bPointer++;
+  if(bPointer >= FILE_BUF_LEN)
+  {
+    file.write(buf, FILE_BUF_LEN);
+    bPointer = 0;
+  } 
+}
+
+void FileStore::Write(char* b)
+{
+  if(!inUse)
+  {
+    platform->Message(HOST_MESSAGE, "Attempt to write string to a non-open file.\n");
     return;
   }
   int i = 0;
   while(b[i])
-    Write(file, b[i++]); 
+    Write(b[i++]); 
   //files[file].print(b);
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+
+
+FileStore* Platform::GetFileStore(char* directory, char* fileName, bool write)
+{
+  FileStore* result = NULL;
+  for(int i = 0; i < MAX_FILES; i++)
+    if(!files[i]->inUse)
+    {
+      files[i]->inUse = true;
+      if(files[i]->Open(directory, fileName, write))
+        return files[i];
+      else
+      {
+        files[i]->inUse = false;
+        return NULL;
+      }
+    }
+  Message(HOST_MESSAGE, "Max open file count exceeded.\n");
+  return NULL;
+}
+
+
+MassStorage* Platform::GetMassStorage()
+{
+  return massStorage;
+}
+
+void Platform::ReturnFileStore(FileStore* fs)
+{
+  for(int i = 0; i < MAX_FILES; i++)
+      if(files[i] = fs)
+        {
+          files[i]->inUse = false;
+          return;
+        }
+}
 
 
 void Platform::Message(char type, char* message)
@@ -460,13 +542,11 @@ void Platform::Message(char type, char* message)
   case HOST_MESSAGE:
   default:
   
-  
-    int m = OpenFile(GetWebDir(), MESSAGE_FILE, true);
-    GoToEnd(m);
-    Write(m, message);
+    FileStore* m = GetFileStore(GetWebDir(), MESSAGE_FILE, true);
+    m->GoToEnd();
+    m->Write(message);
+    m->Close();
     line->Write(message);
-    Close(m);
-    
   }
 }
 

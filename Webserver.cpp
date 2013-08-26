@@ -49,8 +49,8 @@ bool Webserver::MatchBoundary(char c)
   } else
   {
     for(int i = 0; i < boundaryCount; i++)
-      platform->Write(postFile, postBoundary[i]);
-    platform->Write(postFile, c);
+      postFile->Write(postBoundary[i]);
+    postFile->Write(c);
     boundaryCount = 0;
   }
   return false;  
@@ -135,7 +135,7 @@ bool Webserver::LoadGcodeBuffer(char* gc, bool convertWeb)
   { 
     if(fileAct == 1) // Delete?
     {
-      if(!platform->DeleteFile(platform->GetGCodeDir(), &gcodeBuffer[4]))
+      if(!platform->GetMassStorage()->Delete(platform->GetGCodeDir(), &gcodeBuffer[4]))
       {
         platform->Message(HOST_MESSAGE, "Unsuccsessful attempt to delete: ");
         platform->Message(HOST_MESSAGE, &gcodeBuffer[4]);
@@ -198,13 +198,13 @@ void Webserver::SendFile(char* nameOfFileToSend)
     
   if(jsonPointer < 0)
   {
-    fileBeingSent = platform->OpenFile(platform->GetWebDir(), nameOfFileToSend, false);
-    if(fileBeingSent < 0)
+    fileBeingSent = platform->GetFileStore(platform->GetWebDir(), nameOfFileToSend, false);
+    if(fileBeingSent == NULL)
     {
       nameOfFileToSend = FOUR04_FILE;
-      fileBeingSent = platform->OpenFile(platform->GetWebDir(), nameOfFileToSend, false);
+      fileBeingSent = platform->GetFileStore(platform->GetWebDir(), nameOfFileToSend, false);
     }
-    writing = true;
+    writing = fileBeingSent != NULL;
   } 
   
   platform->GetNetwork()->Write("HTTP/1.1 200 OK\n");
@@ -238,7 +238,7 @@ void Webserver::SendFile(char* nameOfFileToSend)
   {
 	platform->GetNetwork()->Write("Content-Encoding: gzip\n");
 	platform->GetNetwork()->Write("Content-Length: ");
-    sprintf(sLen, "%llu", platform->Length(fileBeingSent));
+    sprintf(sLen, "%llu", fileBeingSent->Length());
     platform->GetNetwork()->Write(sLen);
     platform->GetNetwork()->Write("\n");
   }
@@ -264,11 +264,11 @@ void Webserver::WriteByte()
       }
     } else
     {
-      if(platform->Read(fileBeingSent, b))
+      if(fileBeingSent->Read(b))
     	  platform->GetNetwork()->Write(b);
       else
       { 
-        platform->Close(fileBeingSent);    
+        fileBeingSent->Close();    
         CloseClient(); 
       } 
     } 
@@ -337,7 +337,7 @@ void Webserver::GetJsonResponse(char* request)
   
   if(StringStartsWith(request, "files"))
   {
-    char* fileList = platform->FileList(platform->GetGCodeDir());
+    char* fileList = platform->GetMassStorage()->FileList(platform->GetGCodeDir());
     strcpy(jsonResponse, "{\"files\":[");
     strcat(jsonResponse, fileList);
     strcat(jsonResponse, "]}");    
@@ -444,7 +444,7 @@ void Webserver::InitialisePost()
   boundaryCount = 0; 
   postBoundary[0] = 0;
   postFileName[0] = 0;
-  postFile = -1;
+  postFile = NULL;
 }
 
 void Webserver::ParseClientLine()
@@ -541,13 +541,15 @@ void Webserver::BlankLineFromClient()
   
   if(receivingPost)
   {
-    postFile = platform->OpenFile(platform->GetGCodeDir(), postFileName, true);
-    if(postFile < 0  || !postBoundary[0])
+    postFile = platform->GetFileStore(platform->GetGCodeDir(), postFileName, true);
+    if(postFile == NULL  || !postBoundary[0])
     {
       platform->Message(HOST_MESSAGE, "Can't open file for write or no post boundary: ");
       platform->Message(HOST_MESSAGE, postFileName);
       platform->Message(HOST_MESSAGE, "\n");
       InitialisePost();
+      if(postFile != NULL)
+        postFile->Close();
     }
   }  
 
@@ -610,12 +612,12 @@ void Webserver::Spin()
     	platform->GetNetwork()->Read(c);
 //        Serial.print(c);
 
-      if(receivingPost && postFile >= 0)
+      if(receivingPost && postFile != NULL)
       {
         if(MatchBoundary(c))
         {
           //Serial.println("Got to end of file.");
-          platform->Close(postFile);
+          postFile->Close();
           SendFile(clientRequest);
           clientRequest[0] = 0;
           InitialisePost();       
@@ -673,7 +675,7 @@ void Webserver::Init()
   
   // Reinitialise the message file
   
-  platform->DeleteFile(platform->GetWebDir(), MESSAGE_FILE);
+  platform->GetMassStorage()->Delete(platform->GetWebDir(), MESSAGE_FILE);
 }
 
 void Webserver::Exit()

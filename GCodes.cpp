@@ -53,8 +53,8 @@ void GCodes::Init()
   distanceScale = 1.0;
   for(int8_t i = 0; i < DRIVES - AXES; i++)
     lastPos[i] = 0.0;
-  fileBeingPrinted = -1;
-  fileToPrint = -1;
+  fileBeingPrinted = NULL;
+  fileToPrint = NULL;
   homeX = false;
   homeY = false;
   homeZ = false;
@@ -109,9 +109,9 @@ void GCodes::Spin()
     return;
   }  
   
-  if(fileBeingPrinted >= 0)
+  if(fileBeingPrinted != NULL)
   {
-     if(platform->Read(fileBeingPrinted, b))
+     if(fileBeingPrinted->Read(b))
      {
        if(fileGCode->Put(b))
          fileGCode->SetFinished(ActOnGcode(fileGCode));
@@ -119,8 +119,8 @@ void GCodes::Spin()
      {
         if(fileGCode->Put('\n')) // In case there wasn't one ending the file
          fileGCode->SetFinished(ActOnGcode(fileGCode));
-        platform->Close(fileBeingPrinted);
-        fileBeingPrinted = -1;
+        fileBeingPrinted->Close();
+        fileBeingPrinted = NULL;
      }
   }
 }
@@ -364,7 +364,7 @@ bool GCodes::DoHome()
 
 void GCodes::QueueFileToPrint(char* fileName)
 {
-  fileToPrint = platform->OpenFile(platform->GetGCodeDir(), fileName, false);
+  fileToPrint = platform->GetFileStore(platform->GetGCodeDir(), fileName, false);
 }
 
 
@@ -515,12 +515,12 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       
     case 24: // Print/resume-printing the selected file
       fileBeingPrinted = fileToPrint;
-      fileToPrint = -1;
+      fileToPrint = NULL;
       break;
       
     case 25: // Pause the print
       fileToPrint = fileBeingPrinted;
-      fileBeingPrinted = -1;
+      fileBeingPrinted = NULL;
       break;
       
     case 82:

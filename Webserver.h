@@ -75,13 +75,13 @@ class Webserver
     Platform* platform;
     bool active;
     float lastTime;
-    int fileBeingSent;
+    FileStore* fileBeingSent;
     bool writing;
     bool receivingPost;
     char postBoundary[POST_LENGTH];
     int boundaryCount;  
     char postFileName[POST_LENGTH];
-    int postFile;
+    FileStore* postFile;
     bool postSeen;
     bool getSeen;
     bool clientLineIsBlank;

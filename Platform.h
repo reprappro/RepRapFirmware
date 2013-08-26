@@ -217,15 +217,18 @@ protected:
 class Network: public InputOutput
 {
 public:
-	Network();
-	void Init();
-	void Spin();
 	int8_t Status(); // Returns OR of IOStatus
 	int Read(char& b);
 	void Write(char b);
 	void Write(char* s);
 	void Close();
 
+friend class Platform;
+
+protected:
+	Network();
+	void Init();
+	void Spin();
 private:
 	byte mac[MAC_BYTES];
 	byte ipAddress[IP_BYTES];
@@ -239,15 +242,37 @@ private:
 class Line: public InputOutput
 {
 public:
-	Line();
-	void Init();
-	void Spin();
 	int8_t Status(); // Returns OR of IOStatus
 	int Read(char& b);
 	void Write(char b);
 	void Write(char* s);
 
+friend class Platform;
+
+protected:
+	Line();
+	void Init();
+	void Spin();
+
 private:
+};
+
+class MassStorage
+{
+public:
+  char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory
+  char* CombineName(char* directory, char* fileName);
+  bool Delete(char* directory, char* fileName);
+friend class Platform;
+
+protected:
+  MassStorage(Platform* p);
+  void Init();
+
+private:
+  char fileList[FILE_LIST_LENGTH];
+  char scratchString[STRING_LENGTH];
+  Platform* platform;
 };
 
 // This class handles input from, and output to, files.
@@ -255,20 +280,29 @@ private:
 class FileStore: public InputOutput
 {
 public:
-	FileStore();
-	void Init();
 	int8_t Status(); // Returns OR of IOStatus
-	int Read(char& b);
+	bool Read(char& b);
 	void Write(char b);
 	void Write(char* s);
-	int Open(char* filePath, bool write);
 	void Close();
-	char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
 	void GoToEnd(); // Position the file at the end (so you can write on the end).
 	unsigned long Length(); // File size in bytes
-	bool DeleteMe(); // Delete this file
 
+friend class Platform;
+
+protected:
+	FileStore(Platform* p);
+	void Init();
+        bool Open(char* directory, char* fileName, bool write);
+        
+  bool inUse;
+  byte buf[FILE_BUF_LEN];
+  int bPointer;
+  
 private:
+
+  File file;
+  Platform* platform;
 };
 
 
@@ -305,22 +339,27 @@ class Platform
   
   Network* GetNetwork();
   Line* GetLine();
+  
+  friend class FileStore;
+  
+  MassStorage* GetMassStorage();
+  FileStore* GetFileStore(char* directory, char* fileName, bool write);
 
-  char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
-  int OpenFile(char* directory, char* fileName, bool write); // Open a local file (for example on an SD card).
-  void GoToEnd(int file); // Position the file at the end (so you can write on the end).
-  bool Read(int file, char& b);     // Read a single byte from a file into b,
+//  char* FileList(char* directory); // Returns a ,-separated list of all the files in the named directory (for example on an SD card).
+//  int OpenFile(char* directory, char* fileName, bool write); // Open a local file (for example on an SD card).
+//  void GoToEnd(int file); // Position the file at the end (so you can write on the end).
+//  bool Read(int file, char& b);     // Read a single byte from a file into b,
                                              // returned value is false for EoF, true otherwise
-  void Write(int file, char* s);  // Write the string to a file.
-  void Write(int file, char b);  // Write the byte b to a file.
-  unsigned long Length(int file); // File size in bytes
+//  void Write(int file, char* s);  // Write the string to a file.
+//  void Write(int file, char b);  // Write the byte b to a file.
+//  unsigned long Length(int file); // File size in bytes
   char* GetWebDir(); // Where the htm etc files are
   char* GetGCodeDir(); // Where the gcodes are
   char* GetSysDir();  // Where the system files are
   char* GetTempDir(); // Where temporary files are
   char* GetConfigFile(); // Where the configuration is stored (in the system dir).
-  void Close(int file); // Close a file or device, writing any unwritten buffer contents first.
-  bool DeleteFile(char* directory, char* fileName); // Delete a file
+//  void Close(int file); // Close a file or device, writing any unwritten buffer contents first.
+//  bool DeleteFile(char* directory, char* fileName); // Delete a file
   
   void Message(char type, char* message);        // Send a message.  Messages may simply flash an LED, or, 
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
@@ -360,6 +399,9 @@ class Platform
   float HeatSampleTime();
 
 //-------------------------------------------------------------------------------------------------------
+  protected:
+  
+  void ReturnFileStore(FileStore* f);  
   
   private:
   
@@ -423,17 +465,18 @@ class Platform
 
 // Files
 
-  File* files;
-  bool* inUse;
+  MassStorage* massStorage;
+  FileStore* files[MAX_FILES];
+  //bool* inUse;
   char* webDir;
   char* gcodeDir;
   char* sysDir;
   char* tempDir;
   char* configFile;
-  byte* buf[MAX_FILES];
-  int bPointer[MAX_FILES];
-  char fileList[FILE_LIST_LENGTH];
-  char scratchString[STRING_LENGTH];
+  //byte* buf[MAX_FILES];
+  //int bPointer[MAX_FILES];
+  //char fileList[FILE_LIST_LENGTH];
+  //char scratchString[STRING_LENGTH];
   
 // Network connection
 

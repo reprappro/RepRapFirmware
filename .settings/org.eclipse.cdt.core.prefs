@@ -260,4 +260,4 @@ indexer/skipImplicitReferences=false
 indexer/skipMacroReferences=false
 indexer/skipReferences=false
 indexer/skipTypeReferences=false
-indexer/useHeuristicIncludeResolution=true
+indexer/useHeuristicIncludeResolution=false

@@ -105,8 +105,8 @@ class GCodes
     char gCodeLetters[DRIVES + 1]; // Extra is for F
     float lastPos[DRIVES - AXES]; // Just needed for relative moves.
     float distanceScale;
-    int fileBeingPrinted;
-    int fileToPrint;
+    FileStore* fileBeingPrinted;
+    FileStore* fileToPrint;
     int8_t selectedHead;
     bool homeX;
     bool homeY;
@@ -143,7 +143,7 @@ inline void GCodeBuffer::SetFinished(bool f)
 
 inline bool GCodes::PrintingAFile()
 {
-  return fileBeingPrinted >= 0;
+  return fileBeingPrinted != NULL;
 }
 
 inline bool GCodes::NoHome()
