@@ -2999,9 +2999,8 @@ LOAD /usr/local/arduino-1.5.2/hardware/tools/g++_arm_none_eabi/bin/../lib/gcc/ar
                 0x00084b04        0x6 ./Platform.cpp.o
                 0x00084b04                _ZN8Platform14GetMassStorageEv
  .text._ZN8Platform15ReturnFileStoreEP9FileStore
-                0x00084b0a       0x18 ./Platform.cpp.o
+                0x00084b0a       0x1a ./Platform.cpp.o
                 0x00084b0a                _ZN8Platform15ReturnFileStoreEP9FileStore
- *fill*         0x00084b22        0x2 00
  .text._ZN7Network4InitEv
                 0x00084b24       0x8c ./Platform.cpp.o
                 0x00084b24                _ZN7Network4InitEv
@@ -4384,46 +4383,46 @@ LOAD /usr/local/arduino-1.5.2/hardware/tools/g++_arm_none_eabi/bin/../lib/gcc/ar
  .rodata.str1.1
                 0x000991c0      0x260 ./Platform.cpp.o
                                 0x261 (size before relaxing)
- .rodata._ZZN7Network4InitEvE5C.111
-                0x00099420        0x4 ./Platform.cpp.o
+ .rodata._ZZN7Network4InitEvE5C.109
+                0x00099420        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.80
-                0x00099424        0x8 ./Platform.cpp.o
+                0x00099428        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.82
-                0x0009942c        0x8 ./Platform.cpp.o
+                0x00099430        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.63
-                0x00099434        0x4 ./Platform.cpp.o
- .rodata._ZZN8Platform4InitEvE4C.64
                 0x00099438        0x4 ./Platform.cpp.o
- .rodata._ZZN8Platform4InitEvE4C.65
+ .rodata._ZZN8Platform4InitEvE4C.64
                 0x0009943c        0x4 ./Platform.cpp.o
+ .rodata._ZZN8Platform4InitEvE4C.65
+                0x00099440        0x4 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.70
-                0x00099440       0x10 ./Platform.cpp.o
+                0x00099444       0x10 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.67
-                0x00099450        0x4 ./Platform.cpp.o
+                0x00099454        0x4 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.72
-                0x00099454        0xc ./Platform.cpp.o
+                0x00099458        0xc ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.69
-                0x00099460       0x10 ./Platform.cpp.o
+                0x00099464       0x10 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.74
-                0x00099470        0x4 ./Platform.cpp.o
- .rodata._ZZN8Platform4InitEvE4C.75
                 0x00099474        0x4 ./Platform.cpp.o
+ .rodata._ZZN8Platform4InitEvE4C.75
+                0x00099478        0x4 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.76
-                0x00099478        0x8 ./Platform.cpp.o
+                0x0009947c        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.81
-                0x00099480        0x8 ./Platform.cpp.o
+                0x00099484        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.78
-                0x00099488        0x8 ./Platform.cpp.o
+                0x0009948c        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.83
-                0x00099490        0x8 ./Platform.cpp.o
+                0x00099494        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.84
-                0x00099498        0x8 ./Platform.cpp.o
+                0x0009949c        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.85
-                0x000994a0        0x8 ./Platform.cpp.o
+                0x000994a4        0x8 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.86
-                0x000994a8        0x8 ./Platform.cpp.o
+                0x000994ac        0x8 ./Platform.cpp.o
  .rodata._ZZN7Network4InitEvE5C.110
-                0x000994b0        0x8 ./Platform.cpp.o
+                0x000994b4        0x4 ./Platform.cpp.o
  .rodata._ZZN8Platform4InitEvE4C.71
                 0x000994b8       0x10 ./Platform.cpp.o
  .rodata.str1.1

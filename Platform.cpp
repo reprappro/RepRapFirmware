@@ -314,7 +314,7 @@ char* MassStorage::FileList(char* directory)
   int p = 0;
   int q;
   int count = 0;
-  while(entry = dir.openNextFile())
+  while(entry = dir.openNextFile()) // I mean = not ==
   {
     q = 0;
     count++;
@@ -519,7 +519,7 @@ MassStorage* Platform::GetMassStorage()
 void Platform::ReturnFileStore(FileStore* fs)
 {
   for(int i = 0; i < MAX_FILES; i++)
-      if(files[i] = fs)
+      if(files[i] == fs)
         {
           files[i]->inUse = false;
           return;
