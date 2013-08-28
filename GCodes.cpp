@@ -365,6 +365,8 @@ bool GCodes::DoHome()
 void GCodes::QueueFileToPrint(char* fileName)
 {
   fileToPrint = platform->GetFileStore(platform->GetGCodeDir(), fileName, false);
+  if(fileToPrint == NULL)
+	  platform->Message(HOST_MESSAGE, "GCode file not found\n");
 }
 
 
@@ -509,9 +511,9 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       platform->Message(HOST_MESSAGE, "Motors off received\n");
       break;
       
-//    case 23: // Set file to print
-//      platform->Message(HOST_MESSAGE, "M code for file selected erroneously received.\n");
-//      break;
+    case 23: // Set file to print
+      QueueFileToPrint(gb->GetString());
+      break;
       
     case 24: // Print/resume-printing the selected file
       fileBeingPrinted = fileToPrint;
@@ -529,6 +531,15 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       
     case 83:
       drivesRelative = true;
+      break;
+
+    case 105: // Depricated...
+      for(int8_t i = 0; i < HEATERS; i++)
+      {
+    	  platform->GetLine()->Write(ftoa(NULL, reprap.GetHeat()->GetTemperature(i), 1));
+    	  platform->GetLine()->Write(" ");
+      }
+      platform->GetLine()->Write('\n');
       break;
    
     case 106: // Fan on
@@ -706,6 +717,29 @@ float GCodeBuffer::GetFValue()
   float result = (float)strtod(&gcodeBuffer[readPointer + 1], NULL);
   readPointer = -1;
   return result; 
+}
+
+// This returns a pointer to the end of the buffer where a
+// string starts.  It assumes that an M or G search has
+// been done followed by a GetIValue(), so readPointer will
+// be -1.  It absorbs "M/Gnnn " (including the space) from the
+// start and returns a pointer to the next location.
+
+char* GCodeBuffer::GetString()
+{
+  readPointer = 0;
+  while(gcodeBuffer[readPointer] && gcodeBuffer[readPointer] != ' ')
+	  readPointer++;
+
+  if(!gcodeBuffer[readPointer])
+  {
+     platform->Message(HOST_MESSAGE, "GCodes: String expected but not seen.\n");
+     return gcodeBuffer; // Good idea?
+  }
+
+  char* result = &gcodeBuffer[readPointer+1];
+  readPointer = -1;
+  return result;
 }
 
 
