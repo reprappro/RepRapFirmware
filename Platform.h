@@ -152,7 +152,7 @@ Licence: GPL
 
 #define IP0 192
 #define IP1 168
-#define IP2 1
+#define IP2 0
 #define IP3 14
 
 #define IP_BYTES 4

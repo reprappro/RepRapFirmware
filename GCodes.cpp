@@ -662,7 +662,7 @@ bool GCodeBuffer::Put(char c)
   if(c == ';')
     inComment = true;
     
-  if(c == '\n' || !c)
+  if(c == '\n' || c == '\r' || !c)
   {
     gcodeBuffer[gcodePointer] = 0;
     Init();

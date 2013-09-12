@@ -169,7 +169,7 @@ RepRap::RepRap()
 
 void RepRap::Init()
 {
-  dbg = false;
+  dbg = true;
   platform->Init();
   gCodes->Init();
   webserver->Init();
