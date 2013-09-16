@@ -37,7 +37,7 @@ Licence: GPL
 #define KO_START "rr_"
 #define KO_FIRST 3
 #define POST_LENGTH 200
-#define GCODE_LENGTH 100 // Maximum lenght of internally-generated G Code string
+#define GCODE_LENGTH 100 // Maximum length of internally-generated G Code string
 
 class Webserver
 {   

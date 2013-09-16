@@ -43,6 +43,8 @@ Licence: GPL
 // Platform-specific includes
 
 #include "Arduino.h"
+#include <Ethernet.h>
+#include <SPI.h>
 #include "Libraries/SamNonDuePin/SamNonDuePin.h"
 #include "Libraries/SD_HSMCI/SD_HSMCI.h"
 #include "Libraries/MCP4461/MCP4461.h"
@@ -51,7 +53,7 @@ Licence: GPL
 
 // Some numbers...
 
-#define STRING_LENGTH 1000
+#define STRING_LENGTH 2048 //1000
 #define TIME_TO_REPRAP 1.0e6 // Convert seconds to the units used by the machine (usually microseconds)
 #define TIME_FROM_REPRAP 1.0e-6 // Convert the units used by the machine (usually microseconds) to seconds
 
@@ -157,7 +159,7 @@ Licence: GPL
 
 #define IP0 192
 #define IP1 168
-#define IP2 1
+#define IP2 0
 #define IP3 14
 
 #define IP_BYTES 4
@@ -218,6 +220,20 @@ protected:
 };
 
 // This class handles the network - typically an ethernet.
+/*
+ * Connecting Arduino Ethernet shield to Duet:
+ *
+ * 	Duet pin		Shield pin		Wire	Symbol
+ * 	E-1				SPI2			1		5v
+ * 	E-3				3.3v			2
+ * 	E-2				SPI6			3		GND
+ * 	E-27-NPCS0		10				4		CS
+ * 	E-30-MISO		SPI1			5		MISO
+ * 	E-28-SPCK		SPI3			6		SCK
+ * 	E-29-MOSI		SPI4			7		MOSI
+ *
+ */
+
 
 class Network: public InputOutput
 {
@@ -237,8 +253,8 @@ protected:
 private:
 	byte mac[MAC_BYTES];
 	byte ipAddress[IP_BYTES];
-//	EthernetServer* server;
-//	EthernetClient client;
+	EthernetServer* server;
+	EthernetClient client;
 	int8_t clientStatus;
 };
 
@@ -588,26 +604,26 @@ inline void Network::Spin()
 {
   clientStatus = 0;
 
-//  if(!client)
-//  {
-//    client = server->available();
-//    if(!client)
-//      return;
-//    //else
-//      //Serial.println("new client");
-//  }
-//
-//  clientStatus |= clientLive;
-//
-//  if(!client.connected())
-//    return;
-//
-//  clientStatus |= clientConnected;
-//
-//  if (!client.available())
-//    return;
-//
-//  clientStatus |= byteAvailable;
+  if(!client)
+  {
+    client = server->available();
+    if(!client)
+      return;
+    //else
+      //Serial.println("new client");
+  }
+
+  clientStatus |= clientLive;
+
+  if(!client.connected())
+    return;
+
+  clientStatus |= clientConnected;
+
+  if (!client.available())
+    return;
+
+  clientStatus |= byteAvailable;
 }
 
 
@@ -809,66 +825,66 @@ inline void Platform::SetInterrupt(float s) // Seconds
 //***************************************************************************************
 
 // Network connection
+/*
+inline int Platform::ClientStatus()
+{
+  return clientStatus;
+}
 
-//inline int Platform::ClientStatus()
-//{
-//  return clientStatus;
-//}
-//
-//inline void Platform::SendToClient(char b)
-//{
-//  if(client)
-//  {
-//    client.write(b);
-//  } else
-//    Message(HOST_MESSAGE, "Attempt to send byte to disconnected client.");
-//}
-//
-//inline char Platform::ClientRead()
-//{
-//  if(client)
-//    return client.read();
-//
-//  Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
-//  return '\n'; // good idea??
-//}
-//
-//inline void Platform::ClientMonitor()
-//{
-//  clientStatus = 0;
-//
-//  if(!client)
-//  {
-//    client = server->available();
-//    if(!client)
-//      return;
-//    //else
-//      //Serial.println("new client");
-//  }
-//
-//  clientStatus |= CLIENT;
-//
-//  if(!client.connected())
-//    return;
-//
-//  clientStatus |= CONNECTED;
-//
-//  if (!client.available())
-//    return;
-//
-//  clientStatus |= AVAILABLE;
-//}
-//
-//inline void Platform::DisconnectClient()
-//{
-//  if (client)
-//  {
-//    client.stop();
-//    //Serial.println("client disconnected");
-//  } else
-//      Message(HOST_MESSAGE, "Attempt to disconnect non-existent client.");
-//}
+inline void Platform::SendToClient(char b)
+{
+  if(client)
+  {
+    client.write(b);
+  } else
+    Message(HOST_MESSAGE, "Attempt to send byte to disconnected client.");
+}
+
+inline char Platform::ClientRead()
+{
+  if(client)
+    return client.read();
+
+  Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
+  return '\n'; // good idea??
+}
+
+inline void Platform::ClientMonitor()
+{
+  clientStatus = 0;
+
+  if(!client)
+  {
+    client = server->available();
+    if(!client)
+      return;
+    //else
+      //Serial.println("new client");
+  }
+
+  clientStatus |= CLIENT;
+
+  if(!client.connected())
+    return;
+
+  clientStatus |= CONNECTED;
+
+  if (!client.available())
+    return;
+
+  clientStatus |= AVAILABLE;
+}
+
+inline void Platform::DisconnectClient()
+{
+  if (client)
+  {
+    client.stop();
+    //Serial.println("client disconnected");
+  } else
+      Message(HOST_MESSAGE, "Attempt to disconnect non-existent client.");
+}
 
 
-
+*/
 #endif

@@ -57,7 +57,17 @@ extern const PinDescription nonDuePinDescription[]=
   { PIOA, PIO_PA22A_MCDA1,  ID_PIOA, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN_HSMCI_MCDA1_GPIO
   { PIOA, PIO_PA23A_MCDA2,  ID_PIOA, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN_HSMCI_MCDA2_GPIO
   { PIOA, PIO_PA24A_MCDA3,  ID_PIOA, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN_HSMCI_MCDA3_GPIO
-  { NULL, 0, 0, PIO_NOT_A_PIN, PIO_DEFAULT, 0, NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }
+  { NULL, 0, 0, PIO_NOT_A_PIN, PIO_DEFAULT, 0, NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB0_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB1_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB2_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB3_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB4_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB5_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB6_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB7_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB8_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER },
+  { PIOB, PIO_PB9_IDX,		ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }
 } ;
 
 
@@ -228,4 +238,64 @@ void hsmciPinsinit()
   digitalWriteNonDue(PIN_HSMCI_MCDA1_GPIO, HIGH);
   digitalWriteNonDue(PIN_HSMCI_MCDA2_GPIO, HIGH);
   digitalWriteNonDue(PIN_HSMCI_MCDA3_GPIO, HIGH);
+}
+
+//initialise HSMCI pins
+void ethPinsinit()
+{
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_EREFCK_GPIO].pPort,
+			  nonDuePinDescription[PIN_EMAC_EREFCK_GPIO].ulPinType,
+			  nonDuePinDescription[PIN_EMAC_EREFCK_GPIO].ulPin,
+			  nonDuePinDescription[PIN_EMAC_EREFCK_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ETXEN_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ETXEN_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ETXEN_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ETXEN_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ETX0_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ETX0_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ETX0_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ETX0_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ETX1_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ETX1_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ETX1_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ETX1_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ECRSDV_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ECRSDV_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ECRSDV_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ECRSDV_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ERX0_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ERX0_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ERX0_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ERX0_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ERX1_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ERX1_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ERX1_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ERX1_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_ERXER_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_ERXER_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_ERXER_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_ERXER_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_EMDC_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_EMDC_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_EMDC_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_EMDC_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_EMAC_EMDIO_GPIO].pPort,
+		  nonDuePinDescription[PIN_EMAC_EMDIO_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_EMAC_EMDIO_GPIO].ulPin,
+		  nonDuePinDescription[PIN_EMAC_EMDIO_GPIO].ulPinConfiguration);
+  PIO_Configure(nonDuePinDescription[PIN_TC0_TIOA2_GPIO].pPort,
+		  nonDuePinDescription[PIN_TC0_TIOA2_GPIO].ulPinType,
+		  nonDuePinDescription[PIN_TC0_TIOA2_GPIO].ulPin,
+		  nonDuePinDescription[PIN_TC0_TIOA2_GPIO].ulPinConfiguration);
+  //set pullups (not on clock!)
+/*  digitalWriteNonDue(PIN_EMAC_ETXEN_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_ETX0_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_ETX1_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_ECRSDV_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_ERX0_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_ERX1_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_ERXER_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_EMDC_GPIO, HIGH);
+  digitalWriteNonDue(PIN_EMAC_EMDIO_GPIO, HIGH);
+  digitalWriteNonDue(PIN_TC0_TIOA2_GPIO, HIGH);*/
 }

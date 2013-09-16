@@ -1,7 +1,9 @@
 <!DOCTYPE HTML>
 <head>
 
-<link rel="shortcut icon" href="https://github.com/reprappro/RepRapFirmware/raw/due/SD-image/www/favicon.ico" />
+<!--<link rel="shortcut icon" href="https://github.com/reprappro/RepRapFirmware/raw/due/SD-image/www/favicon.ico" />-->
+<!--<link rel="shortcut icon" href="http://localhost/reprap/favicon.ico" />-->
+<link rel="shortcut icon" href="favicon.ico" />
 
 <style type="text/css">
 .pages 
@@ -70,8 +72,15 @@ td { text-align: center; }
 
 <html>
 
-<script src="http://reprappro.com/scripts/jquery.js" type="application/javascript"></script>
-<script src="http://reprappro.com/scripts/knockout.js" type="application/javascript"></script>
+<!--<script src="http://reprappro.com/scripts/jquery.js" type="application/javascript"></script>
+<script src="http://reprappro.com/scripts/knockout.js" type="application/javascript"></script>-->
+
+<!<script src="http://localhost/reprap/jquery-min.js" type="application/javascript"></script>
+<script src="http://localhost/reprap/knockout-min.js" type="application/javascript"></script>-->
+
+<script src="jquery-min.js" type="application/javascript"></script>
+<script src="knockout-min.js" type="application/javascript"></script>
+
 
 <script>
 function jogRowHTML(axis)
@@ -132,6 +141,7 @@ function heatRowHTML(heater, hNumber)
 </script>
 
 <!-- HEADER -->
+<!--<a href="http://reprappro.com" target="_blank"><img src="http://localhost/reprap/logo.png" alt="RepRapPro logo" align="right"></a>-->
 <a href="http://reprappro.com" target="_blank"><img src="logo.png" alt="RepRapPro logo" align="right"></a>
 
 <div style="font-size:20px" data-bind="with: machineName">RepRap: <strong data-bind="text: myName"></strong></div>

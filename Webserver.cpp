@@ -564,14 +564,15 @@ void Webserver::CharFromClient(char c)
     return;
   }
   
-  if(c == '\n') 
+  if(c == '\n')
   {
     clientLine[clientLinePointer] = 0;
+    //platform->Message(HOST_MESSAGE,clientLine);
     ParseClientLine();
     // you're starting a new line
     clientLineIsBlank = true;
     clientLinePointer = 0;
-  } else if(c != '\r') 
+  } else if(c != '\r')
   {
     // you've gotten a character on the current line
     clientLineIsBlank = false;
@@ -579,7 +580,8 @@ void Webserver::CharFromClient(char c)
     clientLinePointer++;
     if(clientLinePointer >= STRING_LENGTH)
     {
-      platform->Message(HOST_MESSAGE,"Client read buffer overflow.\n");
+      platform->Message(HOST_MESSAGE,"Client read buffer overflow\n");
+      SerialUSB.println(clientLinePointer);
       clientLinePointer = 0;
       clientLine[clientLinePointer] = 0; 
     }
@@ -610,7 +612,7 @@ void Webserver::Spin()
     if(platform->GetNetwork()->Status() & byteAvailable)
     {
     	platform->GetNetwork()->Read(c);
-//        Serial.print(c);
+        SerialUSB.print(c);
 
       if(receivingPost && postFile != NULL)
       {

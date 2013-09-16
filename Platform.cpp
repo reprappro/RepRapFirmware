@@ -346,39 +346,64 @@ char* MassStorage::CombineName(char* directory, char* fileName)
 char* MassStorage::FileList(char* directory)
 {
 //  File dir, entry;
-//  dir = SD.open(directory);
-//  int p = 0;
-//  int q;
-//  int count = 0;
-//  while(entry = dir.openNextFile())
-//  {
-//    q = 0;
-//    count++;
-//    fileList[p++] = FILE_LIST_BRACKET;
-//    while(entry.name()[q])
-//    {
-//      fileList[p++] = entry.name()[q];
-//      q++;
-//      if(p >= FILE_LIST_LENGTH - 10) // Caution...
-//      {
-//        platform->Message(HOST_MESSAGE, "FileList - directory: ");
-//        platform->Message(HOST_MESSAGE, directory);
-//        platform->Message(HOST_MESSAGE, " has too many files!\n");
-//        return "";
-//      }
-//    }
-//    fileList[p++] = FILE_LIST_BRACKET;
-//    fileList[p++] = FILE_LIST_SEPARATOR;
-//    entry.close();
-//  }
-//  dir.close();
-//
-//  if(count <= 0)
-//    return "";
-//
-//  fileList[--p] = 0; // Get rid of the last separator
-//  return fileList;
-	return "";
+  DIR dir;
+  FILINFO entry;
+  FRESULT res;
+  char loc[64];
+  int len = 0;
+
+  len = strlen(directory);
+  strncpy(loc,directory,len-1);
+  loc[len - 1 ] = '\0';
+
+  if(reprap.debug()) {
+	  SerialUSB.print("Opening: ");
+	  SerialUSB.println(loc);
+  }
+
+  res = f_opendir(&dir,loc);
+  if(FR_OK == res) {
+
+	  if(reprap.debug()) {
+		  SerialUSB.println("Directory open");
+	  }
+
+	  int p = 0;
+	  //int q;
+	  int foundFiles = 0;
+
+	  f_readdir(&dir,0);
+	  while(FR_OK == f_readdir(&dir,&entry) && foundFiles < 24)
+	  {
+		  foundFiles++;
+		  if(strlen(entry.fname) > 0) {
+			int q = 0;
+			fileList[p++] = FILE_LIST_BRACKET;
+			while(entry.fname[q])
+			{
+			  fileList[p++] = entry.fname[q];
+			  q++;
+			  if(p >= FILE_LIST_LENGTH - 10) // Caution...
+			  {
+				platform->Message(HOST_MESSAGE, "FileList - directory: ");
+				platform->Message(HOST_MESSAGE, directory);
+				platform->Message(HOST_MESSAGE, " has too many files!\n");
+				return "";
+			  }
+			}
+			fileList[p++] = FILE_LIST_BRACKET;
+			fileList[p++] = FILE_LIST_SEPARATOR;
+		  }
+	  }
+
+	  if(foundFiles <= 0)
+		return "";
+
+	  fileList[--p] = 0; // Get rid of the last separator
+	  return fileList;
+  }
+  SerialUSB.println(res);
+  return "";
 }
 
 // Delete a file
@@ -680,7 +705,7 @@ void Line::Init()
 
 Network::Network()
 {
-//	server = new EthernetServer(HTTP_PORT);
+	server = new EthernetServer(HTTP_PORT);
 }
 
 void Network::Init()
@@ -692,64 +717,64 @@ void Network::Init()
 
 //	// disable SD SPI while starting w5100
 //	// or you will have trouble
-//	pinMode(SD_SPI, OUTPUT);
-//	digitalWrite(SD_SPI,HIGH);
+	pinMode(SD_SPI, OUTPUT);
+	digitalWrite(SD_SPI,HIGH);
 
 	ipAddress = { IP0, IP1, IP2, IP3 };
 	//Ethernet.begin(mac, *(new IPAddress(IP0, IP1, IP2, IP3)));
-//	Ethernet.begin(mac, ipAddress);
-//	server->begin();
+	Ethernet.begin(mac, ipAddress);
+	server->begin();
 //
-//	//Serial.print("server is at ");
-//	//Serial.println(Ethernet.localIP());
+//	//SerialUSB.print("server is at ");
+//	//SerialUSB.println(Ethernet.localIP());
 //
 //	// this corrects a bug in the Ethernet.begin() function
 //	// even tho the call to Ethernet.localIP() does the same thing
-//	digitalWrite(ETH_B_PIN, HIGH);
+	digitalWrite(ETH_B_PIN, HIGH);
 
 	clientStatus = 0;
-//	client = 0;
+	client = 0;
 }
 
 void Network::Write(char b)
 {
-//  if(client)
-//  {
-//    client.write(b);
-//  } else
+  if(client)
+  {
+    client.write(b);
+  } else
     reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to send byte to disconnected client.");
 }
 
 void Network::Write(char* s)
 {
-//  if(client)
-//  {
-//    client.print(s);
-//  } else
+  if(client)
+  {
+    client.print(s);
+  } else
 	  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to send string to disconnected client.\n");
 }
 
 int Network::Read(char& b)
 {
-//  if(client)
-//  {
-//    b = client.read();
-//    return true;
-//  }
-//
-//  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
-//  b = '\n'; // good idea??
+  if(client)
+  {
+    b = client.read();
+    return true;
+  }
+
+  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to read from disconnected client.");
+  b = '\n'; // good idea??
   return 0;
 }
 
 
 void Network::Close()
 {
-//  if (client)
-//  {
-//    client.stop();
-//    //Serial.println("client disconnected");
-//  } else
+  if (client)
+  {
+    client.stop();
+    //Serial.println("client disconnected");
+  } else
 	  reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to disconnect non-existent client.");
 }
 
