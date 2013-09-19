@@ -48,14 +48,16 @@ static const uint8_t X4  = 4;
 static const uint8_t X5  = 5;
 static const uint8_t X6  = 6;
 static const uint8_t X7  = 7; //not used
+//HSMCI
 static const uint8_t PIN_HSMCI_MCCDA_GPIO  = 8;
 static const uint8_t PIN_HSMCI_MCCK_GPIO  = 9;
 static const uint8_t PIN_HSMCI_MCDA0_GPIO  = 10;
 static const uint8_t PIN_HSMCI_MCDA1_GPIO  = 11;
 static const uint8_t PIN_HSMCI_MCDA2_GPIO  = 12;
 static const uint8_t PIN_HSMCI_MCDA3_GPIO  = 13;
-/*static const uint8_t PIN_EMAC_EREFCK_GPIO  = 14;
-static const uint8_t PIN_EMAC_ETXEN_GPIO  = 15;
+static const uint8_t PIN_EMAC_EREFCK_GPIO  = 14;
+//EMAC
+/*static const uint8_t PIN_EMAC_ETXEN_GPIO  = 15;
 static const uint8_t PIN_EMAC_ETX0_GPIO  = 16;
 static const uint8_t PIN_EMAC_ETX1_GPIO  = 17;
 static const uint8_t PIN_EMAC_ECRSDV_GPIO  = 18;
@@ -63,8 +65,8 @@ static const uint8_t PIN_EMAC_ERX0_GPIO  = 19;
 static const uint8_t PIN_EMAC_ERX1_GPIO  = 20;
 static const uint8_t PIN_EMAC_ERXER_GPIO  = 21;
 static const uint8_t PIN_EMAC_EMDC_GPIO  = 22;
-static const uint8_t PIN_EMAC_EMDIO_GPIO  = 23;
-static const uint8_t PIN_TC0_TIOA2_GPIO  = 24;*/
+static const uint8_t PIN_EMAC_EMDIO_GPIO  = 23;*/
+//static const uint8_t PIN_TC0_TIOA2_GPIO  = 24;
 
 
 // struct used to hold the descriptions for the "non arduino" pins.
@@ -76,6 +78,7 @@ extern int digitalReadNonDue( uint32_t ulPin);
 extern void analogWriteNonDue(uint32_t ulPin, uint32_t ulValue);
 extern void analogOutputNonDue();
 extern void hsmciPinsinit();
+//extern void ethPinsInit();
 //extern void ethPinsinit();
 #endif /* SAM_NON_DUE_PIN_H */
 
