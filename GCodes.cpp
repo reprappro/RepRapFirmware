@@ -544,6 +544,7 @@ void GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb)
 
 	for(uint8_t i = 0; i < DRIVES; i++)
 	{
+		//X,Y or Z
 	    if(i < AXES)
 	    {
 	      if(gb->Seen(gCodeLetters[i]))
@@ -553,7 +554,7 @@ void GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb)
 	        else
 	          moveBuffer[i] = gb->GetFValue()*distanceScale;
 	      }
-	    } else
+	    } else //extruder 0,1,2 etc
 	    {
 	      if(gb->Seen(gCodeLetters[i]))
 	      {
@@ -790,6 +791,27 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 			platform->GetLine()->Write("\n");
         break;
 
+    case 104: // Deprecated, optional P to set extruder other wise uses selected head
+    	if(gb->Seen('P'))
+			{
+				value = gb->GetIValue()+1;// 0 = bed
+				if(value >= HEATERS) //not a valid heater
+				{
+					platform->Message(HOST_MESSAGE, "Invalid P number: ");
+					platform->Message(HOST_MESSAGE, gb->Buffer());
+					platform->Message(HOST_MESSAGE, "\n");
+					break;
+				}
+			}
+    	else
+    		value = selectedHead >=0 ? selectedHead + 1 : 1 ;
+    	if(gb->Seen('S'))
+    	{
+    	      reprap.GetHeat()->SetActiveTemperature(value, gb->GetFValue());
+    		  reprap.GetHeat()->Activate(value);
+    	}
+    	break;
+
     case 105: // Deprecated...
     	platform->GetLine()->Write("ok T:");
     	for(int8_t i = HEATERS - 1; i > 0; i--)
@@ -809,6 +831,28 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 107: // Fan off
       platform->Message(HOST_MESSAGE, "Fan off received\n");
       break;
+
+    case 109: //depreciated but useful if you don't want to use M116
+    	if(gb->Seen('P'))
+    	{
+    		value = gb->GetIValue()+1;// 0 = bed
+			if(value >= HEATERS) //not a valid heater
+			{
+			    platform->Message(HOST_MESSAGE, "Invalid P number: ");
+			    platform->Message(HOST_MESSAGE, gb->Buffer());
+			    platform->Message(HOST_MESSAGE, "\n");
+				break;
+			}
+    	}
+    	else
+    		value = selectedHead >=0 ? selectedHead + 1 : 1 ;
+    	if(gb->Seen('S'))
+    	{
+    		reprap.GetHeat()->SetActiveTemperature(value, gb->GetFValue());
+    		reprap.GetHeat()->Activate(value);
+    	}
+    	result = reprap.GetHeat()->HeaterAtSetTemperature(value);
+    	break;
     
     case 116: // Wait for everything
       if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
@@ -863,6 +907,15 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       platform->Message(HOST_MESSAGE, "M141 - heated chamber not yet implemented\n");
       break;
 
+    case 190: //depreciated but useful if you dont want to use M116
+    	if(gb->Seen('S'))
+    	{
+    		reprap.GetHeat()->SetActiveTemperature(0, gb->GetFValue());
+    		reprap.GetHeat()->Activate(0);
+    	}
+    	result = reprap.GetHeat()->HeaterAtSetTemperature(0);
+    	break;
+
     case 201: // Set axis accelerations
 		if(reprap.debug())
 			platform->GetLine()->Write("Accelerations: ");
@@ -908,15 +961,18 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
   if(gb->Seen('T'))
   {
     code = gb->GetIValue();
+    //check to see if the tool is being changed
     if(code == selectedHead)
       return result;
       
     bool ok = false;
+    //set the old tool temperature to standby
     for(int8_t i = AXES; i < DRIVES; i++)
     {
       if(selectedHead == i - AXES)
         reprap.GetHeat()->Standby(selectedHead + 1); // 0 is the Bed
     }
+    //set the new tool temperature to active
     for(int8_t i = AXES; i < DRIVES; i++)
     {    
       if(code == i - AXES)
