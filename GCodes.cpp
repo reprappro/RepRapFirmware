@@ -292,7 +292,7 @@ bool GCodes::DoHome()
 	if(homeX)
 	{
 		action[X_AXIS] = true;
-		moveToDo[X_AXIS] = -2.0*platform->AxisLength(X_AXIS);
+		moveToDo[X_AXIS] = platform->HomeDirection(X_AXIS)*2.0*platform->AxisLength(X_AXIS);
 		moveToDo[DRIVES] = platform->HomeFeedRate(X_AXIS);
 		if(DoCannedCycleMove(moveToDo, action, true))
 		{
@@ -305,7 +305,7 @@ bool GCodes::DoHome()
 	if(homeY)
 	{
 		action[Y_AXIS] = true;
-		moveToDo[Y_AXIS] = -2.0*platform->AxisLength(Y_AXIS);
+		moveToDo[Y_AXIS] = platform->HomeDirection(Y_AXIS)*2.0*platform->AxisLength(Y_AXIS);
 		moveToDo[DRIVES] = platform->HomeFeedRate(Y_AXIS);
 		if(DoCannedCycleMove(moveToDo, action, true))
 		{
@@ -319,7 +319,7 @@ bool GCodes::DoHome()
 	{
 		action[Z_AXIS] = true;
 		moveToDo[DRIVES] = platform->HomeFeedRate(Z_AXIS);
-		if(homeZFinalMove)
+		if(platform->IsZProbeEnabled() && homeZFinalMove)
 		{
 			moveToDo[Z_AXIS] = 0.0;
 			if(DoCannedCycleMove(moveToDo, action, false))
@@ -331,9 +331,14 @@ bool GCodes::DoHome()
 			return false;
 		}else
 		{
-			moveToDo[Z_AXIS] = -2.0*platform->AxisLength(Z_AXIS);
+			moveToDo[Z_AXIS] = platform->HomeDirection(Z_AXIS)*2.0*platform->AxisLength(Z_AXIS);
 			if(DoCannedCycleMove(moveToDo, action, true))
 				homeZFinalMove = true;
+			if(!platform->IsZProbeEnabled())
+			{
+				homeZ = false;
+				return NoHome();
+			}
 			return false;
 		}
 	}
@@ -539,6 +544,7 @@ void GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb)
 
 	for(uint8_t i = 0; i < DRIVES; i++)
 	{
+		//X,Y or Z
 	    if(i < AXES)
 	    {
 	      if(gb->Seen(gCodeLetters[i]))
@@ -548,7 +554,7 @@ void GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb)
 	        else
 	          moveBuffer[i] = gb->GetFValue()*distanceScale;
 	      }
-	    } else
+	    } else //extruder 0,1,2 etc
 	    {
 	      if(gb->Seen(gCodeLetters[i]))
 	      {
@@ -650,6 +656,11 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       break;
 
     case 31:
+      if(!platform->IsZProbeEnabled())
+      {
+        platform->Message(HOST_MESSAGE, "Z Probe not supported\n");
+        break;
+      }
     	if(gb->Seen(gCodeLetters[Z_AXIS]))
     	{
     		platform->SetZProbeStopHeight(gb->GetFValue());
@@ -665,6 +676,11 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	break;
 
     case 32: // Probe Z at multiple positions and generate the bed transform
+      if(!platform->IsZProbeEnabled())
+      {
+        platform->Message(HOST_MESSAGE, "Z Probe not supported\n");
+        break;
+      }
     	result = DoMultipleZProbe();
     	break;
 
@@ -729,6 +745,14 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	fileBeingPrinted = NULL;
     	break;
 
+    case 31: //toggle the Z probe enable, M31 with nothing reports the status, M31 S0 = disable, M31 S1 = enable
+    	if(gb->Seen('S'))
+    		platform->EnableZProbe((bool)gb->GetIValue());
+    	if(platform->IsZProbeEnabled())
+    		platform->Message(HOST_MESSAGE, "Z Probe enabled \n");
+    	else
+    		platform->Message(HOST_MESSAGE, "Z Probe disabled \n");
+    	break;
     case 82:
     	if(drivesRelative)
     		for(uint8_t i = AXES; i < DRIVES; i++)
@@ -767,6 +791,27 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 			platform->GetLine()->Write("\n");
         break;
 
+    case 104: // Deprecated, optional P to set extruder other wise uses selected head
+    	if(gb->Seen('P'))
+			{
+				value = gb->GetIValue()+1;// 0 = bed
+				if(value >= HEATERS) //not a valid heater
+				{
+					platform->Message(HOST_MESSAGE, "Invalid P number: ");
+					platform->Message(HOST_MESSAGE, gb->Buffer());
+					platform->Message(HOST_MESSAGE, "\n");
+					break;
+				}
+			}
+    	else
+    		value = selectedHead >=0 ? selectedHead + 1 : 1 ;
+    	if(gb->Seen('S'))
+    	{
+    	      reprap.GetHeat()->SetActiveTemperature(value, gb->GetFValue());
+    		  reprap.GetHeat()->Activate(value);
+    	}
+    	break;
+
     case 105: // Deprecated...
     	platform->GetLine()->Write("ok T:");
     	for(int8_t i = HEATERS - 1; i > 0; i--)
@@ -786,6 +831,28 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 107: // Fan off
       platform->Message(HOST_MESSAGE, "Fan off received\n");
       break;
+
+    case 109: //depreciated but useful if you don't want to use M116
+    	if(gb->Seen('P'))
+    	{
+    		value = gb->GetIValue()+1;// 0 = bed
+			if(value >= HEATERS) //not a valid heater
+			{
+			    platform->Message(HOST_MESSAGE, "Invalid P number: ");
+			    platform->Message(HOST_MESSAGE, gb->Buffer());
+			    platform->Message(HOST_MESSAGE, "\n");
+				break;
+			}
+    	}
+    	else
+    		value = selectedHead >=0 ? selectedHead + 1 : 1 ;
+    	if(gb->Seen('S'))
+    	{
+    		reprap.GetHeat()->SetActiveTemperature(value, gb->GetFValue());
+    		reprap.GetHeat()->Activate(value);
+    	}
+    	result = reprap.GetHeat()->HeaterAtSetTemperature(value);
+    	break;
     
     case 116: // Wait for everything
       if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
@@ -840,6 +907,15 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       platform->Message(HOST_MESSAGE, "M141 - heated chamber not yet implemented\n");
       break;
 
+    case 190: //depreciated but useful if you dont want to use M116
+    	if(gb->Seen('S'))
+    	{
+    		reprap.GetHeat()->SetActiveTemperature(0, gb->GetFValue());
+    		reprap.GetHeat()->Activate(0);
+    	}
+    	result = reprap.GetHeat()->HeaterAtSetTemperature(0);
+    	break;
+
     case 201: // Set axis accelerations
 		if(reprap.debug())
 			platform->GetLine()->Write("Accelerations: ");
@@ -885,15 +961,18 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
   if(gb->Seen('T'))
   {
     code = gb->GetIValue();
+    //check to see if the tool is being changed
     if(code == selectedHead)
       return result;
       
     bool ok = false;
+    //set the old tool temperature to standby
     for(int8_t i = AXES; i < DRIVES; i++)
     {
       if(selectedHead == i - AXES)
         reprap.GetHeat()->Standby(selectedHead + 1); // 0 is the Bed
     }
+    //set the new tool temperature to active
     for(int8_t i = AXES; i < DRIVES; i++)
     {    
       if(code == i - AXES)

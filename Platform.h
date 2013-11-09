@@ -79,10 +79,12 @@ Licence: GPL
 #define DISABLE_DRIVES {false, false, true, false} // Set true to disable a drive when it becomes idle
 #define LOW_STOP_PINS {11, 28, 60, 31}
 #define HIGH_STOP_PINS {-1, -1, -1, -1}
+#define HOME_DIRECTION {1,1,1,1} // 1 for Max/High, -1 for Min/ Low TODO replace with logic based on low/high pin allocations
 #define ENDSTOP_HIT 1 // when a stop == this it is hit
 #define POT_WIPES {0, 1, 2, 3} // Indices for motor current digipots (if any)
 #define SENSE_RESISTOR 0.1   // Stepper motor current sense resistor
 #define MAX_STEPPER_DIGIPOT_VOLTAGE ( 3.3*2.5/(2.7+2.5) ) // Stepper motor current reference voltage
+#define Z_PROBE_ENABLE false
 #define Z_PROBE_AD_VALUE 400
 #define Z_PROBE_STOP_HEIGHT 0.7 // mm
 #define Z_PROBE_PIN 0 // Analogue pin number
@@ -150,7 +152,7 @@ Licence: GPL
 /****************************************************************************************************/
 
 // Networking
-
+//FIXME does not currently override the default in \libraries\EMAC\conf_eth.h
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
 //#define MAC { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
@@ -448,12 +450,13 @@ class Platform
   float HomeFeedRate(int8_t drive);
   EndStopHit Stopped(int8_t drive);
   float AxisLength(int8_t drive);
-  
+  int8_t HomeDirection(int8_t drive);
   float ZProbeStopHeight();
   void SetZProbeStopHeight(float z);
   long ZProbe();
   void SetZProbe(int iZ);
-  
+  void EnableZProbe(bool enableZ);
+  bool IsZProbeEnabled();
   // Heat and temperature
   
   float GetTemperature(int8_t heater); // Result is in degrees celsius
@@ -497,6 +500,7 @@ class Platform
   bool driveEnabled[DRIVES];
   int8_t lowStopPins[DRIVES];
   int8_t highStopPins[DRIVES];
+  int8_t homeDirection[DRIVES];
   float maxFeedrates[DRIVES];  
   float accelerations[DRIVES];
   float driveStepsPerUnit[DRIVES];
@@ -513,7 +517,7 @@ class Platform
   long zProbeSum;
   int zProbeADValue;
   float zProbeStopHeight;
-
+  bool zProbeEnable;
 // AXES
 
   void PollZHeight();
@@ -715,6 +719,11 @@ inline float Platform::AxisLength(int8_t drive)
   return axisLengths[drive];
 }
 
+inline int8_t Platform::HomeDirection(int8_t drive)
+{
+  return homeDirection[drive];
+}
+
 inline float Platform::MaxFeedrate(int8_t drive)
 {
   return maxFeedrates[drive];
@@ -744,7 +753,19 @@ inline void Platform::SetZProbeStopHeight(float z)
 
 inline void Platform::SetZProbe(int iZ)
 {
+	if(!zProbeEnable)
+		zProbeEnable=true;
 	zProbeADValue = iZ;
+}
+
+inline void Platform::EnableZProbe(bool enableZ)
+{
+	zProbeEnable=enableZ;
+}
+
+inline bool Platform::IsZProbeEnabled()
+{
+	return zProbeEnable;
 }
 
 

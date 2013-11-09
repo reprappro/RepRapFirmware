@@ -67,6 +67,7 @@ class Heat
     void Standby(int8_t heater);
     float GetTemperature(int8_t heater);
     bool AllHeatersAtSetTemperatures();
+    bool HeaterAtSetTemperature(int8_t heater);
     void Diagnostics();
     
   private:
