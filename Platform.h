@@ -525,7 +525,7 @@ class Platform
   long zProbeSum;
   int zProbeADValue;
   float zProbeStopHeight;
-
+  bool zProbeEnable;
 // AXES
 
   void PollZHeight();
