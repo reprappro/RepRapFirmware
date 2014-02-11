@@ -66,8 +66,6 @@ void Platform::Init()
   line->Init();
   messageIndent = 0;
 
-  //network->Init();
-
   massStorage->Init();
 
   for(i=0; i < MAX_FILES; i++)
@@ -99,12 +97,15 @@ void Platform::Init()
   potWipes = POT_WIPES;
   senseResistor = SENSE_RESISTOR;
   maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
-  zProbePin = -1; // Default is to use the switch
-  zProbeCount = 0;
-  zProbeSum = 0;
-  zProbeValue = 0;
+
+  // Z PROBE
+
+  zProbePin = Z_PROBE_PIN;
+  zProbeModulationPin = Z_PROBE_MOD_PIN;
+  zProbeType = 0;	// Default is to use the switch
   zProbeADValue = Z_PROBE_AD_VALUE;
   zProbeStopHeight = Z_PROBE_STOP_HEIGHT;
+  InitZProbe();
 
   // AXES
 
@@ -131,7 +132,7 @@ void Platform::Init()
   standbyTemperatures = STANDBY_TEMPERATURES;
   activeTemperatures = ACTIVE_TEMPERATURES;
   coolingFanPin = COOLING_FAN_PIN;
-  turnHeatOn = HEAT_ON;
+  //turnHeatOn = HEAT_ON;
 
   webDir = WEB_DIR;
   gcodeDir = GCODE_DIR;
@@ -190,9 +191,6 @@ void Platform::Init()
     thermistorInfRs[i] = ( thermistorInfRs[i]*exp(-thermistorBetas[i]/(25.0 - ABS_ZERO)) );
   }
 
-  if(zProbePin >= 0)
-	  pinMode(zProbePin, INPUT);
-  
   if(coolingFanPin >= 0)
   {
 	  pinMode(coolingFanPin, OUTPUT);
@@ -209,12 +207,27 @@ void Platform::Init()
   active = true;
 }
 
+void Platform::InitZProbe()
+{
+  zProbeCount = 0;
+  zProbeOnSum = 0;
+  zProbeOffSum = 0;
+  for (uint8_t i = 0; i < NumZProbeReadingsAveraged; ++i)
+  {
+	  zProbeReadings[i] = 0;
+  }
+
+  if (zProbeType != 0)
+  {
+	pinMode(zProbeModulationPin, OUTPUT);
+	digitalWrite(zProbeModulationPin, HIGH);	// enable the IR LED
+  }
+}
+
 void Platform::StartNetwork()
 {
 	network->Init();
 }
-
-
 
 void Platform::Spin()
 {
@@ -312,7 +325,7 @@ void Platform::ClassReport(char* className, float &lastTime)
 // should compute it for you (i.e. it won't need to be calculated at run time).
 
 // If the A->D converter has a range of 0..1023 and the measured voltage is V (between 0 and 1023)
-// then the thermistor resistance, R = V.RS/(1023 - V)
+// then the thermistor resistance, R = V.RS/(1024 - V)
 // and the temperature, T = BETA/ln(R/R_INF)
 // To get degrees celsius (instead of kelvin) add -273.15 to T
 //#define THERMISTOR_R_INFS ( THERMISTOR_25_RS*exp(-THERMISTOR_BETAS/298.15) ) // Compute in Platform constructor
@@ -321,8 +334,16 @@ void Platform::ClassReport(char* className, float &lastTime)
 
 float Platform::GetTemperature(int8_t heater)
 {
-  float r = (float)GetRawTemperature(heater);
-  return ABS_ZERO + thermistorBetas[heater]/log( (r*thermistorSeriesRs[heater]/(AD_RANGE - r))/thermistorInfRs[heater] );
+  // If the ADC reading is N then for an ideal ADC, the input voltage is at least N/(AD_RANGE + 1) and less than (N + 1)/(AD_RANGE + 1), times the analog reference.
+  // So we add 0.5 to to the reading to get a better estimate of the input. But first, recognise the special case of thermistor disconnected.
+  int rawTemp = GetRawTemperature(heater);
+  if (rawTemp == AD_RANGE)
+  {
+	  // Thermistor is disconnected
+	  return ABS_ZERO;
+  }
+  float r = (float)rawTemp + 0.5;
+  return ABS_ZERO + thermistorBetas[heater]/log( (r*thermistorSeriesRs[heater]/((AD_RANGE + 1) - r))/thermistorInfRs[heater] );
 }
 
 
@@ -334,7 +355,7 @@ void Platform::SetHeater(int8_t heater, const float& power)
     return;
   
   byte p = (byte)(255.0*fmin(1.0, fmax(0.0, power)));
-  if(turnHeatOn == 0)
+  if(HEAT_ON == 0)
 	  p = 255 - p;
   if(heater == 0)
 	  analogWrite(heatOnPins[heater], p);
@@ -342,22 +363,10 @@ void Platform::SetHeater(int8_t heater, const float& power)
 	  analogWriteNonDue(heatOnPins[heater], p);
 }
 
-inline void Platform::PollZHeight()
-{
-	if(zProbeCount >= 5)
-	{
-		zProbeValue = zProbeSum/5;
-		zProbeSum = 0;
-		zProbeCount = 0;
-	}
-	zProbeSum += GetRawZHeight();
-	zProbeCount++;
-}
-
 
 EndStopHit Platform::Stopped(int8_t drive)
 {
-	if(zProbePin >= 0)
+	if(zProbeType > 0)
 	{  // Z probe is used for both X and Z.
 		if(drive != Y_AXIS)
 		{
@@ -398,7 +407,7 @@ void MassStorage::Init()
 	hsmciPinsinit();
 	// Initialize SD MMC stack
 	sd_mmc_init();
-
+	delay(5);
 	int sdPresentCount = 0;
 	while ((CTRL_NO_PRESENT == sd_mmc_check(0)) && (sdPresentCount < 5))
 	{
@@ -845,10 +854,32 @@ Line::Line()
 
 void Line::Init()
 {
+	getIndex = 0;
+	numChars = 0;
 //	alternateInput = NULL;
 //	alternateOutput = NULL;
 	SerialUSB.begin(BAUD_RATE);
 	//while (!SerialUSB.available());
+}
+
+void Line::Spin()
+{
+	// Read the serial data in blocks to avoid excessive flow control
+	if (numChars <= lineBufsize/2)
+	{
+		int16_t target = SerialUSB.available() + (int16_t)numChars;
+		if (target > lineBufsize)
+		{
+			target = lineBufsize;
+		}
+		while ((int16_t)numChars < target)
+		{
+			int incomingByte = SerialUSB.read();
+			if (incomingByte < 0) break;
+			buffer[(getIndex + numChars) % lineBufsize] = (char)incomingByte;
+			++numChars;
+		}
+	}
 }
 
 //***************************************************************************************************
@@ -876,9 +907,10 @@ void RepRapNetworkInputBufferReleased(void* pb)
 	reprap.GetPlatform()->GetNetwork()->InputBufferReleased(pb);
 }
 
-void RepRapNetworkHttpStateReleased(void* h)
+void RepRapNetworkConnectionError(void* h)
 {
-	reprap.GetPlatform()->GetNetwork()->HttpStateReleased(h);
+	reprap.GetPlatform()->GetNetwork()->ConnectionError(h);
+	reprap.GetWebserver()->ConnectionError();
 }
 
 // Called to put out a message via the RepRap firmware.
@@ -955,12 +987,7 @@ void Network::Init()
 {
 	CleanRing();
 	Reset();
-//	if(LinkIsUp())
-//		reprap.GetPlatform()->SetHeater(0,1.0);
-//	else
-//		reprap.GetPlatform()->SetHeater(0,0.0);
-	if(!NETWORK) // NETWORK needs to be true to turn on the ethernet.  It is defined in Configuration.h
-		return;
+
 	init_ethernet(reprap.GetPlatform()->IPAddress(), reprap.GetPlatform()->NetMask(), reprap.GetPlatform()->GateWay());
 	active = true;
 }
@@ -1065,14 +1092,19 @@ void Network::InputBufferReleased(void* pb)
 	netRingGetPointer->ReleasePbuf();
 }
 
-void Network::HttpStateReleased(void* h)
+void Network::ConnectionError(void* h)
 {
-	if(netRingGetPointer->Hs() != h)
+	// h points to an http state block that the caller is about to release, so we need to stop referring to it.
+	// The state block is usually but not always in use by the current http request being processed, in which case we abandon the current request.
+	if (netRingGetPointer != netRingAddPointer && netRingGetPointer->Hs() == h)
 	{
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::HttpStateReleased() - Pointers don't match!\n");
-		return;
+		netRingGetPointer->Free();
+		netRingGetPointer = netRingGetPointer->Next();
 	}
-	netRingGetPointer->ReleaseHs();
+
+	// Reset the network layer. In particular, this clears the output buffer to make sure nothing more gets sent,
+	// and sets statue to 'nothing' so that we can accept another connection attempt.
+	Reset();
 }
 
 
@@ -1091,7 +1123,7 @@ void Network::ReceiveInput(char* data, int length, void* pbuf, void* pcb, void* 
 
 
 
-bool Network::CanWrite()
+bool Network::CanWrite() const
 {
 	return writeEnabled;
 }
@@ -1142,7 +1174,7 @@ void Network::Close()
 	//Reset();
 }
 
-int8_t Network::Status()
+int8_t Network::Status() const
 {
 	if(inputPointer >= inputLength)
 		return status;

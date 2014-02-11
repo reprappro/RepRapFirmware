@@ -70,15 +70,19 @@ public:
 
 protected:
 	LookAhead(Move* m, Platform* p, LookAhead* n);
-	void Init(long ep[], float feedRate, float vv, bool ce, int8_t mt);
+	void Init(long ep[], float feedRate, float vv, bool ce, float minS, float maxS, float maxA, float s);
 	LookAhead* Next();
 	LookAhead* Previous();
 	long* MachineEndPoints();
 	float MachineToEndPoint(int8_t drive);
 	static float MachineToEndPoint(int8_t drive, long coord);
 	static long EndPointToMachine(int8_t drive, float coord);
-	int8_t GetMovementType();
+	//int8_t GetMovementType();
+	float MinSpeed();
+	float MaxSpeed();
+	float MaxAcceleration();
 	float FeedRate();
+	float StepsPerUnit();
 	float V();
 	void SetV(float vv);
 	void SetFeedRate(float f);
@@ -95,7 +99,8 @@ private:
 	LookAhead* next;
 	LookAhead* previous;
 	long endPoint[DRIVES+1];  // Should never use the +1, but safety first
-	int8_t movementType;
+	float minSpeed, maxSpeed, maxAcceleration, stepsPerUnit;
+	//int8_t movementType;
 	float Cosine();
     bool checkEndStops;
     float cosine;
@@ -124,8 +129,8 @@ protected:
 
 private:
 	MovementProfile AccelerationCalculation(float& u, float& v, MovementProfile result);
-	void SetXYAcceleration();
-	void SetEAcceleration(float eDistance);
+//	void SetXYAcceleration();
+//	void SetEAcceleration(float eDistance);
 	Move* move;
 	Platform* platform;
 	DDA* next;
@@ -157,7 +162,7 @@ class Move
     void Init();
     void Spin();
     void Exit();
-    bool GetCurrentState(float m[]); // takes account of all the reings and delays
+    bool GetCurrentState(float m[]); // takes account of all the rings and delays
     void LiveCoordinates(float m[]); // Just gives the last point at the end of the last DDA
     void Interrupt();
     void InterruptTime();
@@ -189,7 +194,7 @@ class Move
     void Diagnostics();
     float ComputeCurrentCoordinate(int8_t drive, LookAhead* la, DDA* runningDDA);
     void SetStepHypotenuse();
-    
+    float MachineToPoint(long steps, int8_t drive);
 
     friend class DDA;
     
@@ -204,9 +209,9 @@ class Move
     void ReleaseDDARingLock();
     bool LookAheadRingEmpty();
     bool LookAheadRingFull();
-    bool LookAheadRingAdd(long ep[], float feedRate, float vv, bool ce, int8_t movementType);
+    bool LookAheadRingAdd(long ep[], float feedRate, float vv, bool ce, float minS, float maxS, float maxA, float s);
     LookAhead* LookAheadRingGet();
-    int8_t GetMovementType(long sp[], long ep[]);
+    bool MaxTruncatedProjection(long sp[], long ep[], float box[], float& length, int8_t& axis);
 
     float liveCoordinates[DRIVES + 1];
     
@@ -238,7 +243,6 @@ class Move
     float zBedProbePoints[NUMBER_OF_PROBE_POINTS];
     uint8_t probePointSet[NUMBER_OF_PROBE_POINTS];
     float aX, aY, aC; // Bed plane explicit equation z' = z + aX*x + aY*y + aC
-    bool zEquationSet;
     float tanXY, tanYZ, tanXZ; // 90 degrees + angle gives angle between axes
     float xRectangle, yRectangle;
     float lastZHit;
@@ -272,9 +276,7 @@ inline float LookAhead::V()
 
 inline float LookAhead::MachineToEndPoint(int8_t drive)
 {
-	if(drive >= DRIVES)
-		platform->Message(HOST_MESSAGE, "MachineToEndPoint() called for feedrate!\n");
-	return ((float)(endPoint[drive]))/platform->DriveStepsPerUnit(drive);
+	return move->MachineToPoint(endPoint[drive], drive);
 }
 
 
@@ -303,7 +305,6 @@ inline void LookAhead::SetProcessed(MovementState ms)
 
 inline void LookAhead::Release()
 {
-  //SetProcessed(released);
 	 processed = released;
 }
 
@@ -324,10 +325,30 @@ inline long* LookAhead::MachineEndPoints()
 	return endPoint;
 }
 
-inline int8_t LookAhead::GetMovementType()
+inline float LookAhead::MinSpeed()
 {
-	return movementType;
+	return minSpeed;
 }
+
+inline float LookAhead::MaxSpeed()
+{
+	return maxSpeed;
+}
+
+inline float LookAhead::MaxAcceleration()
+{
+	return maxAcceleration;
+}
+
+inline float LookAhead::StepsPerUnit()
+{
+	return stepsPerUnit;
+}
+
+//inline int8_t LookAhead::GetMovementType()
+//{
+//	return movementType;
+//}
 
 //******************************************************************************************************
 
@@ -402,6 +423,13 @@ inline void Move::LiveCoordinates(float m[])
 	InverseTransform(m);
 }
 
+inline float Move::MachineToPoint(long steps, int8_t drive)
+{
+	if(drive >= DRIVES)
+		platform->Message(HOST_MESSAGE, "MachineToPoint() called for feedrate!\n");
+	return ((float)(steps))/platform->DriveStepsPerUnit(drive);
+}
+
 
 // These are the actual numbers that we want to be the coordinates, so
 // don't transform them.
@@ -410,7 +438,6 @@ inline void Move::SetLiveCoordinates(float coords[])
 {
 	for(int8_t drive = 0; drive <= DRIVES; drive++)
 		liveCoordinates[drive] = coords[drive];
-	//Transform(liveCoordinates);
 }
 
 // To wait until all the current moves in the buffers are
@@ -542,23 +569,6 @@ inline float Move::SecondDegreeTransformZ(float x, float y)
 }
 
 
-inline void Move::SetAxisCompensation(int8_t axis, float tangent)
-{
-	switch(axis)
-	{
-	case X_AXIS:
-		tanXY = tangent;
-		break;
-	case Y_AXIS:
-		tanYZ = tangent;
-		break;
-	case Z_AXIS:
-		tanXZ = tangent;
-		break;
-	default:
-		platform->Message(HOST_MESSAGE, "SetAxisCompensation: dud axis.\n");
-	}
-}
 
 inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 {

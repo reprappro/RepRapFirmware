@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.39"
-#define DATE "2013-12-14"
+#define VERSION "0.60"
+#define DATE "2014-01-16"
 #define LAST_AUTHOR "reprappro.com"
 
 // Other firmware that we might switch to be compatible with.
@@ -67,13 +67,18 @@ enum Compatibility
 
 // Webserver stuff
 
-#define NETWORK true // Set true to turn the ethernet on
+//#define NETWORK true // Set true to turn the ethernet on
 
 #define DEFAULT_PASSWORD "reprap"
 #define DEFAULT_NAME "My RepRap 1"
 #define INDEX_PAGE "reprap.htm"
 #define MESSAGE_FILE "messages.txt"
 #define FOUR04_FILE "html404.htm"
+#define CONFIG_FILE "config.g" // The file that sets the machine's parameters
+#define HOME_X_G "homex.g"
+#define HOME_Y_G "homey.g"
+#define HOME_Z_G "homez.g"
+#define HOME_ALL_G "homeall.g"
 
 #define LONG_TIME 300.0 // Seconds
 

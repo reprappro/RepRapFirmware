@@ -41,9 +41,9 @@ class GCodeBuffer
     char* GetUnprecedentedString();
     char* GetString();
     char* Buffer();
-    bool Finished();
+    bool Finished() const;
     void SetFinished(bool f);
-    char* WritingFileDirectory();
+    char* WritingFileDirectory() const;
     void SetWritingFileDirectory(char* wfd);
     
   private:
@@ -70,22 +70,27 @@ class GCodes
     void Spin();
     void Init();
     void Exit();
-    void RunConfigurationGCodes();
+    bool RunConfigurationGCodes();
     bool ReadMove(float* m, bool& ce);
     void QueueFileToPrint(char* fileName);
     bool GetProbeCoordinates(int count, float& x, float& y, float& z);
     char* GetCurrentCoordinates();
-    bool PrintingAFile();
+    bool PrintingAFile() const;
     void Diagnostics();
+    bool HaveIncomingData() const;
     
   private:
   
+    void doFilePrint(GCodeBuffer* gb);
     bool AllMovesAreFinishedAndMoveBufferIsLoaded();
     bool DoCannedCycleMove(bool ce);
+    bool DoFileCannedCycles(char* fileName);
+    bool FileCannedCyclesReturn();
     bool ActOnGcode(GCodeBuffer* gb);
     bool SetUpMove(GCodeBuffer* gb);
     bool DoDwell(GCodeBuffer *gb);
     bool DoHome();
+    bool DoSingleZProbeAtPoint();
     bool DoSingleZProbe();
     bool SetSingleZProbeAtAPosition(GCodeBuffer *gb);
     bool DoMultipleZProbe();
@@ -93,7 +98,7 @@ class GCodes
     bool SetOffsets(GCodeBuffer *gb);
     bool SetPositions(GCodeBuffer *gb);
     void LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92);
-    bool NoHome();
+    bool NoHome() const;
     bool Push();
     bool Pop();
     bool DisableDrives();
@@ -106,7 +111,7 @@ class GCodes
     void WriteHTMLToFile(char b, GCodeBuffer *gb);
     bool OffsetAxes(GCodeBuffer *gb);
 
-    int8_t Heater(int8_t head);
+    int8_t Heater(int8_t head) const;
     Platform* platform;
     bool active;
     Webserver* webserver;
@@ -115,6 +120,7 @@ class GCodes
     GCodeBuffer* webGCode;
     GCodeBuffer* fileGCode;
     GCodeBuffer* serialGCode;
+    GCodeBuffer* cannedCycleGCode;
     bool moveAvailable;
     float moveBuffer[DRIVES+1]; // Last is feedrate
     bool checkEndStops;
@@ -123,6 +129,7 @@ class GCodes
     bool drivesRelativeStack[STACK];
     bool axesRelativeStack[STACK];
     float feedrateStack[STACK];
+    FileStore* fileStack[STACK];
     int8_t stackPointer;
     char gCodeLetters[DRIVES + 1]; // Extra is for F
     float lastPos[DRIVES - AXES]; // Just needed for relative moves.
@@ -135,6 +142,7 @@ class GCodes
     FileStore* fileToPrint;
     FileStore* fileBeingWritten;
     FileStore* configFile;
+    bool doingCannedCycleFile;
     char* eofString;
     uint8_t eofStringCounter;
     uint8_t eofStringLength;
@@ -142,7 +150,7 @@ class GCodes
     bool homeX;
     bool homeY;
     bool homeZ;
-    bool homeAxisFinalMove;
+    int8_t homeAxisMoveCount;
     float gFeedRate;
     int probeCount;
     int8_t cannedCycleMoveCount;
@@ -165,7 +173,7 @@ inline char* GCodeBuffer::Buffer()
   return gcodeBuffer;
 }
 
-inline bool GCodeBuffer::Finished()
+inline bool GCodeBuffer::Finished() const
 {
   return finished;
 }
@@ -175,7 +183,7 @@ inline void GCodeBuffer::SetFinished(bool f)
   finished = f;
 }
 
-inline char* GCodeBuffer::WritingFileDirectory()
+inline char* GCodeBuffer::WritingFileDirectory() const
 {
 	return writingFileDirectory;
 }
@@ -185,22 +193,35 @@ inline void GCodeBuffer::SetWritingFileDirectory(char* wfd)
 	writingFileDirectory = wfd;
 }
 
-inline bool GCodes::PrintingAFile()
+inline bool GCodes::PrintingAFile() const
 {
   return fileBeingPrinted != NULL;
 }
 
-inline bool GCodes::NoHome()
+inline bool GCodes::HaveIncomingData() const
 {
-   return !(homeX || homeY || homeZ || homeAxisFinalMove);
+	return fileBeingPrinted != NULL || webserver->GCodeAvailable() || (platform->GetLine()->Status() & byteAvailable);
+}
+
+inline bool GCodes::NoHome() const
+{
+   return !(homeX || homeY || homeZ || homeAxisMoveCount);
 }
 
 // This function takes care of the fact that the heater and head indices 
 // don't match because the bed is heater 0.
 
-inline int8_t GCodes::Heater(int8_t head)
+inline int8_t GCodes::Heater(int8_t head) const
 {
    return head+1; 
+}
+
+// Run the configuration G Code file to set up the machine.  Usually just called once
+// on re-boot.
+
+inline bool GCodes::RunConfigurationGCodes()
+{
+	return !DoFileCannedCycles(platform->GetConfigFile());
 }
 
 #endif

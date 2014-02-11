@@ -91,9 +91,10 @@ Licence: GPL
 #define POT_WIPES {1, 3, 2, 0} // Indices for motor current digipots (if any)
 #define SENSE_RESISTOR 0.1   // Stepper motor current sense resistor
 #define MAX_STEPPER_DIGIPOT_VOLTAGE ( 3.3*2.5/(2.7+2.5) ) // Stepper motor current reference voltage
-#define Z_PROBE_AD_VALUE 400
-#define Z_PROBE_STOP_HEIGHT 0.7 // mm
-#define Z_PROBE_PIN 0 // Analogue pin number
+#define Z_PROBE_AD_VALUE (400)
+#define Z_PROBE_STOP_HEIGHT (0.7) // mm
+#define Z_PROBE_PIN (0) 		// Analogue pin number
+#define Z_PROBE_MOD_PIN (61)	// Digital pin number to turn the IR LED on (high) or off (low)
 #define MAX_FEEDRATES {50.0, 50.0, 3.0, 16.0}    // mm/sec
 #define ACCELERATIONS {800.0, 800.0, 10.0, 250.0}    // mm/sec^2
 #define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0}
@@ -114,9 +115,13 @@ Licence: GPL
 
 #define TEMP_SENSE_PINS {5, 4}   // Analogue pin numbers
 #define HEAT_ON_PINS {6, X5}
-#define THERMISTOR_BETAS {3480.0, 3960.0} // Bed thermistor: RS 484-0149; EPCOS B57550G103J; Extruder thermistor: RS 198-961
+
+// Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
+// Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
+#define THERMISTOR_BETAS {3988.0, 4138.0}
 #define THERMISTOR_SERIES_RS {1000, 1000} // Ohms in series with the thermistors
 #define THERMISTOR_25_RS {10000.0, 100000.0} // Thermistor ohms at 25 C = 298.15 K
+
 #define USE_PID {false, true} // PID or bang-bang for this heater?
 #define PID_KIS {-1, 2.2} // PID constants...
 #define PID_KDS {-1, 80}
@@ -146,7 +151,6 @@ Licence: GPL
 #define GCODE_DIR "0:/gcodes/" // Ditto - g-codes
 #define SYS_DIR "0:/sys/" // Ditto - system files
 #define TEMP_DIR "0:/tmp/" // Ditto - temporary files
-#define CONFIG_FILE "config.g" // The file that sets the machine's parameters
 #define FILE_LIST_SEPARATOR ','
 #define FILE_LIST_BRACKET '"'
 #define FILE_LIST_LENGTH 1000 // Maximum length of file list
@@ -180,13 +184,16 @@ Licence: GPL
 
 #define BAUD_RATE 115200 // Communication speed of the USB if needed.
 
+const uint16_t lineBufsize = 256;				// use a power of 2 for good performance
+const uint16_t NumZProbeReadingsAveraged = 8;	// must be an even number, preferably a power of 2 for performance, and no greater than 64
+
 /****************************************************************************************************/
 
 enum EndStopHit
 {
-  noStop = 0,
-  lowHit = 1,
-  highHit = 2
+  noStop = 0,		// no enstop hit
+  lowHit = 1,		// low switch hit, or Z-probe in use and above threshold
+  highHit = 2		// high stop hit
 };
 
 /***************************************************************************************************/
@@ -261,17 +268,17 @@ class Network //: public InputOutput
 {
 public:
 
-	int8_t Status(); // Returns OR of IOStatus
+	int8_t Status() const; // Returns OR of IOStatus
 	bool Read(char& b);
-	bool CanWrite();
+	bool CanWrite() const;
 	void SetWriteEnable(bool enable);
 	void Write(char b);
 	void Write(char* s);
 	void Close();
 	void ReceiveInput(char* data, int length, void* pb, void* pc, void* h);
 	void InputBufferReleased(void* pb);
-	void HttpStateReleased(void* h);
-	bool Active();
+	void ConnectionError(void* h);
+	bool Active() const;
 	bool LinkIsUp();
 
 friend class Platform;
@@ -305,7 +312,7 @@ class Line //: public InputOutput
 {
 public:
 
-	int8_t Status(); // Returns OR of IOStatus
+	int8_t Status() const; // Returns OR of IOStatus
 	int Read(char& b);
 	void Write(char b);
 	void Write(char* s);
@@ -321,6 +328,11 @@ protected:
 	void Spin();
 
 private:
+	// Although the sam3x usb interface code already has a 512-byte buffer, adding this extra 256-byte buffer
+	// increases the speed of uploading to the SD card by 10%
+	char buffer[lineBufsize];
+	uint16_t getIndex;
+	uint16_t numChars;
 };
 
 class MassStorage
@@ -473,10 +485,12 @@ class Platform
   
   float ZProbeStopHeight();
   void SetZProbeStopHeight(float z);
-  long ZProbe();
+  int ZProbe() const;
+  int ZProbeOnVal() const;
   void SetZProbe(int iZ);
   void SetZProbeType(int iZ);
-  
+  int GetZProbeType() const;
+
   // Heat and temperature
   
   float GetTemperature(int8_t heater); // Result is in degrees celsius
@@ -491,12 +505,17 @@ class Platform
   bool UsePID(int8_t heater);
   float HeatSampleTime();
   void CoolingFan(float speed);
-  void SetHeatOn(int8_t ho); //TEMPORARY - this will go away...
+  //void SetHeatOn(int8_t ho); //TEMPORARY - this will go away...
+
+  friend class Move;
 
 //-------------------------------------------------------------------------------------------------------
   protected:
   
-  void ReturnFileStore(FileStore* f);  
+  void ReturnFileStore(FileStore* f);
+  float* Acceleration();
+  float* MaxFeedrate();
+  float* InstantDv();
   
   private:
   
@@ -531,15 +550,19 @@ class Platform
   float maxStepperDigipotVoltage;
 //  float zProbeGradient;
 //  float zProbeConstant;
-  long zProbeValue;
   int8_t zProbePin;
-  int8_t zProbeCount;
-  long zProbeSum;
+  int8_t zProbeModulationPin;
+  int8_t zProbeType;
+  uint8_t zProbeCount;
+  long zProbeOnSum;		// sum of readings taken when IR led is on
+  long zProbeOffSum;	// sum of readings taken when IR led is on
+  uint16_t zProbeReadings[NumZProbeReadingsAveraged];
   int zProbeADValue;
   float zProbeStopHeight;
 
 // AXES
 
+  void InitZProbe();
   void PollZHeight();
 
   float axisLengths[AXES];
@@ -570,7 +593,7 @@ class Platform
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
   int8_t coolingFanPin;
-  int8_t turnHeatOn;
+  //int8_t turnHeatOn;
 
 // Serial/USB
 
@@ -702,6 +725,21 @@ inline float Platform::InstantDv(int8_t drive)
   return instantDvs[drive]; 
 }
 
+inline float* Platform::Acceleration()
+{
+	return accelerations;
+}
+
+inline float* Platform::MaxFeedrate()
+{
+	return maxFeedrates;
+}
+
+inline float* Platform::InstantDv()
+{
+	return instantDvs;
+}
+
 inline bool Platform::HighStopButNotLow(int8_t axis)
 {
 	return (lowStopPins[axis] < 0)  && (highStopPins[axis] >= 0);
@@ -796,14 +834,25 @@ inline void Platform::SetMaxFeedrate(int8_t drive, float value)
 
 inline int Platform::GetRawZHeight()
 {
-  if(zProbePin >= 0)
-    return analogRead(zProbePin);
-  return 0;
+  return (zProbeType != 0) ? analogRead(zProbePin) : 0;
 }
 
-inline long Platform::ZProbe()
+inline int Platform::ZProbe() const
 {
-	return zProbeValue;
+	return (zProbeType == 1)
+			? (zProbeOnSum + zProbeOffSum)/NumZProbeReadingsAveraged		// non-modulated mode
+			: (zProbeType == 2)
+			  ? (zProbeOnSum - zProbeOffSum)/(NumZProbeReadingsAveraged/2)	// modulated mode
+			    : 0;														// z-probe disabled
+}
+
+inline int Platform::ZProbeOnVal() const
+{
+	return (zProbeType == 1)
+			? (zProbeOnSum + zProbeOffSum)/NumZProbeReadingsAveraged
+			: (zProbeType == 2)
+			  ? zProbeOnSum/(NumZProbeReadingsAveraged/2)
+				: 0;
 }
 
 inline float Platform::ZProbeStopHeight()
@@ -823,10 +872,33 @@ inline void Platform::SetZProbe(int iZ)
 
 inline void Platform::SetZProbeType(int pt)
 {
-	if(pt != 0)
-		zProbePin = Z_PROBE_PIN;
+	zProbeType = (pt >= 0 && pt <= 2) ? pt : 0;
+	InitZProbe();
+}
+
+inline int Platform::GetZProbeType() const
+{
+	return zProbeType;
+}
+
+inline void Platform::PollZHeight()
+{
+	uint16_t currentReading = GetRawZHeight();
+	if (zProbeType == 2)
+	{
+		// Reverse the modulation, ready for next time
+		digitalWrite(zProbeModulationPin, (zProbeCount & 1) ? HIGH : LOW);
+	}
+	if (zProbeCount & 1)
+	{
+		zProbeOffSum = zProbeOffSum - zProbeReadings[zProbeCount] + currentReading;
+	}
 	else
-		zProbePin = -1;
+	{
+		zProbeOnSum = zProbeOnSum - zProbeReadings[zProbeCount] + currentReading;
+	}
+	zProbeReadings[zProbeCount] = currentReading;
+	zProbeCount = (zProbeCount + 1) % NumZProbeReadingsAveraged;
 }
 
 
@@ -894,10 +966,10 @@ inline void Platform::CoolingFan(float speed)
 	analogWrite(coolingFanPin, (uint8_t)(speed*255.0));
 }
 
-inline void Platform::SetHeatOn(int8_t ho)
-{
-	turnHeatOn = ho;
-}
+//inline void Platform::SetHeatOn(int8_t ho)
+//{
+//	turnHeatOn = ho;
+//}
 
 
 //*********************************************************************************************************
@@ -964,18 +1036,11 @@ inline Line* Platform::GetLine()
 	return line;
 }
 
-inline void Line::Spin()
-{
-}
-
-inline int8_t Line::Status()
+inline int8_t Line::Status() const
 {
 //	if(alternateInput != NULL)
 //		return alternateInput->Status();
-
-	if(SerialUSB.available() > 0)
-		return byteAvailable;
-	return nothing;
+	return numChars == 0 ? nothing : byteAvailable;
 }
 
 inline int Line::Read(char& b)
@@ -983,11 +1048,11 @@ inline int Line::Read(char& b)
 //  if(alternateInput != NULL)
 //	return alternateInput->Read(b);
 
-  int incomingByte = SerialUSB.read();
-  if(incomingByte < 0)
-    return 0;
-  b = (char)incomingByte;
-  return true;
+	  if (numChars == 0) return 0;
+	  b = buffer[getIndex];
+	  getIndex = (getIndex + 1) % lineBufsize;
+	  --numChars;
+	  return 1;
 }
 
 inline void Line::Write(char b)
@@ -1031,7 +1096,7 @@ inline bool Network::LinkIsUp()
 	return status_link_up();
 }
 
-inline bool Network::Active()
+inline bool Network::Active() const
 {
 	return active;
 }

@@ -33,6 +33,7 @@ GCodes::GCodes(Platform* p, Webserver* w)
   webGCode = new GCodeBuffer(platform, "web: ");
   fileGCode = new GCodeBuffer(platform, "file: ");
   serialGCode = new GCodeBuffer(platform, "serial: ");
+  cannedCycleGCode = new GCodeBuffer(platform, "macro: ");
 }
 
 void GCodes::Exit()
@@ -46,9 +47,11 @@ void GCodes::Init()
   webGCode->Init();
   fileGCode->Init();
   serialGCode->Init();
+  cannedCycleGCode->Init();
   webGCode->SetFinished(true);
   fileGCode->SetFinished(true);
   serialGCode->SetFinished(true);
+  cannedCycleGCode->SetFinished(true);
   moveAvailable = false;
   drivesRelative = true;
   axesRelative = false;
@@ -61,13 +64,14 @@ void GCodes::Init()
   fileToPrint = NULL;
   fileBeingWritten = NULL;
   configFile = NULL;
+  doingCannedCycleFile = false;
   eofString = EOF_STRING;
   eofStringCounter = 0;
   eofStringLength = strlen(eofString);
   homeX = false;
   homeY = false;
   homeZ = false;
-  homeAxisFinalMove = false;
+  homeAxisMoveCount = 0;
   offSetSet = false;
   dwellWaiting = false;
   stackPointer = 0;
@@ -82,13 +86,31 @@ void GCodes::Init()
   dwellTime = longWait;
 }
 
+void GCodes::doFilePrint(GCodeBuffer* gb)
+{
+	char b;
+
+	if(fileBeingPrinted != NULL)
+	{
+		if(fileBeingPrinted->Read(b))
+		{
+			if(gb->Put(b))
+				gb->SetFinished(ActOnGcode(gb));
+		} else
+		{
+			if(gb->Put('\n')) // In case there wasn't one ending the file
+				gb->SetFinished(ActOnGcode(gb));
+			fileBeingPrinted->Close();
+			fileBeingPrinted = NULL;
+		}
+	}
+}
+
 void GCodes::Spin()
 {
   if(!active)
     return;
     
-  char b;
-
   // Check each of the sources of G Codes (web, serial, and file) to
   // see if what they are doing has been done.  If it hasn't, return without
   // looking at anything else.
@@ -123,7 +145,7 @@ void GCodes::Spin()
 
   if(webserver->GCodeAvailable())
   {
-	  b = webserver->ReadGCode();
+	  char b = webserver->ReadGCode();
 	  if(webGCode->Put(b))
 	  {
 		  if(webGCode->WritingFileDirectory() != NULL)
@@ -142,6 +164,7 @@ void GCodes::Spin()
   {
 	  if(platform->GetLine()->Status() & byteAvailable)
 	  {
+		  char b;
 		  platform->GetLine()->Read(b);
 		  WriteHTMLToFile(b, serialGCode);
 	  }
@@ -151,35 +174,34 @@ void GCodes::Spin()
 
 	  if(platform->GetLine()->Status() & byteAvailable)
 	  {
-		  platform->GetLine()->Read(b);
-		  if(serialGCode->Put(b))
+		  // Read several bytes instead of just one. This approximately doubles the speed of file uploading.
+		  int8_t i = 0;
+		  do
 		  {
-			  if(serialGCode->WritingFileDirectory() != NULL)
-				  WriteGCodeToFile(serialGCode);
-			  else
-				  serialGCode->SetFinished(ActOnGcode(serialGCode));
-		  }
+			  char b;
+			  platform->GetLine()->Read(b);
+			  if(serialGCode->Put(b))	// add char to buffer and test whether the gcode is complete
+			  {
+				  // we have a complete gcode
+				  if(serialGCode->WritingFileDirectory() != NULL)
+				  {
+					  WriteGCodeToFile(serialGCode);
+				  }
+				  else
+				  {
+					  serialGCode->SetFinished(ActOnGcode(serialGCode));
+				  }
+				  break;	// stop after receiving a complete gcode in case we haven't finished processing it
+			  }
+			  ++i;
+		  } while (i < 16 && (platform->GetLine()->Status() & byteAvailable));
 		  platform->ClassReport("GCodes", longWait);
 		  return;
 	  }
   }
 
+  doFilePrint(fileGCode);
 
-  
-  if(fileBeingPrinted != NULL)
-  {
-     if(fileBeingPrinted->Read(b))
-     {
-       if(fileGCode->Put(b))
-         fileGCode->SetFinished(ActOnGcode(fileGCode));
-     } else
-     {
-        if(fileGCode->Put('\n')) // In case there wasn't one ending the file
-         fileGCode->SetFinished(ActOnGcode(fileGCode));
-        fileBeingPrinted->Close();
-        fileBeingPrinted = NULL;
-     }
-  }
   platform->ClassReport("GCodes", longWait);
 }
 
@@ -231,8 +253,9 @@ bool GCodes::Push()
   drivesRelativeStack[stackPointer] = drivesRelative;
   axesRelativeStack[stackPointer] = axesRelative;
   feedrateStack[stackPointer] = gFeedRate; 
+  fileStack[stackPointer] = fileBeingPrinted;
   stackPointer++;
-  
+  platform->PushMessageIndent();
   return true;
 }
 
@@ -252,7 +275,8 @@ bool GCodes::Pop()
   stackPointer--;
   drivesRelative = drivesRelativeStack[stackPointer];
   axesRelative = axesRelativeStack[stackPointer];
-  
+  fileBeingPrinted = fileStack[stackPointer];
+  platform->PopMessageIndent();
   // Remember for next time if we have just been switched
   // to absolute drive moves
   
@@ -331,6 +355,12 @@ bool GCodes::SetUpMove(GCodeBuffer *gb)
   LoadMoveBufferFromGCode(gb, false);
   
   checkEndStops = false;
+  if(gb->Seen('S'))
+  {
+	  if(gb->GetIValue() == 1)
+		  checkEndStops = true;
+  }
+
   moveAvailable = true;
   return true; 
 }
@@ -347,6 +377,77 @@ bool GCodes::ReadMove(float m[], bool& ce)
     moveAvailable = false;
     checkEndStops = false;
     return true;
+}
+
+
+bool GCodes::DoFileCannedCycles(char* fileName)
+{
+	// Have we started the file?
+
+	if(!doingCannedCycleFile)
+	{
+		// No
+
+		if(!Push())
+			return false;
+
+		fileBeingPrinted = platform->GetFileStore(platform->GetSysDir(), fileName, false);
+		if(fileBeingPrinted == NULL)
+		{
+			platform->Message(HOST_MESSAGE, "Canned cycle GCode file not found - ");
+			platform->Message(HOST_MESSAGE, fileName);
+			platform->Message(HOST_MESSAGE, "\n");
+			if(!Pop())
+				platform->Message(HOST_MESSAGE, "Cannot pop the stack.\n");
+			return true;
+		}
+		doingCannedCycleFile = true;
+		cannedCycleGCode->Init();
+		return false;
+	}
+
+	// Have we finished the file?
+
+	if(fileBeingPrinted == NULL)
+	{
+		// Yes
+
+		if(!Pop())
+			return false;
+		doingCannedCycleFile = false;
+		cannedCycleGCode->Init();
+		return true;
+	}
+
+	// No - Do more of the file
+
+	if(!cannedCycleGCode->Finished())
+	{
+		cannedCycleGCode->SetFinished(ActOnGcode(cannedCycleGCode));
+	    return false;
+	}
+
+	doFilePrint(cannedCycleGCode);
+
+	return false;
+}
+
+bool GCodes::FileCannedCyclesReturn()
+{
+	if(!doingCannedCycleFile)
+		return true;
+
+	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
+		return false;
+
+	doingCannedCycleFile = false;
+	cannedCycleGCode->Init();
+
+	if(fileBeingPrinted != NULL)
+		fileBeingPrinted->Close();
+
+	fileBeingPrinted = NULL;
+	return true;
 }
 
 // To execute any move, call this until it returns true.
@@ -456,99 +557,50 @@ bool GCodes::OffsetAxes(GCodeBuffer* gb)
 
 bool GCodes::DoHome()
 {
-	// Treat more or less like any other move
-	// Do one axis at a time, starting with X.
-
-	for(int8_t drive = 0; drive < DRIVES; drive++)
-		activeDrive[drive] = false;
-	activeDrive[DRIVES] = true; // Always set the feedrate
+	if(homeX && homeY && homeZ)
+	{
+		if(DoFileCannedCycles(HOME_ALL_G))
+		{
+			homeAxisMoveCount = 0;
+			homeX = false;
+			homeY = false;
+			homeZ = false;
+			return true;
+		}
+		return false;
+	}
 
 	if(homeX)
 	{
-		activeDrive[X_AXIS] = true;
-		moveToDo[DRIVES] = platform->HomeFeedRate(X_AXIS);
-		if(platform->HighStopButNotLow(X_AXIS))
+		if(DoFileCannedCycles(HOME_X_G))
 		{
-			if(homeAxisFinalMove)
-			{
-				moveToDo[X_AXIS] = 0.0;
-				if(DoCannedCycleMove(false))
-				{
-					homeAxisFinalMove = false;
-					homeX = false;
-					return NoHome();
-				}
-			}else
-			{
-				moveToDo[X_AXIS] = 2.0*platform->AxisLength(X_AXIS);
-				if(DoCannedCycleMove(true))
-					homeAxisFinalMove = true;
-			}
-		} else
-		{
-			moveToDo[X_AXIS] = -2.0*platform->AxisLength(X_AXIS);
-			if(DoCannedCycleMove(true))
-			{
-				homeX = false;
-				homeAxisFinalMove = false;
-				return NoHome();
-			}
+			homeAxisMoveCount = 0;
+			homeX = false;
+			return NoHome();
 		}
 		return false;
 	}
+
 
 	if(homeY)
 	{
-		activeDrive[Y_AXIS] = true;
-		moveToDo[DRIVES] = platform->HomeFeedRate(Y_AXIS);
-		if(platform->HighStopButNotLow(Y_AXIS))
+		if(DoFileCannedCycles(HOME_Y_G))
 		{
-			if(homeAxisFinalMove)
-			{
-				moveToDo[Y_AXIS] = 0.0;
-				if(DoCannedCycleMove(false))
-				{
-					homeAxisFinalMove = false;
-					homeY = false;
-					return NoHome();
-				}
-			}else
-			{
-				moveToDo[Y_AXIS] = 2.0*platform->AxisLength(Y_AXIS);
-				if(DoCannedCycleMove(true))
-					homeAxisFinalMove = true;
-			}
-		} else
-		{
-			moveToDo[Y_AXIS] = -2.0*platform->AxisLength(Y_AXIS);
-			if(DoCannedCycleMove(true))
-			{
-				homeY = false;
-				homeAxisFinalMove = false;
-				return NoHome();
-			}
+			homeAxisMoveCount = 0;
+			homeY = false;
+			return NoHome();
 		}
 		return false;
 	}
 
+
 	if(homeZ)
 	{
-		activeDrive[Z_AXIS] = true;
-		moveToDo[DRIVES] = platform->HomeFeedRate(Z_AXIS);
-		if(homeAxisFinalMove)
+		if(DoFileCannedCycles(HOME_Z_G))
 		{
-			moveToDo[Z_AXIS] = 0.0;
-			if(DoCannedCycleMove(false))
-			{
-				homeAxisFinalMove = false;
-				homeZ = false;
-				return NoHome();
-			}
-		}else
-		{
-			moveToDo[Z_AXIS] = -2.0*platform->AxisLength(Z_AXIS);
-			if(DoCannedCycleMove(true))
-				homeAxisFinalMove = true;
+			homeAxisMoveCount = 0;
+			homeZ = false;
+			return NoHome();
 		}
 		return false;
 	}
@@ -557,7 +609,7 @@ bool GCodes::DoHome()
 
 	checkEndStops = false;
 	moveAvailable = false;
-	homeAxisFinalMove = false;
+	homeAxisMoveCount = 0;
 
 	return true;
 }
@@ -566,7 +618,7 @@ bool GCodes::DoHome()
 // probes the bed height, and records the Z coordinate probed.  If you want to program any general
 // internal canned cycle, this shows how to do it.
 
-bool GCodes::DoSingleZProbe()
+bool GCodes::DoSingleZProbeAtPoint()
 {
 	float x, y, z;
 
@@ -626,6 +678,30 @@ bool GCodes::DoSingleZProbe()
 	}
 }
 
+
+// This simply moves down till the Z probe/switch is triggered.
+
+bool GCodes::DoSingleZProbe()
+{
+	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
+	for(int8_t drive = 0; drive <= DRIVES; drive++)
+		activeDrive[drive] = false;
+
+	moveToDo[Z_AXIS] = -1.1*platform->AxisLength(Z_AXIS);
+	activeDrive[Z_AXIS] = true;
+	moveToDo[DRIVES] = platform->HomeFeedRate(Z_AXIS);
+	activeDrive[DRIVES] = true;
+	if(DoCannedCycleMove(true))
+	{
+		cannedCycleMoveCount = 0;
+		probeCount = 0;
+		return true;
+	}
+	return false;
+}
+
 // This sets wherever we are as the probe point P (probePointIndex)
 // then probes the bed, or gets all its parameters from the arguments.
 // If X or Y are specified, use those; otherwise use the machine's
@@ -636,13 +712,13 @@ bool GCodes::DoSingleZProbe()
 
 bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb)
 {
-	if(!gb->Seen('P'))
-		return true;
-
-	int probePointIndex = gb->GetIValue();
-
 	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
+
+	if(!gb->Seen('P'))
+		return DoSingleZProbe();
+
+	int probePointIndex = gb->GetIValue();
 
 	float x, y, z;
 	if(gb->Seen(gCodeLetters[X_AXIS]))
@@ -675,7 +751,7 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb)
 		return true;
 	} else
 	{
-		if(DoSingleZProbe())
+		if(DoSingleZProbeAtPoint())
 		{
 			probeCount = 0;
 			reprap.GetMove()->SetZProbing(false);
@@ -703,7 +779,7 @@ bool GCodes::DoMultipleZProbe()
 		return true;
 	}
 
-	if(DoSingleZProbe())
+	if(DoSingleZProbeAtPoint())
 		probeCount++;
 	if(probeCount >= reprap.GetMove()->NumberOfXYProbePoints())
 	{
@@ -739,8 +815,14 @@ bool GCodes::SetPrintZProbe(GCodeBuffer* gb, char* reply)
 		{
 			platform->SetZProbe(gb->GetIValue());
 		}
-	} else
+	} else if (platform->GetZProbeType() == 2)
+	{
+		snprintf(reply, STRING_LENGTH, "%d (%d)", platform->ZProbe(), platform->ZProbeOnVal());
+	}
+	else
+	{
 		snprintf(reply, STRING_LENGTH, "%d", platform->ZProbe());
+	}
 	return true;
 }
 
@@ -858,20 +940,6 @@ void GCodes::QueueFileToPrint(char* fileName)
 	  platform->Message(HOST_MESSAGE, "GCode file not found\n");
 }
 
-// Run the configuration G Code file to set up the machine.  Usually just called once
-// on re-boot.
-
-void GCodes::RunConfigurationGCodes()
-{
-	  fileToPrint = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
-	  if(fileToPrint == NULL)
-	  {
-		  platform->Message(HOST_MESSAGE, "Configuration file not found\n");
-		  return;
-	  }
-      fileBeingPrinted = fileToPrint;
-      fileToPrint = NULL;
-}
 
 bool GCodes::SendConfigToLine()
 {
@@ -977,6 +1045,7 @@ bool GCodes::StandbyHeaters()
 		return false;
 	for(int8_t heater = 0; heater < HEATERS; heater++)
 		reprap.GetHeat()->Standby(heater);
+	selectedHead = -1;
 	return true;
 }
 
@@ -1164,7 +1233,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 28: // Home
       if(NoHome())
       {
-    	homeAxisFinalMove = false;
+    	homeAxisMoveCount = 0;
         homeX = gb->Seen(gCodeLetters[X_AXIS]);
         homeY = gb->Seen(gCodeLetters[Y_AXIS]);
         homeZ = gb->Seen(gCodeLetters[Z_AXIS]);
@@ -1252,6 +1321,8 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       break;
       
     case 24: // Print/resume-printing the selected file
+      if(fileBeingPrinted != NULL)
+    	  break;
       fileBeingPrinted = fileToPrint;
       fileToPrint = NULL;
       break;
@@ -1259,6 +1330,13 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 25: // Pause the print
     	fileToPrint = fileBeingPrinted;
     	fileBeingPrinted = NULL;
+    	break;
+
+    case 27: // Report print status - Depricated
+    	if(this->PrintingAFile())
+    		strncpy(reply, "SD printing.", STRING_LENGTH);
+    	else
+    		strncpy(reply, "Not SD printing.", STRING_LENGTH);
     	break;
 
     case 28: // Write to file
@@ -1306,6 +1384,16 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     				(int)platform->DriveStepsPerUnit(Z_AXIS), (int)platform->DriveStepsPerUnit(AXES)); // FIXME - needs to do multiple extruders
         break;
 
+
+    case 98:
+    	if(gb->Seen('P'))
+    		result = DoFileCannedCycles(gb->GetString());
+    	break;
+
+    case 99:
+    	result = FileCannedCyclesReturn();
+    	break;
+
     case 104: // Depricated
     	if(gb->Seen('S'))
     	{
@@ -1342,7 +1430,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     		reprap.SetDebug(gb->GetIValue());
     	break;
 
-    case 112: // Emergency stop - aced upon in Webserver
+    case 112: // Emergency stop - acted upon in Webserver
     	break;
 
     case 114: // Deprecated
@@ -1539,11 +1627,20 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 
     case 558: // Set Z probe type
     	if(gb->Seen('P'))
+    	{
     		platform->SetZProbeType(gb->GetIValue());
+    	}
+    	else
+    	{
+    		snprintf(reply, STRING_LENGTH, "%d", platform->GetZProbeType());
+    	}
     	break;
 
     case 559: // Upload config.g
-       	str = platform->GetConfigFile();
+    	if(gb->Seen('P'))
+    		str = gb->GetString();
+    	else
+    		str = platform->GetConfigFile();
         OpenFileToWrite(platform->GetSysDir(), str, gb);
         snprintf(reply, STRING_LENGTH, "Writing to file: %s", str);
     	break;
@@ -1566,16 +1663,26 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	}
     	break;
 
-    case 876: // TEMPORARY - this will go away...
-    	if(gb->Seen('P'))
-    	{
-    		iValue = gb->GetIValue();
-    		if(iValue != 1)
-    			platform->SetHeatOn(0);
-    		else
-    			platform->SetHeatOn(1);
-    	}
+//    case 876: // TEMPORARY - this will go away...
+//    	if(gb->Seen('P'))
+//    	{
+//    		iValue = gb->GetIValue();
+//    		if(iValue != 1)
+//    			platform->SetHeatOn(0);
+//    		else
+//    			platform->SetHeatOn(1);
+//    	}
+//    	break;
+
+    case 900:
+    	result = DoFileCannedCycles("homex.g");
     	break;
+
+    case 901:
+    	result = DoFileCannedCycles("homey.g");
+    	break;
+
+
 
     case 906: // Set Motor currents
     	for(uint8_t i = 0; i < DRIVES; i++)
