@@ -312,7 +312,12 @@ void RepRap::SelectTool(int toolNumber)
 		t = t->Next();
 	}
 
-	platform->Message(HOST_MESSAGE, "Attempt to select and activate a non-existent tool.\n");
+	// Selecting a non-existent tool is valid.  It sets them all to standby.
+
+	if(currentTool != NULL)
+		StandbyTool(currentTool->Number());
+	currentTool = NULL;
+
 }
 
 void RepRap::StandbyTool(int toolNumber)
@@ -331,7 +336,22 @@ void RepRap::StandbyTool(int toolNumber)
 		t = t->Next();
 	}
 
-	platform->Message(HOST_MESSAGE, "Attempt to standby a non-existent tool.\n");
+	snprintf(scratchString, STRING_LENGTH, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
+	platform->Message(HOST_MESSAGE, scratchString);
+}
+
+Tool* RepRap::GetTool(int toolNumber)
+{
+	Tool* t = toolList;
+
+	while(t)
+	{
+		if(t->Number() == toolNumber)
+			return t;
+		t = t->Next();
+	}
+
+	return NULL; // Not an error
 }
 
 void RepRap::SetToolVariables(int toolNumber, float x, float y, float z, float* standbyTemperatures, float* activeTemperatures)
@@ -348,21 +368,10 @@ void RepRap::SetToolVariables(int toolNumber, float x, float y, float z, float* 
 		t = t->Next();
 	}
 
-	platform->Message(HOST_MESSAGE, "Attempt to set-up a non-existent tool.\n");
+	snprintf(scratchString, STRING_LENGTH, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
+	platform->Message(HOST_MESSAGE, scratchString);
 }
 
-void RepRap::GetCurrentToolOffset(float& x, float& y, float& z)
-{
-	if(currentTool == NULL)
-	{
-		platform->Message(HOST_MESSAGE, "Attempt to get offset when no tool selected.\n");
-		x = 0.0;
-		y = 0.0;
-		z = 0.0;
-		return;
-	}
-	currentTool->GetOffset(x, y, z);
-}
 
 
 

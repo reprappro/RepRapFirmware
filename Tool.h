@@ -30,19 +30,26 @@ class Tool
 {
 public:
 
-	Tool(int tNum, int d[], int h[]);
+	Tool(int toolNumber, long d[], int dCount, long h[], int hCount);
+	void GetOffset(float& xx, float& yy, float& zz);
+	int DriveCount();
+	int Drive(int driveNumber);
+	int HeaterCount();
+	int Heater(int heaterNumber);
+	int Number();
+	void SetVariables(float xx, float yy, float zz, float* standbyTemperatures, float* activeTemperatures);
+	void GetVariables(float& xx, float& yy, float& zz, float* standbyTemperatures, float* activeTemperatures);
+	float MaxFeedrate();
+	float InstantDv();
 
 	friend class RepRap;
 
 protected:
 
 	Tool* Next();
-	int Number();
 	void Activate(Tool* currentlyActive);
 	void Standby();
 	void AddTool(Tool* t);
-	void SetVariables(float xx, float yy, float zz, float* standbyTemperatures, float* activeTemperatures);
-	void GetOffset(float& xx, float& yy, float& zz);
 
 private:
 
@@ -55,6 +62,26 @@ private:
 	float x, y, z;
 	bool active;
 };
+
+inline int Tool::DriveCount()
+{
+	return driveCount;
+}
+
+inline int Tool::Drive(int driveNumber)
+{
+	return drives[driveNumber];
+}
+
+inline int Tool::HeaterCount()
+{
+	return heaterCount;
+}
+
+inline int Tool::Heater(int heaterNumber)
+{
+	return heaters[heaterNumber];
+}
 
 inline Tool* Tool::Next()
 {

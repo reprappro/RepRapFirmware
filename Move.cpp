@@ -192,25 +192,31 @@ void Move::Spin()
     currentFeedrate = -1.0;
     
     // Promote minimum feedrates
-    
+
     if(movementType & xyMove)
-      nextMove[DRIVES] = fmax(nextMove[DRIVES], platform->InstantDv(X_AXIS));
+    	nextMove[DRIVES] = fmax(nextMove[DRIVES], platform->InstantDv(X_AXIS)); // Assumes X and Y are equal.  FIXME?
     else if(movementType & eMove)
-      nextMove[DRIVES] = fmax(nextMove[DRIVES], platform->InstantDv((AXES+gCodes->GetSelectedHead())));
-    else
-      nextMove[DRIVES] = fmax(nextMove[DRIVES], platform->InstantDv(Z_AXIS));
-      
+    {
+    	Tool* tool = reprap.GetCurrentTool();
+    	if(tool != NULL)
+    		nextMove[DRIVES] = fmax(nextMove[DRIVES], tool->InstantDv());
+    } else
+    	nextMove[DRIVES] = fmax(nextMove[DRIVES], platform->InstantDv(Z_AXIS));
+
     // Restrict maximum feedrates; assumes xy overrides e overrides z FIXME??
-    
+
     if(movementType & xyMove)
-      nextMove[DRIVES] = fmin(nextMove[DRIVES], platform->MaxFeedrate(X_AXIS));  // Assumes X and Y are equal.  FIXME?
+    	nextMove[DRIVES] = fmin(nextMove[DRIVES], platform->MaxFeedrate(X_AXIS));  // Assumes X and Y are equal.  FIXME?
     else if(movementType & eMove)
-      nextMove[DRIVES] = fmin(nextMove[DRIVES], platform->MaxFeedrate(AXES+gCodes->GetSelectedHead())); // Fixed
-    else // Must be z
-      nextMove[DRIVES] = fmin(nextMove[DRIVES], platform->MaxFeedrate(Z_AXIS));
-    
+    {
+    	Tool* tool = reprap.GetCurrentTool();
+    	if(tool != NULL)
+    		nextMove[DRIVES] = fmin(nextMove[DRIVES], tool->MaxFeedrate());
+    } else // Must be z
+    	nextMove[DRIVES] = fmin(nextMove[DRIVES], platform->MaxFeedrate(Z_AXIS));
+
     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], 0.0, checkEndStopsOnNextMove, movementType))
-      platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+    	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
   }
   platform->ClassReport("Move", longWait);
 }
@@ -519,7 +525,11 @@ void Move::DoLookAhead()
           else if (mt & zMove)
             c = platform->InstantDv(Z_AXIS);
           else
-            c = platform->InstantDv((AXES+gCodes->GetSelectedHead())); // value for current extruder
+          {
+        	  Tool* tool = reprap.GetCurrentTool();
+        	  if(tool != NULL)
+        		  c = reprap.GetCurrentTool()->InstantDv();
+          }
         }
         n1->SetV(c);
         n1->SetProcessed(vCosineSet);
