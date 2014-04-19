@@ -323,7 +323,7 @@ private:
 
 // This class handles serial I/O - typically via USB
 
-class Line //: public InputOutput
+class Line
 {
 public:
 
@@ -335,12 +335,14 @@ public:
 	void Write(long l);
 
 friend class Platform;
+friend class RepRap;
 
 protected:
 
 	Line();
 	void Init();
 	void Spin();
+	void InjectString(char* string);
 
 private:
 	// Although the sam3x usb interface code already has a 512-byte buffer, adding this extra 256-byte buffer
@@ -1071,16 +1073,11 @@ inline Line* Platform::GetLine() const
 
 inline int8_t Line::Status() const
 {
-//	if(alternateInput != NULL)
-//		return alternateInput->Status();
 	return numChars == 0 ? nothing : byteAvailable;
 }
 
 inline int Line::Read(char& b)
 {
-//  if(alternateInput != NULL)
-//	return alternateInput->Read(b);
-
 	  if (numChars == 0) return 0;
 	  b = buffer[getIndex];
 	  getIndex = (getIndex + 1) % lineBufsize;

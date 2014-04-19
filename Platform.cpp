@@ -923,6 +923,20 @@ void Line::Spin()
 	}
 }
 
+// This is only ever called on initialisation, so we
+// know the buffer won't overflow
+
+void Line::InjectString(char* string)
+{
+	int i = 0;
+	while(string[i])
+	{
+		buffer[(getIndex + numChars) % lineBufsize] = string[i];
+		numChars++;
+		i++;
+	}
+}
+
 //***************************************************************************************************
 
 // Network/Ethernet class

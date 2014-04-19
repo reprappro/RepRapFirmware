@@ -187,7 +187,27 @@ void RepRap::Init()
   platform->Message(HOST_MESSAGE, platform->GetConfigFile());
   platform->Message(HOST_MESSAGE, "...\n\n");
 
-  while(gCodes->RunConfigurationGCodes()); // Wait till the file is finished
+  // We inject an M98 into the serial input stream to run the start-up macro
+
+  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
+  platform->GetLine()->InjectString(scratchString);
+
+  bool runningTheFile = false;
+  bool initialisingInProgress = true;
+  while(initialisingInProgress)
+  {
+	  Spin();
+	  if(gCodes->PrintingAFile())
+		  runningTheFile = true;
+	  if(runningTheFile)
+	  {
+		  if(!gCodes->PrintingAFile())
+			  initialisingInProgress = false;
+	  }
+  }
+
+
+  //while(gCodes->RunConfigurationGCodes()); // Wait till the file is finished
 
   platform->Message(HOST_MESSAGE, "\nStarting network...\n");
   platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
