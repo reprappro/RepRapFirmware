@@ -25,8 +25,8 @@ G28 ; Home all axes
 G1 Z5 F200 ; lift nozzle
 G1 X2 Y50 F2000; Go to wait for warm position
 M116; Wait for all temperatures
-G10 P0 S205 R0 ; Set extruder temperature
-T0; Select extruder
+G10 P1 S185 R0 ; Set tool temperature
+T1; Select tool
 M116; Wait for all temperatures
 G1 F1800.000 E-1.00000
 G1 X47.463 Y43.710

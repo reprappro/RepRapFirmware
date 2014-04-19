@@ -1256,10 +1256,16 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
 
 bool GCodes::SetOffsets(GCodeBuffer *gb)
 {
-  int8_t tool;
   if(gb->Seen('P'))
   {
-	  Tool* tool = reprap.GetTool(gb->GetIValue());
+	  int8_t toolNumber = gb->GetIValue();
+	  Tool* tool = reprap.GetTool(toolNumber);
+	  if(tool == NULL)
+	  {
+		  snprintf(scratchString, STRING_LENGTH, "Attempt to set temperatures for non-existent tool: %d\n", toolNumber);
+		  platform->Message(HOST_MESSAGE, scratchString);
+		  return true;
+	  }
 	  float standby[HEATERS];
 	  float active[HEATERS];
 	  int hCount = tool->HeaterCount();

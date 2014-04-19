@@ -12,6 +12,7 @@ G90 ; Absolute positioning
 M83 ; Extrusions relative
 M906 X800 Y1000 Z800 E800 ; Motor currents (mA)
 M563 P1 D0 H1 ; Define tool 1
+G10 P1 S185 R0 ; Set tool 1 temperatures
 M92 E447 ; Set extruder steps/mm
 M558 P2 ; Turn Z Probe on - modulated probe
 G31 Z3 P435 ; Set Z probe height and threshold
