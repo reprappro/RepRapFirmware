@@ -33,10 +33,6 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	driveCount = dCount;
 	heaterCount = hCount;
 
-	x = 0.0;
-	y = 0.0;
-	z = 0.0;
-
 	if(driveCount > 0)
 	{
 		if(driveCount > DRIVES - AXES)
@@ -122,7 +118,7 @@ void Tool::Activate(Tool* currentlyActive)
 {
 	if(active)
 		return;
-	if(currentlyActive)
+	if(currentlyActive != NULL && currentlyActive != this)
 		currentlyActive->Standby();
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 		reprap.GetHeat()->Activate(heaters[heater]);
@@ -138,11 +134,8 @@ void Tool::Standby()
 	active = false;
 }
 
-void Tool::SetVariables(float xx, float yy, float zz, float* standbyTemperatures, float* activeTemperatures)
+void Tool::SetVariables(float* standbyTemperatures, float* activeTemperatures)
 {
-	x = xx;
-	y = yy;
-	z = zz;
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
 		reprap.GetHeat()->SetActiveTemperature(heaters[heater], activeTemperatures[heater]);
@@ -150,11 +143,8 @@ void Tool::SetVariables(float xx, float yy, float zz, float* standbyTemperatures
 	}
 }
 
-void Tool::GetVariables(float& xx, float& yy, float& zz, float* standbyTemperatures, float* activeTemperatures)
+void Tool::GetVariables(float* standbyTemperatures, float* activeTemperatures)
 {
-	xx = x;
-	yy = y;
-	zz = z;
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
 		activeTemperatures[heater] = reprap.GetHeat()->GetActiveTemperature(heaters[heater]);

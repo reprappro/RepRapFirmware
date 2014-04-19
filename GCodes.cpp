@@ -1251,21 +1251,23 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
   return false;
 }
 
-// Set distance offsets and working and standby temperatures for
-// an extruder.  I.e. handle a G10.
+// Set working and standby temperatures for
+// a tool.  I.e. handle a G10.
 
 bool GCodes::SetOffsets(GCodeBuffer *gb)
 {
-  int8_t head;
+  int8_t tool;
   if(gb->Seen('P'))
   {
-    head = gb->GetIValue() + 1;  // 0 is the Bed
-    if(gb->Seen('R'))
-      reprap.GetHeat()->SetStandbyTemperature(head, gb->GetFValue());
-      
-    if(gb->Seen('S'))
-      reprap.GetHeat()->SetActiveTemperature(head, gb->GetFValue());
-    // FIXME - do X, Y and Z
+	  Tool* tool = reprap.GetTool(gb->GetIValue());
+	  float standby[HEATERS];
+	  float active[HEATERS];
+	  int hCount = tool->HeaterCount();
+	  if(gb->Seen('R'))
+		  gb->GetFloatArray(standby, hCount);
+	  if(gb->Seen('S'))
+		  gb->GetFloatArray(active, hCount);
+	  tool->SetVariables(standby, active);
   }
   return true;  
 }
@@ -1468,11 +1470,10 @@ void GCodes::SetToolHeaters(float temperature)
 
 	float standby[HEATERS];
 	float active[HEATERS];
-	float x, y, z;
-	tool->GetVariables(x, y, z, standby, active);
+	tool->GetVariables(standby, active);
 	for(int8_t h = 0; h < tool->HeaterCount(); h++)
 		active[h] = temperature;
-	tool->SetVariables(x, y, z, standby, active);
+	tool->SetVariables(standby, active);
 }
 
 // If the GCode to act on is completed, this returns true,

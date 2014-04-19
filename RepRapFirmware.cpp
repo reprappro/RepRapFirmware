@@ -374,7 +374,7 @@ Tool* RepRap::GetTool(int toolNumber)
 	return NULL; // Not an error
 }
 
-void RepRap::SetToolVariables(int toolNumber, float x, float y, float z, float* standbyTemperatures, float* activeTemperatures)
+void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures)
 {
 	Tool* t = toolList;
 
@@ -382,7 +382,7 @@ void RepRap::SetToolVariables(int toolNumber, float x, float y, float z, float* 
 	{
 		if(t->Number() == toolNumber)
 		{
-			t->SetVariables(x, y, z, standbyTemperatures, activeTemperatures);
+			t->SetVariables(standbyTemperatures, activeTemperatures);
 			return;
 		}
 		t = t->Next();

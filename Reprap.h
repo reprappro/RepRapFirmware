@@ -39,7 +39,7 @@ class RepRap
     void StandbyTool(int toolNumber);
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
-    void SetToolVariables(int toolNumber, float x, float y, float z, float* standbyTemperatures, float* activeTemperatures);
+    void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
     Platform* GetPlatform() const;
     Move* GetMove() const;
     Heat* GetHeat() const;

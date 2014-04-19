@@ -37,8 +37,8 @@ public:
 	int HeaterCount();
 	int Heater(int heaterNumber);
 	int Number();
-	void SetVariables(float xx, float yy, float zz, float* standbyTemperatures, float* activeTemperatures);
-	void GetVariables(float& xx, float& yy, float& zz, float* standbyTemperatures, float* activeTemperatures);
+	void SetVariables(float* standbyTemperatures, float* activeTemperatures);
+	void GetVariables(float* standbyTemperatures, float* activeTemperatures);
 	float MaxFeedrate();
 	float InstantDv();
 
@@ -59,7 +59,6 @@ private:
 	int* heaters;
 	int heaterCount;
 	Tool* next;
-	float x, y, z;
 	bool active;
 };
 
@@ -93,12 +92,6 @@ inline int Tool::Number()
 	return myNumber;
 }
 
-inline void Tool::GetOffset(float& xx, float& yy, float& zz)
-{
-	xx = x;
-	yy = y;
-	zz = z;
-}
 
 
 
