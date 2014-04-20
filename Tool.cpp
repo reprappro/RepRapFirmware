@@ -57,8 +57,14 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 			return;
 		}
 		heaters = new int[heaterCount];
+		activeTemperatures = new float[heaterCount];
+		standbyTemperatures = new float[heaterCount];
 		for(int8_t heater = 0; heater < heaterCount; heater++)
+		{
 			heaters[heater] = h[heater];
+			activeTemperatures[heater] = 0.0;
+			standbyTemperatures[heater] = 0.0;
+		}
 	}
 }
 
@@ -121,7 +127,11 @@ void Tool::Activate(Tool* currentlyActive)
 	if(currentlyActive != NULL && currentlyActive != this)
 		currentlyActive->Standby();
 	for(int8_t heater = 0; heater < heaterCount; heater++)
+	{
+		reprap.GetHeat()->SetActiveTemperature(heaters[heater], activeTemperatures[heater]);
+		reprap.GetHeat()->SetStandbyTemperature(heaters[heater], standbyTemperatures[heater]);
 		reprap.GetHeat()->Activate(heaters[heater]);
+	}
 	active = true;
 }
 
@@ -130,25 +140,28 @@ void Tool::Standby()
 	if(!active)
 		return;
 	for(int8_t heater = 0; heater < heaterCount; heater++)
+	{
+		reprap.GetHeat()->SetStandbyTemperature(heaters[heater], standbyTemperatures[heater]);
 		reprap.GetHeat()->Standby(heaters[heater]);
+	}
 	active = false;
 }
 
-void Tool::SetVariables(float* standbyTemperatures, float* activeTemperatures)
+void Tool::SetVariables(float* standby, float* active)
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
-		reprap.GetHeat()->SetActiveTemperature(heaters[heater], activeTemperatures[heater]);
-		reprap.GetHeat()->SetStandbyTemperature(heaters[heater], standbyTemperatures[heater]);
+		activeTemperatures[heater] = active[heater];
+		standbyTemperatures[heater] = standby[heater];
 	}
 }
 
-void Tool::GetVariables(float* standbyTemperatures, float* activeTemperatures)
+void Tool::GetVariables(float* standby, float* active)
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
-		activeTemperatures[heater] = reprap.GetHeat()->GetActiveTemperature(heaters[heater]);
-		standbyTemperatures[heater] = reprap.GetHeat()->GetStandbyTemperature(heaters[heater]);
+		active[heater] = activeTemperatures[heater];
+		standby[heater] = standbyTemperatures[heater];
 	}
 }
 

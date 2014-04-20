@@ -37,8 +37,8 @@ public:
 	int HeaterCount();
 	int Heater(int heaterNumber);
 	int Number();
-	void SetVariables(float* standbyTemperatures, float* activeTemperatures);
-	void GetVariables(float* standbyTemperatures, float* activeTemperatures);
+	void SetVariables(float* standby, float* active);
+	void GetVariables(float* standby, float* active);
 	float MaxFeedrate();
 	float InstantDv();
 
@@ -57,6 +57,8 @@ private:
 	int* drives;
 	int driveCount;
 	int* heaters;
+	float* activeTemperatures;
+	float* standbyTemperatures;
 	int heaterCount;
 	Tool* next;
 	bool active;
