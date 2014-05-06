@@ -1950,7 +1950,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 205:  //M205 advanced settings:  minimum travel speed S=while printing T=travel only,  B=minimum segment time X= maximum xy jerk, Z=maximum Z jerk
     	break;
 
-    case 206:  // Offset axes
+    case 206:  // Offset axes - Depricated
     	result = OffsetAxes(gb);
     	break;
 

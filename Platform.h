@@ -97,8 +97,10 @@ Licence: GPL
 #define MAX_STEPPER_DIGIPOT_VOLTAGE ( 3.3*2.5/(2.7+2.5) ) // Stepper motor current reference voltage
 #define Z_PROBE_AD_VALUE (400)					// Default for the Z probe - should be overwritten by experiment
 #define Z_PROBE_STOP_HEIGHT (0.7) 				// mm
-#define Z_PROBE_PIN (0) 						// Analogue pin number
-#define Z_PROBE_MOD_PIN (61)					// Digital pin number to turn the IR LED on (high) or off (low)
+//#define Z_PROBE_PIN (0) 						// Analogue pin number
+//#define Z_PROBE_MOD_PIN (61)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_PIN (10) 						// Analogue pin number
+#define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
 #define MAX_FEEDRATES {50.0, 50.0, 3.0, 16.0}   // mm/sec
 #define ACCELERATIONS {800.0, 800.0, 10.0, 250.0}    // mm/sec^2
 #define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0}
