@@ -36,7 +36,7 @@ Licence: GPL
 
 // What are we supposed to be running on
 
-#define ELECTRONICS "Duet"
+#define ELECTRONICS "Duet + Extension"
 
 // Language-specific includes
 
@@ -66,45 +66,85 @@ Licence: GPL
 
 /**************************************************************************************************/
 
+//// The physical capabilities of the machine
+//
+//#define DRIVES 4  // The number of drives in the machine, including X, Y, and Z plus extruder drives
+//#define AXES 3    // The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
+//#define HEATERS 2 // The number of heaters in the machine; 0 is the heated bed even if there isn't one.
+//
+//// The numbers of entries in each {} array definition must correspond with the values of DRIVES,
+//// AXES, or HEATERS.  Set values to -1 to flag unavailability.  Pins are the microcontroller pin numbers.
+//
+//// DRIVES
+//
+//#define STEP_PINS {14, 25, 5, X2}				// Full array for Duet + Duex4 is {14, 25, 5, X2, 41, 39, X4, 49}
+//#define DIRECTION_PINS {15, 26, 4, X3}			// Full array for Duet + Duex4 is {15, 26, 4, X3, 35, 53, 51, 48}
+//#define FORWARDS true     						// What to send to go...
+//#define BACKWARDS false    						// ...in each direction
+//#define ENABLE_PINS {29, 27, X1, X0}            // Full array for Duet + Duex4 is {29, 27, X1, X0, 37, X8, 50, 47}
+//#define ENABLE false      						// What to send to enable...
+//#define DISABLE true     						// ...and disable a drive
+//#define DISABLE_DRIVES {false, false, true, false} // Set true to disable a drive when it becomes idle
+//#define LOW_STOP_PINS {11, -1, 60, 31}				// Full array endstop pins for Duet + Duex4 is {11, 28, 60, 31, 24, 46, 45, 44}
+//#define HIGH_STOP_PINS {-1, 28, -1, -1}
+//#define ENDSTOP_HIT 1 							// when a stop == this it is hit
+//// Indices for motor current digipots (if any)
+////  first 4 are for digipot 1,(on duet)
+////  second 4 for digipot 2(on expansion board)
+////  Full order is {1, 3, 2, 0, 1, 3, 2, 0}, only include as many as you have DRIVES defined
+//#define POT_WIPES {1, 3, 2, 0} 					// Indices for motor current digipots (if any)
+//#define SENSE_RESISTOR 0.1   					// Stepper motor current sense resistor (ohms)
+//#define MAX_STEPPER_DIGIPOT_VOLTAGE ( 3.3*2.5/(2.7+2.5) ) // Stepper motor current reference voltage
+//#define Z_PROBE_AD_VALUE (400)					// Default for the Z probe - should be overwritten by experiment
+//#define Z_PROBE_STOP_HEIGHT (0.7) 				// mm
+////#define Z_PROBE_PIN (0) 						// Analogue pin number
+////#define Z_PROBE_MOD_PIN (61)					// Digital pin number to turn the IR LED on (high) or off (low)
+//#define Z_PROBE_PIN (10) 						// Analogue pin number
+//#define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
+//#define MAX_FEEDRATES {50.0, 50.0, 3.0, 16.0}   // mm/sec
+//#define ACCELERATIONS {800.0, 800.0, 10.0, 250.0}    // mm/sec^2
+//#define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0}
+//#define INSTANT_DVS {15.0, 15.0, 0.2, 2.0}    	// (mm/sec)
+//#define NUM_MIXING_DRIVES 1; //number of mixing drives
+
 // The physical capabilities of the machine
 
-#define DRIVES 4  // The number of drives in the machine, including X, Y, and Z plus extruder drives
-#define AXES 3    // The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
-#define HEATERS 2 // The number of heaters in the machine; 0 is the heated bed even if there isn't one.
+#define DRIVES 8 // The number of drives in the machine, including X, Y, and Z plus extruder drives
+#define AXES 3 // The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
+#define HEATERS 6 // The number of heaters in the machine; 0 is the heated bed even if there isn't one.
 
-// The numbers of entries in each {} array definition must correspond with the values of DRIVES,
-// AXES, or HEATERS.  Set values to -1 to flag unavailability.  Pins are the microcontroller pin numbers.
+// The numbers of entries in each array must correspond with the values of DRIVES,
+// AXES, or HEATERS. Set values to -1 to flag unavailability.
 
 // DRIVES
 
-#define STEP_PINS {14, 25, 5, X2}				// Full array for Duet + Duex4 is {14, 25, 5, X2, 41, 39, X4, 49}
-#define DIRECTION_PINS {15, 26, 4, X3}			// Full array for Duet + Duex4 is {15, 26, 4, X3, 35, 53, 51, 48}
-#define FORWARDS true     						// What to send to go...
-#define BACKWARDS false    						// ...in each direction
-#define ENABLE_PINS {29, 27, X1, X0}            // Full array for Duet + Duex4 is {29, 27, X1, X0, 37, X8, 50, 47}
-#define ENABLE false      						// What to send to enable... 
-#define DISABLE true     						// ...and disable a drive
-#define DISABLE_DRIVES {false, false, true, false} // Set true to disable a drive when it becomes idle
-#define LOW_STOP_PINS {11, -1, 60, 31}				// Full array endstop pins for Duet + Duex4 is {11, 28, 60, 31, 24, 46, 45, 44}
-#define HIGH_STOP_PINS {-1, 28, -1, -1}
-#define ENDSTOP_HIT 1 							// when a stop == this it is hit
+#define STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
+#define DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
+#define FORWARDS true // What to send to go...
+#define BACKWARDS false // ...in each direction
+#define ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
+#define ENABLE false // What to send to enable...
+#define DISABLE true // ...and disable a drive
+#define DISABLE_DRIVES {false, false, true, false, false, false, false, false} // Set true to disable a drive when it becomes idle
+#define LOW_STOP_PINS {11, -1, 60, 31, 24, 46, 45, 44} //E Stops not currently used
+#define HIGH_STOP_PINS {-1, 28, -1, -1, -1, -1, -1, -1}
+//#define HOME_DIRECTION {1, 1, 1, -1, -1, -1, -1, -1} // 1 for Max/High, -1 for Min/ Low
+#define ENDSTOP_HIT 1 // when a stop == this it is hit
 // Indices for motor current digipots (if any)
-//  first 4 are for digipot 1,(on duet)
-//  second 4 for digipot 2(on expansion board)
-//  Full order is {1, 3, 2, 0, 1, 3, 2, 0}, only include as many as you have DRIVES defined
-#define POT_WIPES {1, 3, 2, 0} 					// Indices for motor current digipots (if any)
-#define SENSE_RESISTOR 0.1   					// Stepper motor current sense resistor (ohms)
+// first 4 are for digipot 1,(on duet)
+// second 4 for digipot 2(on expansion board)
+// Full order is {1, 3, 2, 0, 1, 3, 2, 0}, only include as many as you have DRIVES defined
+#define POT_WIPES {1, 3, 2, 0, 1, 3, 2, 0}
+#define SENSE_RESISTOR 0.1 // Stepper motor current sense resistor
 #define MAX_STEPPER_DIGIPOT_VOLTAGE ( 3.3*2.5/(2.7+2.5) ) // Stepper motor current reference voltage
-#define Z_PROBE_AD_VALUE (400)					// Default for the Z probe - should be overwritten by experiment
-#define Z_PROBE_STOP_HEIGHT (0.7) 				// mm
-//#define Z_PROBE_PIN (0) 						// Analogue pin number
-//#define Z_PROBE_MOD_PIN (61)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_AD_VALUE (400) // Default for the Z probe - should be overwritten by experiment
+#define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
 #define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
-#define MAX_FEEDRATES {50.0, 50.0, 3.0, 16.0}   // mm/sec
-#define ACCELERATIONS {800.0, 800.0, 10.0, 250.0}    // mm/sec^2
-#define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0}
-#define INSTANT_DVS {15.0, 15.0, 0.2, 2.0}    	// (mm/sec)
+#define MAX_FEEDRATES {100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0} // mm/sec
+#define ACCELERATIONS {500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0} // mm/sec^2
+#define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0}
+#define INSTANT_DVS {15.0, 15.0, 0.2, 2.0, 2.0, 2.0, 2.0, 2.0} // (mm/sec)
 #define NUM_MIXING_DRIVES 1; //number of mixing drives
 
 // AXES
@@ -125,27 +165,48 @@ Licence: GPL
 
 // HEATERS - The bed is assumed to be the at index 0
 
-#define TEMP_SENSE_PINS {5, 4}  				// Analogue pin numbers (full array for Duet+Duex4 = {5, 4, 0, 7, 8, 9} )
-#define HEAT_ON_PINS {6, X5}					// PWM pins (full array for Duet+Duex4 = {6, X5, X7, 7, 8, 9} )
+//#define TEMP_SENSE_PINS {5, 4}  				// Analogue pin numbers (full array for Duet+Duex4 = {5, 4, 0, 7, 8, 9} )
+//#define HEAT_ON_PINS {6, X5}					// PWM pins (full array for Duet+Duex4 = {6, X5, X7, 7, 8, 9} )
+//
+//// Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
+//// Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
+//#define THERMISTOR_BETAS {3988.0, 4138.0}		// See http://en.wikipedia.org/wiki/Thermistor
+//#define THERMISTOR_SERIES_RS {1000, 1000} 		// Ohms in series with the thermistors
+//#define THERMISTOR_25_RS {10000.0, 100000.0} 	// Thermistor ohms at 25 C = 298.15 K
+//#define USE_PID {false, true} 					// PID or bang-bang for this heater?
+//#define PID_KIS {-1, 0.027 / HEAT_SAMPLE_TIME} 	// Integral PID constants, adjusted by dc42 for Ormerod hot end
+//#define PID_KDS {-1, 100 * HEAT_SAMPLE_TIME}	// Derivative PID constants
+//#define PID_KPS {-1, 20}						// Proportional PID constants
+//#define FULL_PID_BAND {-1, 150.0}				// errors larger than this cause heater to be on or off and I-term set to zero
+//#define PID_MIN {-1, 0.0}						// minimum value of I-term
+//#define PID_MAX {-1, 180}						// maximum value of I-term, must be high enough to reach 245C for ABS printing
+//#define D_MIX {-1, 0.5}							// higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
+//#define TEMP_INTERVAL 0.122 					// secs - check and control temperatures this often
+//#define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
+//#define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
+//#define COOLING_FAN_PIN X6 										//pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
+//#define HEAT_ON 0 								// 0 for inverted heater (eg Duet v0.6) 1 for not (e.g. Duet v0.4)
 
+#define TEMP_SENSE_PINS {5, 4, 0, 7, 8, 9} // Analogue pin numbers
+#define HEAT_ON_PINS {6, X5, X7, 7, 8, 9} //pin D38 is PWM capable but not an Arduino PWM pin - //FIXME TEST if E1 PWM works as D38
 // Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
 // Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
-#define THERMISTOR_BETAS {3988.0, 4138.0}		// See http://en.wikipedia.org/wiki/Thermistor
-#define THERMISTOR_SERIES_RS {1000, 1000} 		// Ohms in series with the thermistors
-#define THERMISTOR_25_RS {10000.0, 100000.0} 	// Thermistor ohms at 25 C = 298.15 K
-#define USE_PID {false, true} 					// PID or bang-bang for this heater?
-#define PID_KIS {-1, 0.027 / HEAT_SAMPLE_TIME} 	// Integral PID constants, adjusted by dc42 for Ormerod hot end
-#define PID_KDS {-1, 100 * HEAT_SAMPLE_TIME}	// Derivative PID constants
-#define PID_KPS {-1, 20}						// Proportional PID constants
-#define FULL_PID_BAND {-1, 150.0}				// errors larger than this cause heater to be on or off and I-term set to zero
-#define PID_MIN {-1, 0.0}						// minimum value of I-term
-#define PID_MAX {-1, 180}						// maximum value of I-term, must be high enough to reach 245C for ABS printing
-#define D_MIX {-1, 0.5}							// higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
-#define TEMP_INTERVAL 0.122 					// secs - check and control temperatures this often
-#define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
-#define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
-#define COOLING_FAN_PIN X6 										//pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
-#define HEAT_ON 0 								// 0 for inverted heater (eg Duet v0.6) 1 for not (e.g. Duet v0.4)
+#define THERMISTOR_BETAS {3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0} // Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
+#define THERMISTOR_SERIES_RS {1000, 1000, 1000, 1000, 1000, 1000} // Ohms in series with the thermistors
+#define THERMISTOR_25_RS {10000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0} // Thermistor ohms at 25 C = 298.15 K
+#define USE_PID {false, true, true, true, true, true} // PID or bang-bang for this heater?
+#define PID_KIS { 2.2, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME} // Integral PID constants, adjusted by dc42 for Ormerod hot end
+#define PID_KDS {80, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME}// Derivative PID constants
+#define PID_KPS {12, 20, 20, 20, 20, 20} // Proportional PID constants
+#define FULL_PID_BAND {150, 150.0, 150.0, 150.0, 150.0, 150.0} // errors larger than this cause heater to be on or off and I-term set to zero
+#define PID_MIN {0.0, 0.0, 0.0, 0.0, 0.0, 0.0} // minimum value of I-term
+#define PID_MAX {180, 180, 180, 180, 180, 180} // maximum value of I-term, must be high enough to reach 245C for ABS printing
+#define D_MIX {0.5, 0.5, 0.5, 0.5, 0.5, 0.5} // higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
+#define TEMP_INTERVAL 0.122 // secs - check and control temperatures this often
+#define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
+#define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO}
+#define COOLING_FAN_PIN X6 //pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
+#define HEAT_ON 0 // 0 for inverted heater (eg Duet v0.6) 1 for not (e.g. Duet v0.4)
 
 #define AD_RANGE 1023.0							//16383 // The A->D converter that measures temperatures gives an int this big as its max value
 

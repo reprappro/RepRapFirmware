@@ -62,8 +62,8 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 		for(int8_t heater = 0; heater < heaterCount; heater++)
 		{
 			heaters[heater] = h[heater];
-			activeTemperatures[heater] = 0.0;
-			standbyTemperatures[heater] = 0.0;
+			activeTemperatures[heater] = ABS_ZERO;
+			standbyTemperatures[heater] = ABS_ZERO;
 		}
 	}
 }
@@ -111,10 +111,10 @@ void Tool::AddTool(Tool* t)
 {
 	Tool* last = this;
 	Tool* n = next;
-	while(n)
+	while(n != NULL)
 	{
 		last = n;
-		n = Next();
+		n = n->Next();
 	}
 	t->next = NULL; // Defensive...
 	last->next = t;

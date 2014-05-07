@@ -1285,8 +1285,8 @@ void GCodes::AddNewTool(GCodeBuffer *gb)
 
 	int toolNumber = gb->GetLValue();
 
-	long drives[DRIVES];  // There can never be more than we have...
-	int dCount = DRIVES;  // Sets the limit and returns the count
+	long drives[DRIVES - AXES];  // There can never be more than we have...
+	int dCount = DRIVES - AXES;  // Sets the limit and returns the count
 	if(gb->Seen('D'))
 		gb->GetLongArray(drives, dCount);
 
@@ -1769,7 +1769,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	break;
 
     case 112: // Emergency stop - acted upon in Webserver, but also here in case it comes from USB etc.
-    		reprap.EmergencyStop();
+    	reprap.EmergencyStop();
     	break;
 
     case 114: // Deprecated
@@ -1843,13 +1843,14 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       platform->Message(HOST_MESSAGE, "M141 - heated chamber not yet implemented\n");
       break;
 
-    case 160: //number of mixing filament drives
+    case 160: //number of mixing filament drives  TODO: With tools defined, is this needed?
     	if(gb->Seen('S'))
 		{
 			int iValue=gb->GetIValue();
 			platform->SetMixingDrives(iValue);
 		}
 		break;
+
     case 190: // Deprecated...
     	if(gb->Seen('S'))
     	{
@@ -1978,6 +1979,11 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 
     case 301: // Set hot end PID values
     	{
+    		if(!gb->Seen('H')) // Must specify the heater
+    			break;
+
+    		int8_t heater = gb->GetIValue();
+
     		float pValue, iValue, dValue;
     		bool seen = false;
     		if (gb->Seen('P'))
@@ -2010,11 +2016,11 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 
     		if (seen)
     		{
-    			platform->SetPidValues(1, pValue, iValue, dValue);
+    			platform->SetPidValues(heater, pValue, iValue, dValue);
     		}
     		else
     		{
-        		snprintf(reply, STRING_LENGTH, "P:%f I:%f D: %f\n", pValue, iValue, dValue);
+        		snprintf(reply, STRING_LENGTH, "Heater %d - P:%f I:%f D: %f\n", heater, pValue, iValue, dValue);
     		}
     	}
     	break;
@@ -2102,7 +2108,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	}
     	else
     	{
-    		snprintf(reply, STRING_LENGTH, "%d", platform->GetZProbeType());
+    		snprintf(reply, STRING_LENGTH, "Z Probe: %d", platform->GetZProbeType());
     	}
     	break;
 
@@ -2178,6 +2184,9 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	    snprintf(reply, STRING_LENGTH, "%s", gb->GetIValue());
     	    resend = true;
     	}
+    	break;
+
+    case 999: // Reset. FIXME: Implement this?
     	break;
      
     default:
