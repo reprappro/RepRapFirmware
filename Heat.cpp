@@ -35,11 +35,13 @@ void Heat::Init()
     pids[heater]->Init();
   lastTime = platform->Time();
   longWait = lastTime;
-  active = true; 
+  active = true;
 }
 
 void Heat::Exit()
 {
+  for(int8_t heater=0; heater < HEATERS; heater++)
+	 pids[heater]->SwitchOff();
   platform->Message(HOST_MESSAGE, "Heat class exited.\n");
   active = false;
 }
@@ -88,7 +90,9 @@ bool Heat::AllHeatersAtSetTemperatures()
 	}
 	return true;
 }
+
 //query an individual heater
+
 bool Heat::HeaterAtSetTemperature(int8_t heater)
 {
 	float dt;
@@ -131,19 +135,30 @@ void PID::Init()
   badTemperatureCount = 0;
   temperatureFault = false;
   active = false; 		// Default to standby temperature
+  switchedOff = true;
 }
 
 
 void PID::Spin()
 {
-  if(temperatureFault)
+  // Always know our temperature, regardless of whether we have been switched on or not
+
+  temperature = platform->GetTemperature(heater);
+
+  // If we're not switched on, or there's a fault, turn the power off and go home.
+  // If we're not switched on, then nothing is using us.  This probably means that
+  // we don't even have a thermistor connected.  So don't even check for faults if we
+  // are not switched on.  This is safe, as the next bit of code always turns our
+  // heater off in that case anyway.
+
+  if(temperatureFault || switchedOff)
   {
 	  platform->SetHeater(heater, 0.0); // Make sure...
 	  return;
   }
 
-  temperature = platform->GetTemperature(heater);
-  
+  // We are switched on.  Check for faults.
+
   if(temperature < BAD_LOW_TEMPERATURE || temperature > BAD_HIGH_TEMPERATURE)
   {
 	  badTemperatureCount++;
