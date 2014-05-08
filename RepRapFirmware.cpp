@@ -272,21 +272,18 @@ void RepRap::Diagnostics()
 
 void RepRap::EmergencyStop()
 {
-	int8_t i;
-
 	//platform->DisableInterrupts();
 
-	Tool* t = toolList;
-	while(t)
+	Tool* tool = toolList;
+	while(tool)
 	{
-		t->Standby();
-		t = t->Next();
+		tool->Standby();
+		tool = tool->Next();
 	}
 
 	heat->Exit();
-	for(i = 0; i < HEATERS; i++)
-		platform->SetHeater(i, 0.0);
-
+	for(int8_t heater = 0; heater < HEATERS; heater++)
+		platform->SetHeater(heater, 0.0);
 
 	// We do this twice, to avoid an interrupt switching
 	// a drive back on.  move->Exit() should prevent
@@ -295,10 +292,10 @@ void RepRap::EmergencyStop()
 	for(int8_t i = 0; i < 2; i++)
 	{
 		move->Exit();
-		for(i = 0; i < DRIVES; i++)
+		for(int8_t drive = 0; drive < DRIVES; drive++)
 		{
-			platform->SetMotorCurrent(i, 0.0);
-			platform->Disable(i);
+			platform->SetMotorCurrent(drive, 0.0);
+			platform->Disable(drive);
 		}
 	}
 
@@ -306,30 +303,30 @@ void RepRap::EmergencyStop()
 	webserver->HandleReply("Emergency Stop! Reset the controller to continue.", false);
 }
 
-void RepRap::AddTool(Tool* t)
+void RepRap::AddTool(Tool* tool)
 {
 	if(toolList == NULL)
 	{
-		toolList = t;
+		toolList = tool;
 		return;
 	}
 
-	toolList->AddTool(t);
+	toolList->AddTool(tool);
 }
 
 void RepRap::SelectTool(int toolNumber)
 {
-	Tool* t = toolList;
+	Tool* tool = toolList;
 
-	while(t)
+	while(tool)
 	{
-		if(t->Number() == toolNumber)
+		if(tool->Number() == toolNumber)
 		{
-			t->Activate(currentTool);
-			currentTool = t;
+			tool->Activate(currentTool);
+			currentTool = tool;
 			return;
 		}
-		t = t->Next();
+		tool = tool->Next();
 	}
 
 	// Selecting a non-existent tool is valid.  It sets them all to standby.
@@ -342,18 +339,18 @@ void RepRap::SelectTool(int toolNumber)
 
 void RepRap::StandbyTool(int toolNumber)
 {
-	Tool* t = toolList;
+	Tool* tool = toolList;
 
-	while(t)
+	while(tool)
 	{
-		if(t->Number() == toolNumber)
+		if(tool->Number() == toolNumber)
 		{
-			t->Standby();
-			if(currentTool == t)
+			tool->Standby();
+			if(currentTool == tool)
 				currentTool = NULL;
 			return;
 		}
-		t = t->Next();
+		tool = tool->Next();
 	}
 
 	snprintf(scratchString, STRING_LENGTH, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
@@ -362,13 +359,13 @@ void RepRap::StandbyTool(int toolNumber)
 
 Tool* RepRap::GetTool(int toolNumber)
 {
-	Tool* t = toolList;
+	Tool* tool = toolList;
 
-	while(t)
+	while(tool)
 	{
-		if(t->Number() == toolNumber)
-			return t;
-		t = t->Next();
+		if(tool->Number() == toolNumber)
+			return tool;
+		tool = tool->Next();
 	}
 
 	return NULL; // Not an error
@@ -376,16 +373,16 @@ Tool* RepRap::GetTool(int toolNumber)
 
 void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures)
 {
-	Tool* t = toolList;
+	Tool* tool = toolList;
 
-	while(t)
+	while(tool)
 	{
-		if(t->Number() == toolNumber)
+		if(tool->Number() == toolNumber)
 		{
-			t->SetVariables(standbyTemperatures, activeTemperatures);
+			tool->SetVariables(standbyTemperatures, activeTemperatures);
 			return;
 		}
-		t = t->Next();
+		tool = tool->Next();
 	}
 
 	snprintf(scratchString, STRING_LENGTH, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);

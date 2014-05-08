@@ -2266,14 +2266,12 @@ bool GCodes::ChangeTool(int newToolNumber)
     Tool* oldTool = reprap.GetCurrentTool();
     Tool* newTool = reprap.GetTool(newToolNumber);
 
-    // If old and new are the same at the start, do nothing
-
-    if(oldTool == newTool && toolChangeSequence == 0)
-    	return true;
+    // If old and new are the same still follow the sequence -
+    // The user may want the macros run.
 
     switch(toolChangeSequence)
     {
-    case 0: // Release the old tool (if any)
+    case 0: // Pre-release sequence for the old tool (if any)
     	if(oldTool != NULL)
     	{
     		snprintf(scratchString, STRING_LENGTH, "tfree%d.g", oldTool->Number());
@@ -2283,7 +2281,13 @@ bool GCodes::ChangeTool(int newToolNumber)
     		toolChangeSequence++;
     	return false;
 
-    case 1: // Run the pre-tool-change canned cycle for the new tool (if any)
+    case 1: // Release the old tool (if any)
+    	if(oldTool != NULL)
+    		reprap.StandbyTool(oldTool->Number());
+    	toolChangeSequence++;
+    	return false;
+
+    case 2: // Run the pre-tool-change canned cycle for the new tool (if any)
     	if(newTool != NULL)
     	{
     		snprintf(scratchString, STRING_LENGTH, "tpre%d.g", newToolNumber);
@@ -2293,12 +2297,12 @@ bool GCodes::ChangeTool(int newToolNumber)
     		toolChangeSequence++;
     	return false;
 
-    case 2: // Select the new tool (even if it doesn't exist - that just deselects all tools)
+    case 3: // Select the new tool (even if it doesn't exist - that just deselects all tools)
     	reprap.SelectTool(newToolNumber);
    		toolChangeSequence++;
     	return false;
 
-    case 3: // Run the post-tool-change canned cycle for the new tool (if any)
+    case 4: // Run the post-tool-change canned cycle for the new tool (if any)
     	if(newTool != NULL)
     	{
     		snprintf(scratchString, STRING_LENGTH, "tpost%d.g", newToolNumber);
@@ -2308,7 +2312,7 @@ bool GCodes::ChangeTool(int newToolNumber)
     		toolChangeSequence++;
     	return false;
 
-    case 4:
+    case 5: // All done
     	toolChangeSequence = 0;
     	return true;
 
