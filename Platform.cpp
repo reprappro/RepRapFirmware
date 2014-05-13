@@ -233,10 +233,21 @@ void Platform::InitZProbe()
   zProbeOnSum = 0;
   zProbeOffSum = 0;
 
-  if (zProbeType == 2)
+  //if (zProbeType == 2)
+  // Always enable and fire the modulation pin as long as it's defined.  That way the following works:
+  //
+  //              Probe type:  0  1  2
+  // Probe selected
+  //            0              X  X  X
+  //            1              .  X  X
+  //            2              .  .  X
+  //
+  // Where X means the user gets what's asked for.  This is the best we can do.
+
+  if(zProbeModulationPin >= 0)
   {
 	pinMode(zProbeModulationPin, OUTPUT);
-	digitalWrite(zProbeModulationPin, HIGH);	// enable the IR LED
+	digitalWrite(zProbeModulationPin, HIGH);	// turn on the IR LED
   }
 }
 
