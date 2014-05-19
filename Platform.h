@@ -210,7 +210,7 @@ Licence: GPL
 
 #define AD_RANGE 1023.0							//16383 // The A->D converter that measures temperatures gives an int this big as its max value
 
-#define NUMBER_OF_A_TO_D_READINGS_AVERAGED 8	// must be an even number, preferably a power of 2 for performance, and no greater than 64
+#define NUMBER_OF_A_TO_D_READINGS_AVERAGED 4	// must be an even number, preferably a power of 2 for performance, and no greater than 64
 												// We hope that the compiler is clever enough to spot that division by this is a >> operation, but it doesn't really matter
 
 #define POLL_TIME 0.006                         // Poll the A to D converters this often (seconds)
