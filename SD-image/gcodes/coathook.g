@@ -25,8 +25,8 @@ G28 ; Home all axes
 G1 Z5 F200 ; lift nozzle
 G1 X2 Y50 F2000; Go to wait for warm position
 M116; Wait for all temperatures
-G10 P1 S185 R0 ; Set tool temperature
-T1; Select tool
+G10 P1 S185 R0 ; Set extruder temperature
+T1; Select extruder
 M116; Wait for all temperatures
 G1 F1800.000 E-1.00000
 G1 X83.244 Y72.792
@@ -8439,3 +8439,4 @@ M107
 G1 X2 Y190; park the machine
 M0; stop
 ; filament used = 4032.1mm (9.7cm3)
+

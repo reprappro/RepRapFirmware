@@ -1,3 +1,5 @@
-; Test - put tool post-select G Codes in here
-M115
+G10 P1 S185
+M116
+G1 E90 F10000
+G1 E10 F100
 
