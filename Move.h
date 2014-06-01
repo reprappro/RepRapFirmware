@@ -44,13 +44,6 @@ enum MovementState
   released = 8
 };
 
-enum MovementType
-{
-  noMove = 0,
-  xyMove = 1,
-  zMove = 2,
-  eMove = 4 
-};
 
 enum PointCoordinateSet
 {
@@ -74,16 +67,20 @@ class LookAhead
 protected:
 
 	LookAhead(Move* m, Platform* p, LookAhead* n);
-	void Init(long ep[], float feedRate, float vv, bool ce, int8_t mt); // Set up this move
+	void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
+			float maxSpeed, float acceleration, int8_t minDim, bool ce);
 	LookAhead* Next();													// Next one in the ring
 	LookAhead* Previous();												// Previous one in the ring
-	long* MachineEndPoints();											// Endpoints of a move in machine coordinates
+	long* MachineCoordinates();											// Endpoints of a move in machine coordinates
 	float MachineToEndPoint(int8_t drive);								// Convert a move endpoint to real mm coordinates
 	static float MachineToEndPoint(int8_t drive, long coord);			// Convert any number to a real coordinate
 	static long EndPointToMachine(int8_t drive, float coord);			// Convert real mm to a machine coordinate
-	int8_t GetMovementType();											// What sort of move is this?
-	float FeedRate();													// How fast is the maximum speed for this move
+	float FeedRate();													// How fast is the set speed for this move
+	float MinSpeed();													// What is the slowest that this move can be
+	float MaxSpeed();													// What is the fastest this move can be
+	float Acceleration();												// What is the acceleration available for this move
 	float V();															// The speed at the end of the move
+	int8_t MaxSpeedLimitDimension();													// The direction that gave rise to the acceleration
 	void SetV(float vv);												// Set the end speed
 	void SetFeedRate(float f);											// Set the desired feedrate
 	int8_t Processed();													// Where we are in the look-ahead prediction sequence
@@ -99,13 +96,15 @@ private:
 	LookAhead* next;				// Next entry in the ring
 	LookAhead* previous;			// Previous entry in the ring
 	long endPoint[DRIVES+1];  		// Machine coordinates of the endpoint.  Should never use the +1, but safety first
-	int8_t movementType;			// XY move, Z move, extruder only etc
+	int8_t maxSpeedLimitDimension;	// The direction that gave rise to the acceleration
 	float Cosine();					// The angle between the previous move and this one
     bool checkEndStops;				// Check endstops for this move
     float cosine;					// Store for the cosine value - the function uses lazy evaluation
     float v;        				// The feedrate we can actually do
-    float feedRate; 				// The requested feedrate
-    float instantDv;				// The slowest speed we can move at. > 0
+    float requestedFeedrate; 		// The requested feedrate
+    float minSpeed;					// The slowest that this move may run at
+    float maxSpeed;					// The fastest this move may run at
+    float acceleration;				// The fastest acceleration allowed
     volatile int8_t processed;		// The stage in the look ahead process that this move is at.
 };
 
@@ -122,7 +121,7 @@ protected:
 
 	DDA(Move* m, Platform* p, DDA* n);
 	MovementProfile Init(LookAhead* lookAhead, float& u, float& v); // Set up the DDA.  Also used experimentally in look ahead.
-	void Start(bool noTest);										// Start executing the DDA.  I.e. move the move.
+	void Start();													// Start executing the DDA.  I.e. move the move.
 	void Step();													// Take one step of the DDA.  Called by timed interrupt.
 	bool Active();													// Is the DDA running?
 	DDA* Next();													// Next entry in the ring
@@ -132,8 +131,6 @@ private:
 
 	MovementProfile AccelerationCalculation(float& u, float& v, 	// Compute acceleration profiles
 			MovementProfile result);
-	void SetXYAcceleration();										// Compute an XY acceleration
-	void SetEAcceleration(float eDistance);							// Compute an extruder acceleration
 
 	Move* move;								// The main movement control class
 	Platform* platform;						// The RepRap machine
@@ -205,6 +202,12 @@ class Move
     float ComputeCurrentCoordinate(int8_t drive,// Turn a DDA value back into a real world coordinate
     		LookAhead* la, DDA* runningDDA);
     void SetStepHypotenuse();					// Set up the hypotenuse lengths for multiple axis steps, like step both X and Y at once
+    float Normalise(float v[], int8_t dimensions);
+    void Absolute(float v[], int8_t dimensions);
+    float Magnitude(const float v[], int8_t dimensions);
+    void Scale(float v[], float scale,
+    		int8_t dimensions);
+    float VectorBoxIntersection(const float v[], const float box[], int8_t dimensions, int8_t& hitFace);
     
   private:
   
@@ -217,10 +220,11 @@ class Move
     void ReleaseDDARingLock();							// Release the DDA ring lock
     bool LookAheadRingEmpty();							// Anything there?
     bool LookAheadRingFull();							// Any more room?
-    bool LookAheadRingAdd(long ep[], float feedRate, 	// Add an entry to the look-ahead ring for processing
-    		float vv, bool ce, int8_t movementType);
+    bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
+    		float minSpeed, float maxSpeed,
+    		float acceleration, int8_t minDim, bool ce);
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
-    int8_t GetMovementType(long sp[], long ep[]);		// XY? Z? extruder only?
+
 
     Platform* platform;									// The RepRap machine
     GCodes* gCodes;										// The G Codes processing class
@@ -246,6 +250,7 @@ class Move
     float currentFeedrate;							// Err... the current feed rate...
     float liveCoordinates[DRIVES + 1];				// The last endpoint that the machine moved to
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
+    float scratchVector[DRIVES];
     float stepDistances[(1<<AXES)]; 				// The entry for [0b011] is the hypotenuse of an X and Y step together etc. Index bits: lsb -> dx, dy, dz <- msb
     float extruderStepDistances[(1<<(DRIVES-AXES))];// Same as above for the extruders. NB - may limit us to 5 extruders
     long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
@@ -275,16 +280,6 @@ inline LookAhead* LookAhead::Previous()
 }
 
 
-inline void LookAhead::SetV(float vv)
-{
-  v = vv;
-}
-
-inline float LookAhead::V() 
-{
-  return v;
-}
-
 inline float LookAhead::MachineToEndPoint(int8_t drive)
 {
 	if(drive >= DRIVES)
@@ -295,12 +290,43 @@ inline float LookAhead::MachineToEndPoint(int8_t drive)
 
 inline float LookAhead::FeedRate()
 {
-	return feedRate;
+	return requestedFeedrate;
+}
+
+inline float LookAhead::MinSpeed()
+{
+	return minSpeed;
+}
+
+inline float LookAhead::MaxSpeed()
+{
+	return maxSpeed;
+}
+
+inline float LookAhead::Acceleration()
+{
+	return acceleration;
+}
+
+inline int8_t LookAhead::MaxSpeedLimitDimension()
+{
+	return maxSpeedLimitDimension;
+}
+
+inline void LookAhead::SetV(float vv)
+{
+  v = vv;
+}
+
+inline float LookAhead::V()
+{
+  return v;
 }
 
 inline void LookAhead::SetFeedRate(float f)
 {
-	feedRate = f;
+	requestedFeedrate = f;
+	v = f;
 }
 
 inline int8_t LookAhead::Processed() 
@@ -333,15 +359,15 @@ inline void LookAhead::SetDriveCoordinateAndZeroEndSpeed(float a, int8_t drive)
   v = 0.0; 
 }
 
-inline long* LookAhead::MachineEndPoints()
+inline long* LookAhead::MachineCoordinates()
 {
 	return endPoint;
 }
 
-inline int8_t LookAhead::GetMovementType()
-{
-	return movementType;
-}
+//inline int8_t LookAhead::GetMovementType()
+//{
+//	return movementType;
+//}
 
 //******************************************************************************************************
 

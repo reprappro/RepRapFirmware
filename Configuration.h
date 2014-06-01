@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.73"
-#define DATE "2014-05-19"
+#define VERSION "0.74"
+#define DATE "2014-06-01"
 #define LAST_AUTHOR "reprappro"
 
 // Other firmware that we might switch to be compatible with.
@@ -90,5 +90,7 @@ enum Compatibility
 
 #define EOF_STRING "<!-- **EoF** -->"
 
+#define WEB_DEBUG_TRUE 9
+#define WEB_DEBUG_FALSE 8
 
 #endif

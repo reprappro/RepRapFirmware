@@ -388,7 +388,7 @@ void Webserver::JsonReport(bool ok, const char* request)
 {
   if(ok)
   {
-    if(reprap.Debug())
+    if(webDebug)
     {
       platform->Message(HOST_MESSAGE, "JSON response: ");
       platform->Message(HOST_MESSAGE, jsonResponse);
@@ -596,7 +596,7 @@ GET /gather.asp?pwd=my_pwd HTTP/1.1
 
 void Webserver::ParseGetPost()
 {
-    if(reprap.Debug())
+    if(webDebug)
     {
       platform->Message(HOST_MESSAGE, "HTTP request: ");
       platform->Message(HOST_MESSAGE, clientLine);
@@ -887,6 +887,7 @@ void Webserver::Init()
   active = true;
   gcodeReply[0] = 0;
   seq = 0;
+  webDebug = false;
   
   // Reinitialise the message file
   
@@ -979,5 +980,10 @@ unsigned int Webserver::GetReportedGcodeBufferSpace() const
 	return (temp > maxReportedFreeBuf) ? maxReportedFreeBuf
 			: (temp < minReportedFreeBuf) ? 0
 				: temp;
+}
+
+void Webserver::WebDebug(bool wdb)
+{
+	webDebug = wdb;
 }
 

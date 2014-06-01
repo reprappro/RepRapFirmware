@@ -555,10 +555,13 @@ class Platform
   float DriveStepsPerUnit(int8_t drive) const;
   void SetDriveStepsPerUnit(int8_t drive, float value);
   float Acceleration(int8_t drive) const;
+  const float* Accelerations() const;
   void SetAcceleration(int8_t drive, float value);
   float MaxFeedrate(int8_t drive) const;
+  const float* MaxFeedrates() const;
   void SetMaxFeedrate(int8_t drive, float value);
   float InstantDv(int8_t drive) const;
+  const float* InstantDvs() const;
   float HomeFeedRate(int8_t axis) const;
   void SetHomeFeedRate(int8_t axis, float value);
   EndStopHit Stopped(int8_t drive);
@@ -797,14 +800,39 @@ inline float Platform::Acceleration(int8_t drive) const
 	return accelerations[drive];
 }
 
+inline const float* Platform::Accelerations() const
+{
+	return accelerations;
+}
+
 inline void Platform::SetAcceleration(int8_t drive, float value)
 {
 	accelerations[drive] = value;
 }
 
+inline float Platform::MaxFeedrate(int8_t drive) const
+{
+  return maxFeedrates[drive];
+}
+
+inline const float* Platform::MaxFeedrates() const
+{
+  return maxFeedrates;
+}
+
+inline void Platform::SetMaxFeedrate(int8_t drive, float value)
+{
+	maxFeedrates[drive] = value;
+}
+
 inline float Platform::InstantDv(int8_t drive) const
 {
   return instantDvs[drive]; 
+}
+
+inline const float* Platform::InstantDvs() const
+{
+  return instantDvs;
 }
 
 inline bool Platform::HighStopButNotLow(int8_t axis) const
@@ -895,16 +923,6 @@ inline float Platform::AxisLength(int8_t axis) const
 inline void Platform::SetAxisLength(int8_t axis, float value)
 {
   axisLengths[axis] = value;
-}
-
-inline float Platform::MaxFeedrate(int8_t drive) const
-{
-  return maxFeedrates[drive];
-}
-
-inline void Platform::SetMaxFeedrate(int8_t drive, float value)
-{
-	maxFeedrates[drive] = value;
 }
 
 inline int Platform::GetRawZHeight() const

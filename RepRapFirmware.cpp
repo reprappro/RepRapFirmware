@@ -213,8 +213,8 @@ void RepRap::Init()
   platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
 
   platform->Message(HOST_MESSAGE, "\n");
-  platform->Message(HOST_MESSAGE, NAME);
-  platform->Message(HOST_MESSAGE, " is up and running.\n");
+  snprintf(scratchString, STRING_LENGTH, "%s is up and running.\n", NAME);
+  platform->Message(HOST_MESSAGE, scratchString);
   fastLoop = FLT_MAX;
   slowLoop = 0.0;
   lastTime = platform->Time();

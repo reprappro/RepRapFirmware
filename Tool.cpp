@@ -153,6 +153,8 @@ void Tool::SetVariables(float* standby, float* active)
 	{
 		activeTemperatures[heater] = active[heater];
 		standbyTemperatures[heater] = standby[heater];
+		reprap.GetHeat()->SetActiveTemperature(heaters[heater], activeTemperatures[heater]);
+		reprap.GetHeat()->SetStandbyTemperature(heaters[heater], standbyTemperatures[heater]);
 	}
 }
 

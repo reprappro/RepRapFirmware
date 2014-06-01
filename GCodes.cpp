@@ -324,7 +324,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 			return false;
 		}
 		float eMovement[DRIVES-AXES];
-		int eMoveCount = DRIVES-AXES;
+		int eMoveCount = tool->DriveCount();
 		gb->GetFloatArray(eMovement, eMoveCount);
 		if(tool->DriveCount() != eMoveCount)
 		{
@@ -335,8 +335,8 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 
 		// Zero every extruder drive as some drives may not be changed
 
-		for(int8_t drive = 0; drive < DRIVES-AXES; drive++)
-				moveBuffer[drive + AXES] = 0.0;
+		for(int8_t drive = AXES; drive < DRIVES; drive++)
+				moveBuffer[drive] = 0.0;
 
 		// Set the drive values for this tool.
 
@@ -348,8 +348,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				moveBuffer[drive + AXES] = eMovement[eDrive]*distanceScale; //Absolute
 				if(doingG92)
 					lastPos[drive] = moveBuffer[drive + AXES];
-			}
-			else
+			} else
 			{
 				float absE = eMovement[eDrive]*distanceScale;
 				moveBuffer[drive + AXES] = absE - lastPos[drive];
@@ -1805,7 +1804,15 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 
     case 111: // Debug level
     	if(gb->Seen('S'))
-    		reprap.SetDebug(gb->GetIValue());
+    	{
+    		int dbv = gb->GetIValue();
+    		if(dbv == WEB_DEBUG_TRUE)
+    			reprap.GetWebserver()->WebDebug(true);
+    		else if (dbv == WEB_DEBUG_FALSE)
+    			reprap.GetWebserver()->WebDebug(false);
+    		else
+    			reprap.SetDebug(dbv);
+    	}
     	break;
 
     case 112: // Emergency stop - acted upon in Webserver, but also here in case it comes from USB etc.
@@ -2499,7 +2506,17 @@ const void GCodeBuffer::GetFloatArray(float a[], int& returnedLength)
 		if(gcodeBuffer[readPointer] != LIST_SEPARATOR)
 			inList = false;
 	}
-	returnedLength = length;
+
+	// Special case if there is one entry and returnedLength requests several.
+	// Fill the array with the first entry.
+
+	if(length == 1 && returnedLength > 1)
+	{
+		for(int8_t i = 1; i < returnedLength; i++)
+			a[i] = a[0];
+	} else
+		returnedLength = length;
+
 	readPointer = -1;
 }
 

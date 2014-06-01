@@ -41,6 +41,7 @@ class PID
     void Standby();									// Switch from active to idle
     bool Active();									// Are we active?
     void SwitchOff();								// Not even standby - all heater power off
+    bool SwitchedOff();								// Are we switched off?
     void ResetFault();								// Reset a fault condition - only call this if you know what you are doing
     float GetTemperature();							// Get the current temperature
   
@@ -153,6 +154,11 @@ inline void PID::SwitchOff()
 	platform->SetHeater(heater, 0.0);
 	active = false;
 	switchedOff = true;
+}
+
+inline bool PID::SwitchedOff()
+{
+	return switchedOff;
 }
 
 //**********************************************************************************

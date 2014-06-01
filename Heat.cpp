@@ -68,24 +68,9 @@ void Heat::Diagnostics()
 
 bool Heat::AllHeatersAtSetTemperatures()
 {
-	float dt;
 	for(int8_t heater = 0; heater < HEATERS; heater++)
 	{
-		dt = GetTemperature(heater);
-		if(pids[heater]->Active())
-		{
-			if(GetActiveTemperature(heater) < TEMPERATURE_LOW_SO_DONT_CARE)
-				dt = 0.0;
-			else
-				dt = fabs(dt - GetActiveTemperature(heater));
-		} else
-		{
-			if(GetStandbyTemperature(heater) < TEMPERATURE_LOW_SO_DONT_CARE)
-				dt = 0.0;
-			else
-				dt = fabs(dt - GetStandbyTemperature(heater));
-		}
-		if(dt > TEMPERATURE_CLOSE_ENOUGH)
+		if(!HeaterAtSetTemperature(heater))
 			return false;
 	}
 	return true;
@@ -95,8 +80,10 @@ bool Heat::AllHeatersAtSetTemperatures()
 
 bool Heat::HeaterAtSetTemperature(int8_t heater)
 {
-	float dt;
-	dt = GetTemperature(heater);
+	if(pids[heater]->SwitchedOff())  // If it hasn't anything to do, it must be right wherever it is...
+		return true;
+
+	float dt = GetTemperature(heater);
 	if(pids[heater]->Active())
 	{
 		if(GetActiveTemperature(heater) < TEMPERATURE_LOW_SO_DONT_CARE)
@@ -166,6 +153,7 @@ void PID::Spin()
 	  {
 		  platform->SetHeater(heater, 0.0);
 		  temperatureFault = true;
+		  switchedOff = true;
 		  platform->Message(HOST_MESSAGE, "Temperature measurement fault on heater ");
 		  snprintf(scratchString, STRING_LENGTH, "%d", heater);
 		  platform->Message(HOST_MESSAGE, scratchString);

@@ -56,6 +56,7 @@ class Webserver
     void ConnectionError();
     void HandleReply(const char *s, bool error);
     void AppendReply(const char* s);
+    void WebDebug(bool wdb);
 
   private:
   
@@ -110,6 +111,7 @@ class Webserver
     char myName[SHORT_STRING_LENGTH+1];
     char gcodeReply[STRING_LENGTH+1];
     uint16_t seq;	// reply sequence number, so that the client can tell if a reply is new or not
+    bool webDebug;
 };
 
 
