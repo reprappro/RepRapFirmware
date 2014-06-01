@@ -205,11 +205,6 @@ void Move::Spin()
     Absolute(scratchVector, DRIVES);
     if(Normalise(scratchVector, DRIVES) <= 0.0)
     {
-    	for(int8_t d = 0; d < DRIVES; d++)
-    	{
-		SerialUSB.print(scratchVector[d]);
-		SerialUSB.print(" ");
-    	}
     	platform->Message(HOST_MESSAGE, "\nAttempt to normailse zero-length move.\n");  // Should never get here - noMove above
         platform->ClassReport("Move", longWait);
         return;
@@ -1098,9 +1093,15 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
   maxSpeedLimitDimension = ad;
 
   if(v < minSpeed)
+  {
+	  requestedFeedrate = minSpeed;
 	  v = minSpeed;
+  }
   if(v > maxSpeed)
+  {
+	  requestedFeedrate = maxSpeed;
 	  v = maxSpeed;
+  }
 
   for(int8_t i = 0; i < DRIVES; i++)
     endPoint[i] = ep[i];
