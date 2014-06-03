@@ -236,12 +236,6 @@ Licence: GPL
 #define FILE_LIST_LENGTH (1000) 				// Maximum length of file list
 #define MAX_FILES (42)							// Maximum number of files displayed
 
-#define FLASH_LED 'F' 							// Type byte of a message that is to flash an LED; the next two bytes define
-                      	  	  	  	  	  	  	// the frequency and M/S ratio.
-#define DISPLAY_MESSAGE 'L'  					// Type byte of a message that is to appear on a local display; the L is
-                             	 	 	 	 	// not displayed; \f and \n should be supported.
-#define HOST_MESSAGE 'H' 						// Type byte of a message that is to be sent to the host; the H is not sent.
-
 /****************************************************************************************************/
 
 // Networking
@@ -514,7 +508,7 @@ class Platform
   
   void SetInterrupt(float s); // Set a regular interrupt going every s seconds; if s is -ve turn interrupt off
   
-  void DisableInterrupts();
+  //void DisableInterrupts();
 
   // Communications and data storage
   
@@ -542,6 +536,8 @@ class Platform
   
   void Message(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
+  void AppendMessage(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
+                              // say, display the messages on an LCD. This may also transmit the messages to the host.
   void PushMessageIndent();
   void PopMessageIndent();
   
@@ -561,6 +557,7 @@ class Platform
   const float* MaxFeedrates() const;
   void SetMaxFeedrate(int8_t drive, float value);
   float InstantDv(int8_t drive) const;
+  void SetInstantDv(int8_t drive, float value);
   const float* InstantDvs() const;
   float HomeFeedRate(int8_t axis) const;
   void SetHomeFeedRate(int8_t axis, float value);
@@ -828,6 +825,11 @@ inline void Platform::SetMaxFeedrate(int8_t drive, float value)
 inline float Platform::InstantDv(int8_t drive) const
 {
   return instantDvs[drive]; 
+}
+
+inline void Platform::SetInstantDv(int8_t drive, float value)
+{
+	instantDvs[drive] = value;
 }
 
 inline const float* Platform::InstantDvs() const

@@ -253,6 +253,14 @@ void RepRap::Spin()
   lastTime = t;
 }
 
+void RepRap::Timing()
+{
+	snprintf(scratchString, STRING_LENGTH, "Slowest main loop (seconds): %f; fastest: %f\n", slowLoop, fastLoop);
+	platform->AppendMessage(BOTH_MESSAGE, scratchString);
+	fastLoop = FLT_MAX;
+	slowLoop = 0.0;
+}
+
 void RepRap::Diagnostics()
 {
   platform->Diagnostics();
@@ -260,10 +268,7 @@ void RepRap::Diagnostics()
   heat->Diagnostics();
   gCodes->Diagnostics();
   webserver->Diagnostics();
-  snprintf(scratchString, STRING_LENGTH, "Slow loop secs: %f; fast: %f\n", slowLoop, fastLoop);
-  platform->Message(HOST_MESSAGE, scratchString);
-  fastLoop = FLT_MAX;
-  slowLoop = 0.0;
+  Timing();
 }
 
 // Turn off the heaters, disable the motors, and
@@ -299,8 +304,7 @@ void RepRap::EmergencyStop()
 		}
 	}
 
-	platform->Message(HOST_MESSAGE, "Emergency Stop! Reset the controller to continue.");
-	webserver->HandleReply("Emergency Stop! Reset the controller to continue.", false);
+	platform->Message(BOTH_MESSAGE, "Emergency Stop! Reset the controller to continue.");
 }
 
 void RepRap::AddTool(Tool* tool)
@@ -398,29 +402,7 @@ void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float*
 // Utilities and storage not part of any class
 
 
-// Float to a string.
-
-static long precision[] = {0,10,100,1000,10000,100000,1000000,10000000,100000000};
 char scratchString[STRING_LENGTH];
-
-char* ftoa(char *a, const float& f, int prec)
-{
-  if(a == NULL)
-    a = scratchString;
-  char *ret = a;
-  long whole = (long)f;
-  if(!whole && f < 0.0)
-  {
-	  a[0] = '-';
-	  a++;
-  }
-  snprintf(a, STRING_LENGTH, "%d", whole);
-  while (*a != '\0') a++;
-  *a++ = '.';
-  long decimal = abs((long)((f - (float)whole) * precision[prec]));
-  snprintf(a, STRING_LENGTH, "%0*d", prec, decimal);
-  return ret;
-}
 
 // String testing
 

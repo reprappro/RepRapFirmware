@@ -23,7 +23,7 @@ Licence: GPL
 
 #define DDA_RING_LENGTH 5
 #define LOOK_AHEAD_RING_LENGTH 20
-#define LOOK_AHEAD 7
+#define LOOK_AHEAD 7    // Must be less than LOOK_AHEAD_RING_LENGTH
 
 enum MovementProfile
 {
@@ -68,7 +68,7 @@ protected:
 
 	LookAhead(Move* m, Platform* p, LookAhead* n);
 	void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
-			float maxSpeed, float acceleration, int8_t minDim, bool ce);
+			float maxSpeed, float acceleration, bool ce);
 	LookAhead* Next();													// Next one in the ring
 	LookAhead* Previous();												// Previous one in the ring
 	long* MachineCoordinates();											// Endpoints of a move in machine coordinates
@@ -80,7 +80,6 @@ protected:
 	float MaxSpeed();													// What is the fastest this move can be
 	float Acceleration();												// What is the acceleration available for this move
 	float V();															// The speed at the end of the move
-	int8_t MaxSpeedLimitDimension();													// The direction that gave rise to the acceleration
 	void SetV(float vv);												// Set the end speed
 	void SetFeedRate(float f);											// Set the desired feedrate
 	int8_t Processed();													// Where we are in the look-ahead prediction sequence
@@ -96,7 +95,6 @@ private:
 	LookAhead* next;				// Next entry in the ring
 	LookAhead* previous;			// Previous entry in the ring
 	long endPoint[DRIVES+1];  		// Machine coordinates of the endpoint.  Should never use the +1, but safety first
-	int8_t maxSpeedLimitDimension;	// The direction that gave rise to the acceleration
 	float Cosine();					// The angle between the previous move and this one
     bool checkEndStops;				// Check endstops for this move
     float cosine;					// Store for the cosine value - the function uses lazy evaluation
@@ -207,7 +205,7 @@ class Move
     float Magnitude(const float v[], int8_t dimensions);
     void Scale(float v[], float scale,
     		int8_t dimensions);
-    float VectorBoxIntersection(const float v[], const float box[], int8_t dimensions, int8_t& hitFace);
+    float VectorBoxIntersection(const float v[], const float box[], int8_t dimensions);
     
   private:
   
@@ -222,7 +220,7 @@ class Move
     bool LookAheadRingFull();							// Any more room?
     bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
     		float minSpeed, float maxSpeed,
-    		float acceleration, int8_t minDim, bool ce);
+    		float acceleration, bool ce);
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
 
 
@@ -251,8 +249,9 @@ class Move
     float liveCoordinates[DRIVES + 1];				// The last endpoint that the machine moved to
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
     float scratchVector[DRIVES];
-    float stepDistances[(1<<AXES)]; 				// The entry for [0b011] is the hypotenuse of an X and Y step together etc. Index bits: lsb -> dx, dy, dz <- msb
-    float extruderStepDistances[(1<<(DRIVES-AXES))];// Same as above for the extruders. NB - may limit us to 5 extruders
+    float stepDistances[(1<<DRIVES)];
+//    float stepDistances[(1<<AXES)]; 				// The entry for [0b011] is the hypotenuse of an X and Y step together etc. Index bits: lsb -> dx, dy, dz <- msb
+//    float extruderStepDistances[(1<<(DRIVES-AXES))];// Same as above for the extruders. NB - may limit us to 5 extruders
     long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
     float xBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
     float yBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
@@ -308,11 +307,6 @@ inline float LookAhead::Acceleration()
 	return acceleration;
 }
 
-inline int8_t LookAhead::MaxSpeedLimitDimension()
-{
-	return maxSpeedLimitDimension;
-}
-
 inline void LookAhead::SetV(float vv)
 {
   v = vv;
@@ -356,7 +350,7 @@ inline void LookAhead::SetDriveCoordinateAndZeroEndSpeed(float a, int8_t drive)
 {
   endPoint[drive] = EndPointToMachine(drive, a);
   cosine = 2.0;
-  v = 0.0; 
+  v = minSpeed;
 }
 
 inline long* LookAhead::MachineCoordinates()

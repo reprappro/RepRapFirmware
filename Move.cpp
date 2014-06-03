@@ -95,7 +95,7 @@ void Move::Init()
   }
 
   lastMove->Init(ep, platform->HomeFeedRate(Z_AXIS), platform->InstantDv(Z_AXIS), platform->MaxFeedrate(Z_AXIS),   // Typically Z is the slowest Axis
-		  platform->Acceleration(Z_AXIS), Z_AXIS, false);
+		  platform->Acceleration(Z_AXIS), false);
   lastMove->Release();
   liveCoordinates[DRIVES] = platform->HomeFeedRate(Z_AXIS);
 
@@ -215,11 +215,11 @@ void Move::Spin()
      currentFeedrate = -1.0;
 
      int8_t hitFace;
-     float minSpeed = VectorBoxIntersection(scratchVector, platform->InstantDvs(), DRIVES, hitFace);
-     float acceleration = VectorBoxIntersection(scratchVector, platform->Accelerations(), DRIVES, hitFace);
-     float maxSpeed = VectorBoxIntersection(scratchVector, platform->MaxFeedrates(), DRIVES, hitFace);
+     float minSpeed = VectorBoxIntersection(scratchVector, platform->InstantDvs(), DRIVES);
+     float acceleration = VectorBoxIntersection(scratchVector, platform->Accelerations(), DRIVES);
+     float maxSpeed = VectorBoxIntersection(scratchVector, platform->MaxFeedrates(), DRIVES);
 
-     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES],minSpeed, maxSpeed, acceleration, hitFace, checkEndStopsOnNextMove))
+     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES],minSpeed, maxSpeed, acceleration, checkEndStopsOnNextMove))
     	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
   }
   platform->ClassReport("Move", longWait);
@@ -233,30 +233,21 @@ void Move::Spin()
  * constrained the vector is recorded in hitFace.
  */
 
-float Move::VectorBoxIntersection(const float v[], const float box[], int8_t dimensions, int8_t& hitFace)
+float Move::VectorBoxIntersection(const float v[], const float box[], int8_t dimensions)
 {
 	// Generate a vector length that is guaranteed to exceed the size of the box
 
 	float biggerThanBoxDiagonal = 2.0*Magnitude(box, dimensions);
 	float magnitude = biggerThanBoxDiagonal;
 	float a;
-	hitFace = -1;
 	for(int8_t d = 0; d < dimensions; d++)
 	{
 		if(biggerThanBoxDiagonal*v[d] > box[d])
 		{
 			a = box[d]/v[d];
 			if(a < magnitude)
-			{
 				magnitude = a;
-				hitFace = d;
-			}
 		}
-	}
-	if(hitFace < 0) // Should never happen...
-	{
-		platform->Message(HOST_MESSAGE, "VectorBoxIntersection: no faces hit!\n");
-		hitFace = 0;
 	}
 	return magnitude;
 }
@@ -379,12 +370,12 @@ void Move::SetStepHypotenuse()
 	  // sum of all the axis steps that take part.
 
 	  float d, e;
-	  int8_t i, j;
+	  int i, j;
 
-	  for(i = 0; i < (1<<AXES); i++)
+	  for(i = 0; i < (1<<DRIVES); i++)
 	  {
 	    d = 0.0;
-	    for(j = 0; j < AXES; j++)
+	    for(j = 0; j < DRIVES; j++)
 	    {
 	       if(i & (1<<j))
 	       {
@@ -395,25 +386,39 @@ void Move::SetStepHypotenuse()
 	    stepDistances[i] = sqrt(d);
 	  }
 
-	  for(i = 0; i < (1<<(DRIVES-AXES)); i++)
-	  {
-	    d = 0.0;
-	    for(j = 0; j < (DRIVES-AXES); j++)
-	    {
-	       if(i & (1<<j))
-	       {
-	          e = 1.0/platform->DriveStepsPerUnit(AXES + j);
-	          d += e*e;
-	       }
-	    }
-	    extruderStepDistances[i] = sqrt(d);
-	  }
+//	  for(i = 0; i < (1<<AXES); i++)
+//	  {
+//	    d = 0.0;
+//	    for(j = 0; j < AXES; j++)
+//	    {
+//	       if(i & (1<<j))
+//	       {
+//	          e = 1.0/platform->DriveStepsPerUnit(j);
+//	          d += e*e;
+//	       }
+//	    }
+//	    stepDistances[i] = sqrt(d);
+//	  }
+//
+//	  for(i = 0; i < (1<<(DRIVES-AXES)); i++)
+//	  {
+//	    d = 0.0;
+//	    for(j = 0; j < (DRIVES-AXES); j++)
+//	    {
+//	       if(i & (1<<j))
+//	       {
+//	          e = 1.0/platform->DriveStepsPerUnit(AXES + j);
+//	          d += e*e;
+//	       }
+//	    }
+//	    extruderStepDistances[i] = sqrt(d);
+//	  }
 
 	  // We don't want 0.  If no axes/extruders are moving these should never be used.
 	  // But try to be safe.
 
 	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
-	  extruderStepDistances[0] = stepDistances[0];
+//	  extruderStepDistances[0] = stepDistances[0];
 }
 
 // Take an item from the look-ahead ring and add it to the DDA ring, if
@@ -543,7 +548,7 @@ void Move::DoLookAhead()
   // according to the cosine of the angle between them.
   
   if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
-  {  
+  {
     n1 = lookAheadRingGetPointer;
     n0 = n1->Previous();
     n2 = n1->Next();
@@ -552,7 +557,7 @@ void Move::DoLookAhead()
       if(n1->Processed() == unprocessed)
       {
         float c = fmin(n1->FeedRate(), n2->FeedRate());
-        float m = fmin(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move may not be able to cope with the min for the other.  But should this be max?
+        float m = fmin(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
         c = c*n1->Cosine();
         if(c < m)
         	c = m;
@@ -607,7 +612,7 @@ void Move::Interrupt()
 
 // Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
 
-bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, int8_t ad, bool ce)
+bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, bool ce)
 {
     if(LookAheadRingFull())
       return false;
@@ -616,7 +621,7 @@ bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, 
       platform->Message(HOST_MESSAGE, "Attempt to alter a non-released lookahead ring entry!\n");
       return false;
     }
-    lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ad, ce);
+    lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ce);
     lastMove = lookAheadRingAddPointer;
     lookAheadRingAddPointer = lookAheadRingAddPointer->Next();
     lookAheadRingCount++;
@@ -896,22 +901,19 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   long* positionNow = myLookAheadEntry->Previous()->MachineCoordinates();
   u = myLookAheadEntry->Previous()->V();
   checkEndStops = myLookAheadEntry->CheckEndStops();
+  int8_t bigDirection;
 
   // How far are we going, both in steps and in mm?
   
   for(drive = 0; drive < DRIVES; drive++)
   {
     if(drive < AXES) // X, Y, & Z
-    {
-      delta[drive] = targetPosition[drive] - positionNow[drive];  //Absolute
-      d = myLookAheadEntry->MachineToEndPoint(drive, delta[drive]);
-      distance += d*d;
-    } else
-    {  // Es
-      delta[drive] = targetPosition[drive];  // Relative
-      d = myLookAheadEntry->MachineToEndPoint(drive, delta[drive]);
-      distance += d*d;
-    }
+      delta[drive] = targetPosition[drive] - positionNow[drive];  // XYZ Absolute
+    else
+      delta[drive] = targetPosition[drive];  // Es Relative
+
+    d = myLookAheadEntry->MachineToEndPoint(drive, delta[drive]);
+    distance += d*d;
     
     if(delta[drive] >= 0)
       directions[drive] = FORWARDS;
@@ -924,7 +926,10 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
     // Keep track of the biggest drive move in totalSteps
     
     if(delta[drive] > totalSteps)
-      totalSteps = delta[drive];    
+    {
+      totalSteps = delta[drive];
+      bigDirection = drive;
+    }
   }
   
   // Not going anywhere?  Should have been chucked away before we got here.
@@ -949,12 +954,12 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   
   // Decide the appropriate acceleration and instantDv values
   // timeStep is set here to the distance of the
-  // corresponding axis step.  It will be divided
+  // biggest-move axis step.  It will be divided
   // by a velocity later.
 
   acceleration = lookAhead->Acceleration();
   instantDv = lookAhead->MinSpeed();
-  timeStep = 1.0/platform->DriveStepsPerUnit(lookAhead->MaxSpeedLimitDimension());
+  timeStep = 1.0/platform->DriveStepsPerUnit(bigDirection);
 
   result = AccelerationCalculation(u, v, result);
   
@@ -1000,8 +1005,8 @@ void DDA::Step()
   if(!move->active)
 	  return;
 
-  uint8_t axesMoving = 0;
-  uint8_t extrudersMoving = 0;
+  int drivesMoving = 0;
+//  uint8_t extrudersMoving = 0;
   
   for(int8_t drive = 0; drive < DRIVES; drive++)
   {
@@ -1012,10 +1017,10 @@ void DDA::Step()
 
       counter[drive] -= totalSteps;
       
-      if(drive < AXES)
-        axesMoving |= 1<<drive;
-      else
-        extrudersMoving |= 1<<(drive - AXES);
+//      if(drive < AXES)
+        drivesMoving |= 1<<drive;
+//      else
+//        extrudersMoving |= 1<<(drive - AXES);
         
       // Hit anything?
   
@@ -1040,10 +1045,10 @@ void DDA::Step()
   
   if(active) 
   {
-    if(axesMoving)
-      timeStep = move->stepDistances[axesMoving]/velocity;
-    else
-      timeStep = move->extruderStepDistances[extrudersMoving]/velocity;
+ //   if(drivesMoving)
+      timeStep = move->stepDistances[drivesMoving]/velocity;
+ //   else
+ //     timeStep = move->extruderStepDistances[extrudersMoving]/velocity;
       
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?
@@ -1083,14 +1088,13 @@ LookAhead::LookAhead(Move* m, Platform* p, LookAhead* n)
   next = n;
 }
 
-void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, int8_t ad, bool ce)
+void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, bool ce)
 {
   v = fRate;
   requestedFeedrate = fRate;
   minSpeed = minS;
   maxSpeed = maxS;
   acceleration = acc;
-  maxSpeedLimitDimension = ad;
 
   if(v < minSpeed)
   {

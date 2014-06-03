@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.74"
-#define DATE "2014-06-01"
+#define VERSION "0.75"
+#define DATE "2014-06-03"
 #define LAST_AUTHOR "reprappro"
 
 // Other firmware that we might switch to be compatible with.
@@ -92,5 +92,15 @@ enum Compatibility
 
 #define WEB_DEBUG_TRUE 9
 #define WEB_DEBUG_FALSE 8
+
+#define FLASH_LED 'F' 							// Type byte of a message that is to flash an LED; the next two bytes define
+                      	  	  	  	  	  	  	// the frequency and M/S ratio.
+#define DISPLAY_MESSAGE 'L'  					// Type byte of a message that is to appear on a local display; the L is
+                             	 	 	 	 	// not displayed; \f and \n should be supported.
+#define HOST_MESSAGE 'H' 						// Type byte of a message that is to be sent to the host via USB; the H is not sent.
+#define WEB_MESSAGE 'W'							// Type byte of message that is to be sent to the web
+#define WEB_ERROR_MESSAGE 'E'					// Type byte of message that is to be sent to the web - flags an error
+#define BOTH_MESSAGE 'B'						// Type byte of message that is to be sent to the web & host
+#define BOTH_ERROR_MESSAGE 'A'					// Type byte of message that is to be sent to the web & host - flags an error
 
 #endif

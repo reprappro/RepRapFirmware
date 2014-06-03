@@ -28,7 +28,7 @@ Licence: GPL
 class PID
 {
   friend class Heat;
-  private:
+  protected:
   
     PID(Platform* p, int8_t h);
     void Init();									// (Re)Set everything to start
@@ -44,6 +44,10 @@ class PID
     bool SwitchedOff();								// Are we switched off?
     void ResetFault();								// Reset a fault condition - only call this if you know what you are doing
     float GetTemperature();							// Get the current temperature
+
+  private:
+
+    void SwitchOn();
   
     Platform* platform;								// The instance of the class that is the RepRap hardware
     float activeTemperature;						// The required active temperature
@@ -106,7 +110,7 @@ inline bool PID::Active()
 
 inline void PID::SetActiveTemperature(const float& t)
 {
-  switchedOff = false;
+  SwitchOn();
   activeTemperature = t;
 }
 
@@ -117,7 +121,7 @@ inline float PID::GetActiveTemperature()
 
 inline void PID::SetStandbyTemperature(const float& t)
 {
-  switchedOff = false;
+  SwitchOn();
   standbyTemperature = t;
 }
 
@@ -133,13 +137,13 @@ inline float PID::GetTemperature()
 
 inline void PID::Activate()
 {
-  switchedOff = false;
+  SwitchOn();
   active = true;
 }
 
 inline void PID::Standby()
 {
-  switchedOff = false;
+  SwitchOn();
   active = false;
 }
 
@@ -154,6 +158,11 @@ inline void PID::SwitchOff()
 	platform->SetHeater(heater, 0.0);
 	active = false;
 	switchedOff = true;
+}
+
+inline void PID::SwitchOn()
+{
+	switchedOff = false;
 }
 
 inline bool PID::SwitchedOff()

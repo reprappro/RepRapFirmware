@@ -38,7 +38,7 @@ GCodes::GCodes(Platform* p, Webserver* w)
 
 void GCodes::Exit()
 {
-   platform->Message(HOST_MESSAGE, "GCodes class exited.\n");
+   platform->Message(BOTH_MESSAGE, "GCodes class exited.\n");
    active = false;
 }
 
@@ -75,7 +75,6 @@ void GCodes::Init()
   offSetSet = false;
   dwellWaiting = false;
   stackPointer = 0;
-  //selectedHead = 0; //default to zero so parameter setting gcodes (eg M906) work for tools prior to tools being selected
   gFeedRate = platform->MaxFeedrate(Z_AXIS); // Typically the slowest
   zProbesSet = false;
   probeCount = 0;
@@ -221,7 +220,7 @@ void GCodes::Spin()
 
 void GCodes::Diagnostics() 
 {
-  platform->Message(HOST_MESSAGE, "GCodes Diagnostics:\n");
+  platform->Message(BOTH_MESSAGE, "GCodes Diagnostics:\n");
 }
 
 // The wait till everything's done function.  If you need the machine to
@@ -257,7 +256,7 @@ bool GCodes::Push()
 {
   if(stackPointer >= STACK)
   {
-    platform->Message(HOST_MESSAGE, "Push(): stack overflow!\n");
+    platform->Message(BOTH_ERROR_MESSAGE, "Push(): stack overflow!\n");
     return true;
   }
   
@@ -279,7 +278,7 @@ bool GCodes::Pop()
 {
   if(stackPointer <= 0)
   {
-    platform->Message(HOST_MESSAGE, "Pop(): stack underflow!\n");
+    platform->Message(BOTH_ERROR_MESSAGE, "Pop(): stack underflow!\n");
     return true;  
   }
   
@@ -320,7 +319,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 	{
 		if(tool == NULL)
 		{
-			platform->Message(HOST_MESSAGE, "Attempting to extrude with no tool selected.\n");
+			platform->Message(BOTH_ERROR_MESSAGE, "Attempting to extrude with no tool selected.\n");
 			return false;
 		}
 		float eMovement[DRIVES-AXES];
@@ -395,137 +394,6 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 
 	return true;
 }
-
-//bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyLimits)
-//{
-//	// First check, if we are extruding, that we have a tool to extrude with
-//
-//	Tool* tool = reprap.GetCurrentTool();
-//	if(tool == NULL && gb->Seen(EXTRUDE_LETTER)) // 'E'
-//	{
-//		platform->Message(HOST_MESSAGE, "Attempting to extrude with no tool selected.\n");
-//		return false;
-//	}
-//
-//	for(uint8_t i = 0; i < DRIVES; i++)
-//	{
-//	    if(i < AXES)
-//	    {
-//	      if(gb->Seen(gCodeLetters[i]))
-//	      {
-//	    	float moveArg = gb->GetFValue()*distanceScale;
-//	    	if (axesRelative && !doingG92)
-//	    	{
-//	    		moveArg += moveBuffer[i];
-//	    	}
-//	    	if (applyLimits && i < 2 && axisIsHomed[i] && !doingG92)	// limit X and Y moves unless doing G92
-//	    	{
-//	    		if (moveArg < 0.0)
-//	    		{
-//	    			moveArg = 0.0;
-//	    		}
-//	    		else if (moveArg > platform->AxisLength(i))
-//	    		{
-//	    			moveArg = platform->AxisLength(i);
-//	    		}
-//	    	}
-//        	moveBuffer[i] = moveArg;
-//        	if (doingG92)
-//        	{
-//        		axisIsHomed[i] = true;		// doing a G92 is equivalent to homing the axis
-//        	}
-//	      }
-//	    } else
-//	    {
-//	      /*Fixed to work with multiple concurrent extruder drives:
-//	       *  Default or M160 S1 (set use only one extruder drive)
-//	       *  		"G1 En.n" adds the float n.n to the move buffer for the selected head
-//	       *  There is no change in behaviour for one extruder drive setups, or multiple extruder
-//	       *  setups where only one drive is used at any one time.
-//	       *
-//	       *  M160 Sn (set to use "n" extruder drives) eg
-//	       *  		"M160 S3"
-//	       *  		"G1 En.n:m.m:o.o" adds the floats to the move buffer in the following way:
-//	       *  				moveBuffer[AXES+selectedHead) = n.n
-//	       *  				moveBuffer[AXES+selectedHead+1) = m.m
-//	       *  				moveBuffer[AXES+selectedHead+2) = o.o
-//	       *  		so if selectedHead=0 move buffer ends up looking like this for a 5 extruder drive setup:
-//	       *  		{x.x, y.y, z.z, n.n, m.m, o.o, 0.0,0.0, f.f}
-//	       *  		where x,y,z are the axes and f is the feedrate.
-//	       *  		If selected head > 0 then there is the possibility that more drives can be set than
-//	       *  		exist, in that case the last values are discarded e.g:
-//	       *  		"T3"
-//	       *  		"M160 S3"
-//	       *  		"G1 En.n:m.m:o.o"
-//	       *  		would leave the move buffer on a 4 extruder drive setup looking like this:
-//	       *  		{x.x, y.y, z.z, 0.0, 0.0, 0.0, n.n,m.m, f.f}
-//	       */
-//	      if(gb->Seen('E')&& ((i-AXES) == selectedHead))
-//	      {
-//	    	//the number of mixing drives set (by M160)
-//	    	int numDrives = platform->GetMixingDrives();
-//	    	const char* extruderString = gb->GetString();
-//	    	float eArg[numDrives];
-//	    	uint8_t sp = 0; //string pointer
-//	    	uint8_t fp = 0; //float pointer for the start of each floating point number in turn
-//	    	uint8_t hp = 0; //index of the head currently referred to for eArg
-//	    	while(extruderString[sp])
-//	    	{
-//	    		//first check to confirm we have not got to the feedrate setting part of the string
-//	    		if(extruderString[sp] == 'F')
-//	    		{
-//	    			break;
-//	    		}
-//	    		if(extruderString[sp] == ':')
-//	    		{
-//	    			eArg[hp] = (atoff(&extruderString[fp]))*distanceScale;
-//	    			hp++;
-//	    			if(hp >= numDrives)
-//	    			{
-//						platform->Message(HOST_MESSAGE, "More mixing extruder drives required in G1 string than set with M160: ");
-//						platform->Message(HOST_MESSAGE, gb->Buffer());
-//						platform->Message(HOST_MESSAGE, "\n");
-//						return false;
-//					}
-//    				sp++;
-//    				fp = sp;
-//	    		}
-//	    		else
-//	    			sp++;
-//	    	}
-//	    	//capture the last drive step amount in the string (or the only one in the case of only one extruder)
-//	    	eArg[hp] = (atoff(&extruderString[fp]))*distanceScale;
-//
-//	    	//set the move buffer for each extruder drive
-//        	for(int j=0;j<numDrives;j++)
-//        	{
-//				if(drivesRelative || doingG92)
-//				{
-//
-//						moveBuffer[i+j] = eArg[j]; //Absolute
-//						if(doingG92)
-//							lastPos[i+j - AXES] = moveBuffer[i+j];
-//				}
-//				else
-//				{
-//				  float absE = eArg[j];
-//				  moveBuffer[i+j] = absE - lastPos[i+j - AXES];
-//				  lastPos[i+j - AXES] = absE;
-//				}
-//        	}
-//	      }
-//	    }
-//	}
-//
-//	// Deal with feedrate
-//
-//	if(gb->Seen(FEEDRATE_LETTER))
-//	  gFeedRate = gb->GetFValue()*distanceScale*0.016666667; // G Code feedrates are in mm/minute; we need mm/sec
-//
-//	moveBuffer[DRIVES] = gFeedRate;  // We always set it, as Move may have modified the last one.
-//
-//	return true;
-//}
 
 
 
@@ -1168,20 +1036,15 @@ void GCodes::QueueFileToPrint(const char* fileName)
     fileToPrint->Close();
   fileToPrint = platform->GetFileStore(platform->GetGCodeDir(), fileName, false);
   if(fileToPrint == NULL)
-  {
-	webserver->HandleReply("GCode file not found", true);
-	platform->Message(HOST_MESSAGE, "GCode file not found\n");
-  }
+	platform->Message(BOTH_ERROR_MESSAGE, "GCode file not found\n");
 }
 
 void GCodes::DeleteFile(const char* fileName)
 {
   if(!platform->GetMassStorage()->Delete(platform->GetGCodeDir(), fileName))
   {
-	platform->Message(HOST_MESSAGE, "Unsuccessful attempt to delete: ");
-	platform->Message(HOST_MESSAGE, fileName);
-	platform->Message(HOST_MESSAGE, "\n");
-	webserver->HandleReply("Failed to delete file", true);
+	snprintf(scratchString, STRING_LENGTH, "Unsuccessful attempt to delete: %s\n", fileName);
+	platform->Message(BOTH_ERROR_MESSAGE, scratchString);
   }
 }
 
@@ -1419,7 +1282,10 @@ void GCodes::HandleReply(bool error, bool fromLine, const char* reply, char gMOr
 {
 	if (gMOrT != 'M' || code != 111)	// web server reply for M111 is handled before we get here
 	{
-		webserver->HandleReply(reply, error);
+		if(error)
+			platform->Message(WEB_ERROR_MESSAGE, reply);
+		else
+			platform->Message(WEB_MESSAGE, reply);
 	}
 
 	Compatibility c = platform->Emulating();
@@ -1752,7 +1618,8 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     				(int)platform->DriveStepsPerUnit(Z_AXIS));
         	for(int8_t drive = AXES; drive < DRIVES; drive++)
         	{
-        		strncat(reply, ftoa(0,platform->DriveStepsPerUnit(drive),2), STRING_LENGTH);
+        		snprintf(scratchString, STRING_LENGTH, "%f", platform->DriveStepsPerUnit(drive));
+        		strncat(reply, scratchString, STRING_LENGTH);
         		if(drive < DRIVES-1)
         			strncat(reply, ":", STRING_LENGTH);
         	}
@@ -1783,11 +1650,11 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	//FIXME - why did this decrement rather than increment through the heaters (odd behaviour)
     	for(int8_t heater = 1; heater < HEATERS; heater++)
     	{
-    		strncat(reply, ftoa(0, reprap.GetHeat()->GetTemperature(heater), 1), STRING_LENGTH);
-    		strncat(reply, " ", STRING_LENGTH);
+    		snprintf(scratchString, STRING_LENGTH, "%f ", reprap.GetHeat()->GetTemperature(heater));
+    		strncat(reply, scratchString, STRING_LENGTH);
     	}
-    	strncat(reply, "B:", STRING_LENGTH);
-    	strncat(reply, ftoa(0, reprap.GetHeat()->GetTemperature(0), 1), STRING_LENGTH);
+    	snprintf(scratchString, STRING_LENGTH, "B: %f ", reprap.GetHeat()->GetTemperature(0));
+    	strncat(reply, scratchString, STRING_LENGTH);
     	break;
    
     case 106: // Fan on or off
@@ -1910,13 +1777,13 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	}
       break;
 
-    case 201: // Set/print axis accelerations
+    case 201: // Set/print axis accelerations  FIXME - should these be in /min not /sec ?
     	seen = false;
     	for(int8_t axis = 0; axis < AXES; axis++)
     	{
     		if(gb->Seen(gCodeLetters[axis]))
     		{
-    			platform->SetAcceleration(axis, gb->GetFValue());
+    			platform->SetAcceleration(axis, gb->GetFValue()*distanceScale);
     			seen = true;
     		}
     	}
@@ -1934,18 +1801,19 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     		} else
     		{
     			for(int8_t e = 0; e < eCount; e++)
-    				platform->SetAcceleration(AXES + e, eVals[e]);
+    				platform->SetAcceleration(AXES + e, eVals[e]*distanceScale);
     		}
     	}
 
     	if(!seen)
     	{
     		snprintf(reply, STRING_LENGTH, "Accelerations: X: %f, Y: %f, Z: %f, E: ",
-    				platform->Acceleration(X_AXIS), platform->Acceleration(Y_AXIS),
-    				platform->Acceleration(Z_AXIS));
+    				platform->Acceleration(X_AXIS)/distanceScale, platform->Acceleration(Y_AXIS)/distanceScale,
+    				platform->Acceleration(Z_AXIS)/distanceScale);
         	for(int8_t drive = AXES; drive < DRIVES; drive++)
         	{
-        		strncat(reply, ftoa(0,platform->Acceleration(drive),2), STRING_LENGTH);
+        		snprintf(scratchString, STRING_LENGTH, "%f", platform->Acceleration(drive)/distanceScale);
+        		strncat(reply, scratchString, STRING_LENGTH);
         		if(drive < DRIVES-1)
         			strncat(reply, ":", STRING_LENGTH);
         	}
@@ -1984,11 +1852,12 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
         	if(!seen)
         	{
         		snprintf(reply, STRING_LENGTH, "Maximum feedrates: X: %f, Y: %f, Z: %f, E: ",
-        				platform->MaxFeedrate(X_AXIS), platform->MaxFeedrate(Y_AXIS),
-        				platform->MaxFeedrate(Z_AXIS));
+        				platform->MaxFeedrate(X_AXIS)/(distanceScale*0.016666667), platform->MaxFeedrate(Y_AXIS)/(distanceScale*0.016666667),
+        				platform->MaxFeedrate(Z_AXIS)/(distanceScale*0.016666667));
             	for(int8_t drive = AXES; drive < DRIVES; drive++)
             	{
-            		strncat(reply, ftoa(0,platform->MaxFeedrate(drive),2), STRING_LENGTH);
+            		snprintf(scratchString, STRING_LENGTH, "%f", platform->MaxFeedrate(drive)/(distanceScale*0.016666667));
+            		strncat(reply, scratchString, STRING_LENGTH);
             		if(drive < DRIVES-1)
             			strncat(reply, ":", STRING_LENGTH);
             	}
@@ -2203,6 +2072,49 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 564: // Think outside the box?
     	if(gb->Seen('S'))
     	    limitAxes = (gb->GetIValue() != 0);
+    	break;
+
+    case 565: // Set/print minimum feedrates
+       	seen = false;
+        	for(int8_t axis = 0; axis < AXES; axis++)
+        	{
+        		if(gb->Seen(gCodeLetters[axis]))
+        		{
+        			platform->SetInstantDv(axis, gb->GetFValue()*distanceScale*0.016666667); // G Code feedrates are in mm/minute; we need mm/sec
+        			seen = true;
+        		}
+        	}
+
+        	if(gb->Seen(EXTRUDE_LETTER))
+        	{
+        		seen = true;
+        		float eVals[DRIVES-AXES];
+        		int eCount = DRIVES-AXES;
+        		gb->GetFloatArray(eVals, eCount);
+        		if(eCount != DRIVES-AXES)
+        		{
+        			snprintf(scratchString, STRING_LENGTH, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
+        			platform->Message(HOST_MESSAGE, scratchString);
+        		} else
+        		{
+        			for(int8_t e = 0; e < eCount; e++)
+        				platform->SetInstantDv(AXES + e, eVals[e]*distanceScale*0.016666667);
+        		}
+        	}
+
+        	if(!seen)
+        	{
+        		snprintf(reply, STRING_LENGTH, "Minimum feedrates: X: %f, Y: %f, Z: %f, E: ",
+        				platform->InstantDv(X_AXIS)/(distanceScale*0.016666667), platform->InstantDv(Y_AXIS)/(distanceScale*0.016666667),
+        				platform->InstantDv(Z_AXIS)/(distanceScale*0.016666667));
+            	for(int8_t drive = AXES; drive < DRIVES; drive++)
+            	{
+            		snprintf(scratchString, STRING_LENGTH, "%f", platform->InstantDv(drive)/(distanceScale*0.016666667));
+            		strncat(reply, scratchString, STRING_LENGTH);
+            		if(drive < DRIVES-1)
+            			strncat(reply, ":", STRING_LENGTH);
+            	}
+        	}
     	break;
 
     case 906: // Set Motor currents

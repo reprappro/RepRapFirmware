@@ -158,7 +158,8 @@ void PID::Spin()
 		  snprintf(scratchString, STRING_LENGTH, "%d", heater);
 		  platform->Message(HOST_MESSAGE, scratchString);
 		  platform->Message(HOST_MESSAGE, ", T = ");
-		  platform->Message(HOST_MESSAGE, ftoa(scratchString, temperature, 1));
+  		  snprintf(scratchString, STRING_LENGTH, "%f", temperature);
+		  platform->Message(HOST_MESSAGE, scratchString);
 		  platform->Message(HOST_MESSAGE, "\n");
 	  }
   } else

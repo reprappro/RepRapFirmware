@@ -32,6 +32,7 @@ class RepRap
     void Exit();
     void Interrupt();
     void Diagnostics();
+    void Timing();
     bool Debug() const;
     void SetDebug(bool d);
     void AddTool(Tool* t);
@@ -74,13 +75,12 @@ inline void RepRap::SetDebug(bool d)
 	debug = d;
 	if(debug)
 	{
-		platform->Message(HOST_MESSAGE, "Debugging enabled\n");
-		webserver->HandleReply("Debugging enabled\n", false);
+		platform->Message(BOTH_MESSAGE, "Debugging enabled\n");
 		platform->PrintMemoryUsage();
 	}
 	else
 	{
-		webserver->HandleReply("", false);
+		platform->Message(WEB_MESSAGE, "");
 	}
 }
 

@@ -54,9 +54,14 @@ class Webserver
     void SetPassword(const char* pw);
     void SetName(const char* nm);
     void ConnectionError();
-    void HandleReply(const char *s, bool error);
-    void AppendReply(const char* s);
     void WebDebug(bool wdb);
+
+    friend class Platform;
+
+  protected:
+
+    void MessageStringToWebInterface(const char *s, bool error);
+    void AppendReplyToWebInterface(const char* s, bool error);
 
   private:
   

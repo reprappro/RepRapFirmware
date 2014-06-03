@@ -38,7 +38,6 @@ extern RepRap reprap;
 
 // Functions and globals not part of any class
 
-char* ftoa(char *a, const float& f, int prec);
 bool StringEndsWith(const char* string, const char* ending);
 bool StringStartsWith(const char* string, const char* starting);
 bool StringEquals(const char* s1, const char* s2);
