@@ -1,5 +1,3 @@
-G10 P1 S185
-M116
-G1 E90 F10000
-G1 E10 F100
+; tpost1.g
+; Put G/M Codes in here to run after Tool 1 is selected
 

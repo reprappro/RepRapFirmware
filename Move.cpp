@@ -183,12 +183,12 @@ void Move::Spin()
     	{
     		if(nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
     		    noMove = false;
-    		scratchVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
+    		normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
     	} else
     	{
     		if(nextMachineEndPoints[drive] != 0)
     		    noMove = false;
-    		scratchVector[drive] = nextMove[drive];
+    		normalisedDirectionVector[drive] = nextMove[drive];
     	}
     }
 
@@ -200,10 +200,10 @@ void Move::Spin()
        return;
     }
     
-    // Set the feedrate maximum and minimum, and the acceleration
+    // Compute the direction of motion, moved to the positive hyperquadrant
 
-    Absolute(scratchVector, DRIVES);
-    if(Normalise(scratchVector, DRIVES) <= 0.0)
+    Absolute(normalisedDirectionVector, DRIVES);
+    if(Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
     {
     	platform->Message(HOST_MESSAGE, "\nAttempt to normailse zero-length move.\n");  // Should never get here - noMove above
         platform->ClassReport("Move", longWait);
@@ -214,10 +214,11 @@ void Move::Spin()
 
      currentFeedrate = -1.0;
 
-     int8_t hitFace;
-     float minSpeed = VectorBoxIntersection(scratchVector, platform->InstantDvs(), DRIVES);
-     float acceleration = VectorBoxIntersection(scratchVector, platform->Accelerations(), DRIVES);
-     float maxSpeed = VectorBoxIntersection(scratchVector, platform->MaxFeedrates(), DRIVES);
+     // Set the feedrate maximum and minimum, and the acceleration
+
+     float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
+     float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
+     float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
 
      if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES],minSpeed, maxSpeed, acceleration, checkEndStopsOnNextMove))
     	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
@@ -364,7 +365,7 @@ bool Move::GetCurrentState(float m[])
 
 void Move::SetStepHypotenuse()
 {
-	 // The stepDistances arrays are look-up tables of the Euclidean distance
+	  // The stepDistances array is a look-up table of the Euclidean distance
 	  // between the start and end of a step.  If the step is just along one axis,
 	  // it's just that axis's step length.  If it's more, it is a Pythagoran
 	  // sum of all the axis steps that take part.
@@ -386,39 +387,10 @@ void Move::SetStepHypotenuse()
 	    stepDistances[i] = sqrt(d);
 	  }
 
-//	  for(i = 0; i < (1<<AXES); i++)
-//	  {
-//	    d = 0.0;
-//	    for(j = 0; j < AXES; j++)
-//	    {
-//	       if(i & (1<<j))
-//	       {
-//	          e = 1.0/platform->DriveStepsPerUnit(j);
-//	          d += e*e;
-//	       }
-//	    }
-//	    stepDistances[i] = sqrt(d);
-//	  }
-//
-//	  for(i = 0; i < (1<<(DRIVES-AXES)); i++)
-//	  {
-//	    d = 0.0;
-//	    for(j = 0; j < (DRIVES-AXES); j++)
-//	    {
-//	       if(i & (1<<j))
-//	       {
-//	          e = 1.0/platform->DriveStepsPerUnit(AXES + j);
-//	          d += e*e;
-//	       }
-//	    }
-//	    extruderStepDistances[i] = sqrt(d);
-//	  }
-
 	  // We don't want 0.  If no axes/extruders are moving these should never be used.
 	  // But try to be safe.
 
 	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
-//	  extruderStepDistances[0] = stepDistances[0];
 }
 
 // Take an item from the look-ahead ring and add it to the DDA ring, if

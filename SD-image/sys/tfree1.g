@@ -1,4 +1,3 @@
-G10 P1 S120
-M116
-G1 E-100 F10000
+; tfree1.g
+; Put G/M Codes in here to run when Tool 1 is freed
 

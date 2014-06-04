@@ -2074,7 +2074,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	    limitAxes = (gb->GetIValue() != 0);
     	break;
 
-    case 565: // Set/print minimum feedrates
+    case 566: // Set/print minimum feedrates
        	seen = false;
         	for(int8_t axis = 0; axis < AXES; axis++)
         	{

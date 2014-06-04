@@ -248,10 +248,8 @@ class Move
     float currentFeedrate;							// Err... the current feed rate...
     float liveCoordinates[DRIVES + 1];				// The last endpoint that the machine moved to
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
-    float scratchVector[DRIVES];
-    float stepDistances[(1<<DRIVES)];
-//    float stepDistances[(1<<AXES)]; 				// The entry for [0b011] is the hypotenuse of an X and Y step together etc. Index bits: lsb -> dx, dy, dz <- msb
-//    float extruderStepDistances[(1<<(DRIVES-AXES))];// Same as above for the extruders. NB - may limit us to 5 extruders
+    float normalisedDirectionVector[DRIVES];		// Used to hold a unit-length vector in the direction of motion
+    float stepDistances[(1<<DRIVES)];				// The length of steps in different numbers of dimensions
     long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
     float xBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
     float yBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
