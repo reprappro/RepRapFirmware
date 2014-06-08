@@ -243,9 +243,9 @@ bool GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
     
   // Load the last position; If Move can't accept more, return false - should never happen
   
-  if(!reprap.GetMove()->GetCurrentState(moveBuffer))
+  if(!reprap.GetMove()->GetCurrentUserPosition(moveBuffer))
     return false;
-  
+
   return true;  
 }
 
@@ -409,10 +409,10 @@ bool GCodes::SetUpMove(GCodeBuffer *gb)
     return false;
     
   // Load the last position into moveBuffer; If Move can't accept more, return false
-  
-  if(!reprap.GetMove()->GetCurrentState(moveBuffer))
+
+  if(!reprap.GetMove()->GetCurrentUserPosition(moveBuffer))
     return false;
-  
+
   //check to see if the move is a 'homing' move that endstops are checked on.
   checkEndStops = false;
   if(gb->Seen('S'))
@@ -1178,9 +1178,7 @@ bool GCodes::StandbyHeaters()
 {
 	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
-	for(int8_t heater = 0; heater < HEATERS; heater++)
-		reprap.GetHeat()->Standby(heater);
-	//selectedHead = -1; //FIXME check this does not mess up setters (eg M906) when they are used after this command is called
+	reprap.GetHeat()->Standby(HOT_BED);
 	Tool* tool = reprap.GetCurrentTool();
 	if(tool != NULL)
 		reprap.StandbyTool(tool->Number());
@@ -1650,10 +1648,10 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     	//FIXME - why did this decrement rather than increment through the heaters (odd behaviour)
     	for(int8_t heater = 1; heater < HEATERS; heater++)
     	{
-    		snprintf(scratchString, STRING_LENGTH, "%f ", reprap.GetHeat()->GetTemperature(heater));
+    		snprintf(scratchString, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
     		strncat(reply, scratchString, STRING_LENGTH);
     	}
-    	snprintf(scratchString, STRING_LENGTH, "B: %f ", reprap.GetHeat()->GetTemperature(0));
+    	snprintf(scratchString, STRING_LENGTH, "B: %.1f ", reprap.GetHeat()->GetTemperature(0));
     	strncat(reply, scratchString, STRING_LENGTH);
     	break;
    
@@ -1750,6 +1748,11 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     			reprap.GetHeat()->SetActiveTemperature(HOT_BED, gb->GetFValue());
     			reprap.GetHeat()->Activate(HOT_BED);
     		}
+    	}
+    	if(gb->Seen('R'))
+    	{
+    		if(HOT_BED >= 0)
+    			reprap.GetHeat()->SetStandbyTemperature(HOT_BED, gb->GetFValue());
     	}
       break;
     

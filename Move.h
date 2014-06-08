@@ -22,8 +22,8 @@ Licence: GPL
 #define MOVE_H
 
 #define DDA_RING_LENGTH 5
-#define LOOK_AHEAD_RING_LENGTH 20
-#define LOOK_AHEAD 7    // Must be less than LOOK_AHEAD_RING_LENGTH
+#define LOOK_AHEAD_RING_LENGTH 30
+#define LOOK_AHEAD 20    // Must be less than LOOK_AHEAD_RING_LENGTH
 
 enum MovementProfile
 {
@@ -165,8 +165,8 @@ class Move
     void Init();								// Start me up
     void Spin();								// Called in a tight loop to keep the class going
     void Exit();								// Shut down
-    bool GetCurrentState(float m[]); 			// Return the current position if possible.  Send false otherwise
-    void LiveCoordinates(float m[]); 			// Gives the last point at the end of the last complete DDA
+    bool GetCurrentUserPosition(float m[]); 	// Return the current position in transformed coords if possible.  Send false otherwise
+    void LiveCoordinates(float m[]); 			// Gives the last point at the end of the last complete DDA transformed to user coords
     void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
     void InterruptTime();						// Test function - not used
     bool AllMovesAreFinished();					// Is the look-ahead ring empty?  Stops more moves being added as well.
@@ -200,15 +200,21 @@ class Move
     float ComputeCurrentCoordinate(int8_t drive,// Turn a DDA value back into a real world coordinate
     		LookAhead* la, DDA* runningDDA);
     void SetStepHypotenuse();					// Set up the hypotenuse lengths for multiple axis steps, like step both X and Y at once
-    float Normalise(float v[], int8_t dimensions);
-    void Absolute(float v[], int8_t dimensions);
-    float Magnitude(const float v[], int8_t dimensions);
-    void Scale(float v[], float scale,
+    float Normalise(float v[], int8_t dimensions);  // Normalise a vector to unit length
+    void Absolute(float v[], int8_t dimensions);	// Put a vector in the positive hyperquadrant
+    float Magnitude(const float v[], int8_t dimensions);  // Return the length of a vector
+    void Scale(float v[], float scale,				// Multiply a vector by a scalar
     		int8_t dimensions);
-    float VectorBoxIntersection(const float v[], const float box[], int8_t dimensions);
+    float VectorBoxIntersection(const float v[],  // Compute the length that a vector would have to have to...
+    		const float box[], int8_t dimensions);// ...just touch the surface of a hyperbox.
     
   private:
   
+    void BedTransform(float move[]);				    // Take a position and apply the bed compensations
+    bool GetCurrentMachinePosition(float m[]); 			// Return the current position in untransformed coords if possible.  Send false otherwise
+    void InverseBedTransform(float move[]);		        // Go from a bed-transformed point back to user coordinates
+    void AxisTransform(float move[]);			        // Take a position and apply the axis-angle compensations
+    void InverseAxisTransform(float move[]);		    // Go from an axis transformed point back to user coordinates
     bool DDARingAdd(LookAhead* lookAhead);				// Add a processed look-ahead entry to the DDA ring
     DDA* DDARingGet();									// Get the next DDA ring entry to be run
     bool DDARingEmpty();								// Anything there?

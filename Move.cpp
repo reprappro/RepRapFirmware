@@ -335,12 +335,13 @@ void Move::Diagnostics()
     */
 }
 
+// Return the untransformed machine coordinates
 // This returns false if it is not possible
 // to use the result as the basis for the
 // next move because the look ahead ring
 // is full.  True otherwise.
 
-bool Move::GetCurrentState(float m[])
+bool Move::GetCurrentMachinePosition(float m[])
 {
   if(LookAheadRingFull())
     return false;
@@ -358,8 +359,17 @@ bool Move::GetCurrentState(float m[])
   else
     m[DRIVES] = lastMove->FeedRate();
   currentFeedrate = -1.0;
-  InverseTransform(m);
   return true;
+}
+
+// Return the transformed machine coordinates
+
+bool Move::GetCurrentUserPosition(float m[])
+{
+	if(!GetCurrentMachinePosition(m))
+		return false;
+	InverseTransform(m);
+	return true;
 }
 
 
@@ -629,37 +639,59 @@ void Move::SetIdentityTransform()
 	secondDegreeCompensation = false;
 }
 
+// Do the bed transform AFTER the axis transform
 
-void Move::Transform(float xyzPoint[])
+void Move::BedTransform(float xyzPoint[])
 {
-	xyzPoint[X_AXIS] = xyzPoint[X_AXIS] + tanXY*xyzPoint[Y_AXIS] + tanXZ*xyzPoint[Z_AXIS];
-	xyzPoint[Y_AXIS] = xyzPoint[Y_AXIS] + tanYZ*xyzPoint[Z_AXIS];
 	if(secondDegreeCompensation)
 		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
 	else
 		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC;
 }
 
-void Move::InverseTransform(float xyzPoint[])
+// Invert the bed transform BEFORE the axis transform
+
+void Move::InverseBedTransform(float xyzPoint[])
 {
 	if(secondDegreeCompensation)
 		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
 	else
 		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - (aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC);
+}
+
+// Do the Axis transform BEFORE the bed transform
+
+void Move::AxisTransform(float xyzPoint[])
+{
+	xyzPoint[X_AXIS] = xyzPoint[X_AXIS] + tanXY*xyzPoint[Y_AXIS] + tanXZ*xyzPoint[Z_AXIS];
+	xyzPoint[Y_AXIS] = xyzPoint[Y_AXIS] + tanYZ*xyzPoint[Z_AXIS];
+}
+
+// Invert the Axis transform AFTER the bed transform
+
+void Move::InverseAxisTransform(float xyzPoint[])
+{
 	xyzPoint[Y_AXIS] = xyzPoint[Y_AXIS] - tanYZ*xyzPoint[Z_AXIS];
 	xyzPoint[X_AXIS] = xyzPoint[X_AXIS] - (tanXY*xyzPoint[Y_AXIS] + tanXZ*xyzPoint[Z_AXIS]);
 }
 
 
+
+void Move::Transform(float xyzPoint[])
+{
+	AxisTransform(xyzPoint);
+	BedTransform(xyzPoint);
+}
+
+void Move::InverseTransform(float xyzPoint[])
+{
+	InverseBedTransform(xyzPoint);
+	InverseAxisTransform(xyzPoint);
+}
+
+
 void Move::SetAxisCompensation(int8_t axis, float tangent)
 {
-	float currentPositions[DRIVES+1];
-	if(!GetCurrentState(currentPositions))
-	{
-		platform->Message(HOST_MESSAGE, "Setting bed equation - can't get position!");
-		return;
-	}
-
 	switch(axis)
 	{
 	case X_AXIS:
@@ -674,68 +706,58 @@ void Move::SetAxisCompensation(int8_t axis, float tangent)
 	default:
 		platform->Message(HOST_MESSAGE, "SetAxisCompensation: dud axis.\n");
 	}
-	Transform(currentPositions);
-	SetPositions(currentPositions);
 }
 
 void Move::SetProbedBedEquation()
 {
-	float currentPositions[DRIVES+1];
-	if(!GetCurrentState(currentPositions))
+	switch(NumberOfProbePoints())
 	{
-		platform->Message(HOST_MESSAGE, "Setting bed equation - can't get position!");
-		return;
-	}
+	case 3:
+		/*
+		 * Transform to a plane
+		 */
+		secondDegreeCompensation = false;
+		float xkj, ykj, zkj;
+		float xlj, ylj, zlj;
+		float a, b, c, d;   // Implicit plane equation - what we need to do a proper job
 
-	if(NumberOfProbePoints() >= 3)
-	{
-		secondDegreeCompensation = (NumberOfProbePoints() == 4);
-		if(secondDegreeCompensation)
-		{
-			/*
-			 * Transform to a ruled-surface quadratic.  The corner points for interpolation are indexed:
-			 *
-			 *   ^  [1]      [2]
-			 *   |
-			 *   Y
-			 *   |
-			 *   |  [0]      [3]
-			 *      -----X---->
-			 *
-			 *   These are the scaling factors to apply to x and y coordinates to get them into the
-			 *   unit interval [0, 1].
-			 */
-			xRectangle = 1.0/(xBedProbePoints[3] - xBedProbePoints[0]);
-			yRectangle = 1.0/(yBedProbePoints[1] - yBedProbePoints[0]);
-			Transform(currentPositions);
-			SetPositions(currentPositions);
-			return;
-		}
-	} else
-	{
+		xkj = xBedProbePoints[1] - xBedProbePoints[0];
+		ykj = yBedProbePoints[1] - yBedProbePoints[0];
+		zkj = zBedProbePoints[1] - zBedProbePoints[0];
+		xlj = xBedProbePoints[2] - xBedProbePoints[0];
+		ylj = yBedProbePoints[2] - yBedProbePoints[0];
+		zlj = zBedProbePoints[2] - zBedProbePoints[0];
+		a = ykj*zlj - zkj*ylj;
+		b = zkj*xlj - xkj*zlj;
+		c = xkj*ylj - ykj*xlj;
+		d = -(xBedProbePoints[1]*a + yBedProbePoints[1]*b + zBedProbePoints[1]*c);
+		aX = -a/c;
+		aY = -b/c;
+		aC = -d/c;
+		break;
+
+	case 4:
+		/*
+		 * Transform to a ruled-surface quadratic.  The corner points for interpolation are indexed:
+		 *
+		 *   ^  [1]      [2]
+		 *   |
+		 *   Y
+		 *   |
+		 *   |  [0]      [3]
+		 *      -----X---->
+		 *
+		 *   These are the scaling factors to apply to x and y coordinates to get them into the
+		 *   unit interval [0, 1].
+		 */
+		secondDegreeCompensation = true;
+		xRectangle = 1.0/(xBedProbePoints[3] - xBedProbePoints[0]);
+		yRectangle = 1.0/(yBedProbePoints[1] - yBedProbePoints[0]);
+		break;
+
+	default:
 		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
-		return;
 	}
-
-	float xkj, ykj, zkj;
-	float xlj, ylj, zlj;
-	float a, b, c, d;   // Implicit plane equation - what we need to do a proper job
-
-	xkj = xBedProbePoints[1] - xBedProbePoints[0];
-	ykj = yBedProbePoints[1] - yBedProbePoints[0];
-	zkj = zBedProbePoints[1] - zBedProbePoints[0];
-	xlj = xBedProbePoints[2] - xBedProbePoints[0];
-	ylj = yBedProbePoints[2] - yBedProbePoints[0];
-	zlj = zBedProbePoints[2] - zBedProbePoints[0];
-	a = ykj*zlj - zkj*ylj;
-	b = zkj*xlj - xkj*zlj;
-	c = xkj*ylj - ykj*xlj;
-	d = -(xBedProbePoints[1]*a + yBedProbePoints[1]*b + zBedProbePoints[1]*c);
-	aX = -a/c;
-	aY = -b/c;
-	aC = -d/c;
-	Transform(currentPositions);
-	SetPositions(currentPositions);
 }
 
 // FIXME

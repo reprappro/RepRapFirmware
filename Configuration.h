@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.76"
-#define DATE "2014-06-04"
+#define VERSION "0.77"
+#define DATE "2014-06-08"
 #define LAST_AUTHOR "reprappro"
 
 // Other firmware that we might switch to be compatible with.
@@ -48,7 +48,7 @@ enum Compatibility
 
 #define HEAT_SAMPLE_TIME (0.5) // Seconds
 
-#define TEMPERATURE_CLOSE_ENOUGH (2.0) 		// Celsius
+#define TEMPERATURE_CLOSE_ENOUGH (3.0) 		// Celsius
 #define TEMPERATURE_LOW_SO_DONT_CARE (40.0)	// Celsius
 
 // If temperatures fall outside this range, something
@@ -67,8 +67,6 @@ enum Compatibility
 
 // Webserver stuff
 
-//#define NETWORK true // Set true to turn the ethernet on
-
 #define DEFAULT_PASSWORD "reprap"
 #define DEFAULT_NAME "My RepRap 1"
 #define INDEX_PAGE "reprap.htm"
@@ -80,6 +78,9 @@ enum Compatibility
 #define HOME_Z_G "homez.g"
 #define HOME_ALL_G "homeall.g"
 
+#define WEB_DEBUG_TRUE 9
+#define WEB_DEBUG_FALSE 8
+
 #define LIST_SEPARATOR ':'						// Lists in G Codes
 #define FILE_LIST_SEPARATOR ','					// Put this between file names when listing them
 #define FILE_LIST_BRACKET '"'					// Put these round file names when listing them
@@ -88,10 +89,7 @@ enum Compatibility
 
 #define LONG_TIME 300.0 // Seconds
 
-#define EOF_STRING "<!-- **EoF** -->"
-
-#define WEB_DEBUG_TRUE 9
-#define WEB_DEBUG_FALSE 8
+#define EOF_STRING "<!-- **EoF** -->"           // For HTML uploads
 
 #define FLASH_LED 'F' 							// Type byte of a message that is to flash an LED; the next two bytes define
                       	  	  	  	  	  	  	// the frequency and M/S ratio.

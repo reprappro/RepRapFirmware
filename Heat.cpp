@@ -125,6 +125,16 @@ void PID::Init()
   switchedOff = true;
 }
 
+void PID::SwitchOn()
+{
+	if(reprap.Debug())
+	{
+		snprintf(scratchString, STRING_LENGTH, "Heater %d switched on.\n", heater);
+		platform->Message(BOTH_MESSAGE, scratchString);
+	}
+	switchedOff = false;
+}
+
 
 void PID::Spin()
 {

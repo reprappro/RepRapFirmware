@@ -160,10 +160,6 @@ inline void PID::SwitchOff()
 	switchedOff = true;
 }
 
-inline void PID::SwitchOn()
-{
-	switchedOff = false;
-}
 
 inline bool PID::SwitchedOff()
 {
