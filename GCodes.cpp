@@ -457,9 +457,8 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 		fileBeingPrinted = platform->GetFileStore(platform->GetSysDir(), fileName, false);
 		if(fileBeingPrinted == NULL)
 		{
-			platform->Message(HOST_MESSAGE, "Canned cycle GCode file not found - ");
-			platform->Message(HOST_MESSAGE, fileName);
-			platform->Message(HOST_MESSAGE, "\n");
+			snprintf(scratchString, STRING_LENGTH, "Macro file %s not found.\n ", fileName);
+			platform->Message(HOST_MESSAGE, scratchString);
 			if(!Pop())
 				platform->Message(HOST_MESSAGE, "Cannot pop the stack.\n");
 			return true;
@@ -1645,11 +1644,13 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 
     case 105: // Deprecated...
     	strncpy(reply, "T:", STRING_LENGTH);
-    	//FIXME - why did this decrement rather than increment through the heaters (odd behaviour)
     	for(int8_t heater = 1; heater < HEATERS; heater++)
     	{
-    		snprintf(scratchString, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
-    		strncat(reply, scratchString, STRING_LENGTH);
+    		if(!reprap.GetHeat()->SwitchedOff(heater))
+    		{
+    			snprintf(scratchString, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
+    			strncat(reply, scratchString, STRING_LENGTH);
+    		}
     	}
     	snprintf(scratchString, STRING_LENGTH, "B: %.1f ", reprap.GetHeat()->GetTemperature(0));
     	strncat(reply, scratchString, STRING_LENGTH);

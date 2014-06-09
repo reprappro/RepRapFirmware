@@ -83,6 +83,7 @@ class Heat
     void Activate(int8_t heater);								// Turn on a heater
     void Standby(int8_t heater);								// Set a heater idle
     float GetTemperature(int8_t heater);						// Get the temperature of a heater
+    bool SwitchedOff(int8_t heater);						    // Is this heater in use?
     void ResetFault(int8_t heater);								// Reset a heater fault - only call this if you know what you are doing
     bool AllHeatersAtSetTemperatures();							// Is everything at temperature within tolerance?
     bool HeaterAtSetTemperature(int8_t heater);					// Is a specific heater at temperature within tolerance?
@@ -169,6 +170,11 @@ inline bool PID::SwitchedOff()
 //**********************************************************************************
 
 // Heat
+
+inline bool Heat::SwitchedOff(int8_t heater)
+{
+	return pids[heater]->SwitchedOff();
+}
 
 inline void Heat::SetActiveTemperature(int8_t heater, const float& t)
 {

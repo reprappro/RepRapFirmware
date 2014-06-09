@@ -307,11 +307,17 @@ void RepRap::EmergencyStop()
 	platform->Message(BOTH_MESSAGE, "Emergency Stop! Reset the controller to continue.");
 }
 
+/*
+ * The first tool added becomes the one selected.  This will not happen in future releases.
+ */
+
 void RepRap::AddTool(Tool* tool)
 {
 	if(toolList == NULL)
 	{
 		toolList = tool;
+		currentTool = tool;
+		tool->Activate(currentTool);
 		return;
 	}
 
