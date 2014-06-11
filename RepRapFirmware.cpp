@@ -157,14 +157,14 @@ RepRap reprap;
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap()
+RepRap::RepRap() : active(false), debug(false)
 {
-  active = false;
   platform = new Platform();
   webserver = new Webserver(platform);
   gCodes = new GCodes(platform, webserver);
   move = new Move(platform, gCodes);
   heat = new Heat(platform, gCodes);
+  toolList = NULL;
 }
 
 void RepRap::Init()
@@ -175,6 +175,7 @@ void RepRap::Init()
   webserver->Init();
   move->Init();
   heat->Init();
+  currentTool = NULL;
   active = true;
 
   platform->Message(HOST_MESSAGE, NAME);
@@ -186,18 +187,37 @@ void RepRap::Init()
   platform->Message(HOST_MESSAGE, platform->GetConfigFile());
   platform->Message(HOST_MESSAGE, "...\n\n");
 
-  platform->PushMessageIndent();
-  gCodes->RunConfigurationGCodes();
-  while(gCodes->PrintingAFile()) // Wait till the file is finished
-	  gCodes->Spin();
-  platform->PopMessageIndent();
+  // We inject an M98 into the serial input stream to run the start-up macro
+
+  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
+  platform->GetLine()->InjectString(scratchString);
+
+  bool runningTheFile = false;
+  bool initialisingInProgress = true;
+  while(initialisingInProgress)
+  {
+	  Spin();
+	  if(gCodes->PrintingAFile())
+		  runningTheFile = true;
+	  if(runningTheFile)
+	  {
+		  if(!gCodes->PrintingAFile())
+			  initialisingInProgress = false;
+	  }
+  }
+
+
+  //while(gCodes->RunConfigurationGCodes()); // Wait till the file is finished
 
   platform->Message(HOST_MESSAGE, "\nStarting network...\n");
   platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
 
   platform->Message(HOST_MESSAGE, "\n");
-  platform->Message(HOST_MESSAGE, NAME);
-  platform->Message(HOST_MESSAGE, " is up and running.\n");
+  snprintf(scratchString, STRING_LENGTH, "%s is up and running.\n", NAME);
+  platform->Message(HOST_MESSAGE, scratchString);
+  fastLoop = FLT_MAX;
+  slowLoop = 0.0;
+  lastTime = platform->Time();
 }
 
 void RepRap::Exit()
@@ -221,6 +241,24 @@ void RepRap::Spin()
   gCodes->Spin();
   move->Spin();
   heat->Spin();
+
+  // Keep track of the loop time
+
+  double t = platform->Time();
+  double dt = t - lastTime;
+  if(dt < fastLoop)
+	  fastLoop = dt;
+  if(dt > slowLoop)
+	  slowLoop = dt;
+  lastTime = t;
+}
+
+void RepRap::Timing()
+{
+	snprintf(scratchString, STRING_LENGTH, "Slowest main loop (seconds): %f; fastest: %f\n", slowLoop, fastLoop);
+	platform->AppendMessage(BOTH_MESSAGE, scratchString);
+	fastLoop = FLT_MAX;
+	slowLoop = 0.0;
 }
 
 void RepRap::Diagnostics()
@@ -230,6 +268,7 @@ void RepRap::Diagnostics()
   heat->Diagnostics();
   gCodes->Diagnostics();
   webserver->Diagnostics();
+  Timing();
 }
 
 // Turn off the heaters, disable the motors, and
@@ -238,14 +277,18 @@ void RepRap::Diagnostics()
 
 void RepRap::EmergencyStop()
 {
-	int8_t i;
-
 	//platform->DisableInterrupts();
 
-	heat->Exit();
-	for(i = 0; i < HEATERS; i++)
-		platform->SetHeater(i, 0.0);
+	Tool* tool = toolList;
+	while(tool)
+	{
+		tool->Standby();
+		tool = tool->Next();
+	}
 
+	heat->Exit();
+	for(int8_t heater = 0; heater < HEATERS; heater++)
+		platform->SetHeater(heater, 0.0);
 
 	// We do this twice, to avoid an interrupt switching
 	// a drive back on.  move->Exit() should prevent
@@ -254,14 +297,109 @@ void RepRap::EmergencyStop()
 	for(int8_t i = 0; i < 2; i++)
 	{
 		move->Exit();
-		for(i = 0; i < DRIVES; i++)
+		for(int8_t drive = 0; drive < DRIVES; drive++)
 		{
-			platform->SetMotorCurrent(i, 0.0);
-			platform->Disable(i);
+			platform->SetMotorCurrent(drive, 0.0);
+			platform->Disable(drive);
 		}
 	}
-	platform->Message(HOST_MESSAGE, "Emergency Stop! Reset the controller to continue.");
+
+	platform->Message(BOTH_MESSAGE, "Emergency Stop! Reset the controller to continue.");
 }
+
+/*
+ * The first tool added becomes the one selected.  This will not happen in future releases.
+ */
+
+void RepRap::AddTool(Tool* tool)
+{
+	if(toolList == NULL)
+	{
+		toolList = tool;
+		currentTool = tool;
+		tool->Activate(currentTool);
+		return;
+	}
+
+	toolList->AddTool(tool);
+}
+
+void RepRap::SelectTool(int toolNumber)
+{
+	Tool* tool = toolList;
+
+	while(tool)
+	{
+		if(tool->Number() == toolNumber)
+		{
+			tool->Activate(currentTool);
+			currentTool = tool;
+			return;
+		}
+		tool = tool->Next();
+	}
+
+	// Selecting a non-existent tool is valid.  It sets them all to standby.
+
+	if(currentTool != NULL)
+		StandbyTool(currentTool->Number());
+	currentTool = NULL;
+
+}
+
+void RepRap::StandbyTool(int toolNumber)
+{
+	Tool* tool = toolList;
+
+	while(tool)
+	{
+		if(tool->Number() == toolNumber)
+		{
+			tool->Standby();
+			if(currentTool == tool)
+				currentTool = NULL;
+			return;
+		}
+		tool = tool->Next();
+	}
+
+	snprintf(scratchString, STRING_LENGTH, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
+	platform->Message(HOST_MESSAGE, scratchString);
+}
+
+Tool* RepRap::GetTool(int toolNumber)
+{
+	Tool* tool = toolList;
+
+	while(tool)
+	{
+		if(tool->Number() == toolNumber)
+			return tool;
+		tool = tool->Next();
+	}
+
+	return NULL; // Not an error
+}
+
+void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures)
+{
+	Tool* tool = toolList;
+
+	while(tool)
+	{
+		if(tool->Number() == toolNumber)
+		{
+			tool->SetVariables(standbyTemperatures, activeTemperatures);
+			return;
+		}
+		tool = tool->Next();
+	}
+
+	snprintf(scratchString, STRING_LENGTH, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
+	platform->Message(HOST_MESSAGE, scratchString);
+}
+
+
 
 
 
@@ -270,33 +408,11 @@ void RepRap::EmergencyStop()
 // Utilities and storage not part of any class
 
 
-// Float to a string.
-
-static long precision[] = {0,10,100,1000,10000,100000,1000000,10000000,100000000};
 char scratchString[STRING_LENGTH];
-
-char* ftoa(char *a, const float& f, int prec)
-{
-  if(a == NULL)
-    a = scratchString;
-  char *ret = a;
-  long whole = (long)f;
-  if(!whole && f < 0.0)
-  {
-	  a[0] = '-';
-	  a++;
-  }
-  snprintf(a, STRING_LENGTH, "%d", whole);
-  while (*a != '\0') a++;
-  *a++ = '.';
-  long decimal = abs((long)((f - (float)whole) * precision[prec]));
-  snprintf(a, STRING_LENGTH, "%d", decimal);
-  return ret;
-}
 
 // String testing
 
-bool StringEndsWith(char* string, char* ending)
+bool StringEndsWith(const char* string, const char* ending)
 {
   int j = strlen(string);
   int k = strlen(ending);
@@ -306,7 +422,7 @@ bool StringEndsWith(char* string, char* ending)
   return(StringEquals(&string[j - k], ending));
 }
 
-bool StringEquals(char* s1, char* s2)
+bool StringEquals(const char* s1, const char* s2)
 {
   int i = 0;
   while(s1[i] && s2[i])
@@ -319,7 +435,7 @@ bool StringEquals(char* s1, char* s2)
   return !(s1[i] || s2[i]);
 }
 
-bool StringStartsWith(char* string, char* starting)
+bool StringStartsWith(const char* string, const char* starting)
 {
   int j = strlen(string);
   int k = strlen(starting);
@@ -333,7 +449,7 @@ bool StringStartsWith(char* string, char* starting)
   return true;
 }
 
-int StringContains(char* string, char* match)
+int StringContains(const char* string, const char* match)
 {
   int i = 0;
   int count = 0;
