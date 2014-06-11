@@ -577,6 +577,8 @@ class Platform
   void SetMixingDrives(int);
   int GetMixingDrives();
 
+  int8_t SlowestDrive();
+
   // Heat and temperature
   
   float GetTemperature(int8_t heater); // Result is in degrees celsius
@@ -614,6 +616,8 @@ class Platform
   
 // DRIVES
 
+  void SetSlowestDrive();
+
   int8_t stepPins[DRIVES];
   int8_t directionPins[DRIVES];
   int8_t enablePins[DRIVES];
@@ -627,6 +631,7 @@ class Platform
   float instantDvs[DRIVES];
   MCP4461 mcpDuet;
   MCP4461 mcpExpansion;
+  int8_t slowestDrive;
 
 
   int8_t potWipes[DRIVES];
@@ -830,6 +835,12 @@ inline float Platform::InstantDv(int8_t drive) const
 inline void Platform::SetInstantDv(int8_t drive, float value)
 {
 	instantDvs[drive] = value;
+	SetSlowestDrive();
+}
+
+inline int8_t Platform::SlowestDrive()
+{
+	return slowestDrive;
 }
 
 inline const float* Platform::InstantDvs() const

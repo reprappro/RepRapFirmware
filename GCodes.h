@@ -166,7 +166,6 @@ class GCodes
     bool homeY;									// True to home the Y axis this move
     bool homeZ;									// True to home the Z axis this move
     int8_t homeAxisMoveCount;					// Counts homing moves
-    float gFeedRate;							// Store for the current feedrate
     int probeCount;								// Counts multiple probe points
     int8_t cannedCycleMoveCount;				// Counts through internal (i.e. not macro) canned cycle moves
     bool cannedCycleMoveQueued;					// True if a canned cycle move has been set

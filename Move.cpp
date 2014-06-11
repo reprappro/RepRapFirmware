@@ -94,10 +94,11 @@ void Move::Init()
 	  liveCoordinates[i] = 0.0;
   }
 
-  lastMove->Init(ep, platform->HomeFeedRate(Z_AXIS), platform->InstantDv(Z_AXIS), platform->MaxFeedrate(Z_AXIS),   // Typically Z is the slowest Axis
-		  platform->Acceleration(Z_AXIS), false);
+  int8_t slow = platform->SlowestDrive();
+  lastMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow),
+		  platform->Acceleration(slow), false);
   lastMove->Release();
-  liveCoordinates[DRIVES] = platform->HomeFeedRate(Z_AXIS);
+  liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
 
   SetStepHypotenuse();
 
@@ -302,6 +303,11 @@ void Move::SetPositions(float move[])
 	lastMove->SetFeedRate(move[DRIVES]);
 }
 
+void Move::SetFeedrate(float feedRate)
+{
+	lastMove->SetFeedRate(feedRate);
+}
+
 
 void Move::Diagnostics() 
 {
@@ -403,6 +409,19 @@ void Move::SetStepHypotenuse()
 	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
 }
 
+/*
+ * For diagnostics
+ */
+
+void Move::PrintMove(LookAhead* lookAhead)
+{
+	snprintf(scratchString, STRING_LENGTH, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, v: %.3f\n",
+			lookAhead->MachineToEndPoint(X_AXIS), lookAhead->MachineToEndPoint(Y_AXIS), lookAhead->MachineToEndPoint(Z_AXIS),
+			lookAhead->MinSpeed(), lookAhead->MaxSpeed(), lookAhead->Acceleration(), lookAhead->FeedRate(), lookAhead->V()
+	);
+	platform->Message(HOST_MESSAGE, scratchString);
+}
+
 // Take an item from the look-ahead ring and add it to the DDA ring, if
 // possible.
 
@@ -427,6 +446,7 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     
     float u, v;
     ddaRingAddPointer->Init(lookAhead, u, v);
+    //PrintMove(lookAhead);
     ddaRingAddPointer = ddaRingAddPointer->Next();
     ReleaseDDARingLock();
     return true;
@@ -538,7 +558,8 @@ void Move::DoLookAhead()
     {
       if(n1->Processed() == unprocessed)
       {
-        float c = fmin(n1->FeedRate(), n2->FeedRate());
+        //float c = fmin(n1->FeedRate(), n2->FeedRate());
+    	float c = n1->V();
         float m = fmin(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
         c = c*n1->Cosine();
         if(c < m)
@@ -555,7 +576,7 @@ void Move::DoLookAhead()
 
     if(addNoMoreMoves || !gCodes->HaveIncomingData())
     {
-    	n1->SetV(platform->InstantDv(Z_AXIS)); // The next thing may be a Z move (the slowest); be prepared.
+    	n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
     	n1->SetProcessed(complete);
     }
   }

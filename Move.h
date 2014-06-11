@@ -177,6 +177,7 @@ class Move
     void HitHighStop(int8_t drive, 				// What to do when a high endstop is hit
     		LookAhead* la, DDA* hitDDA);
     void SetPositions(float move[]);			// Force the coordinates to be these
+    void SetFeedrate(float feedRate);			// Sometimes we want to override the feedrate
     void SetLiveCoordinates(float coords[]);	// Force the live coordinates (see above) to be these
     void SetXBedProbePoint(int index, float x);	// Record the X coordinate of a probe point
     void SetYBedProbePoint(int index, float y);	// Record the Y coordinate of a probe point
@@ -227,6 +228,7 @@ class Move
     bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
     		float minSpeed, float maxSpeed,
     		float acceleration, bool ce);
+    void PrintMove(LookAhead* lookAhead);				// For diagnostics
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
 
 
@@ -354,7 +356,7 @@ inline void LookAhead::SetDriveCoordinateAndZeroEndSpeed(float a, int8_t drive)
 {
   endPoint[drive] = EndPointToMachine(drive, a);
   cosine = 2.0;
-  v = minSpeed;
+  v = platform->InstantDv(platform->SlowestDrive());
 }
 
 inline long* LookAhead::MachineCoordinates()

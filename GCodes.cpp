@@ -75,7 +75,6 @@ void GCodes::Init()
   offSetSet = false;
   dwellWaiting = false;
   stackPointer = 0;
-  gFeedRate = platform->MaxFeedrate(Z_AXIS); // Typically the slowest
   zProbesSet = false;
   probeCount = 0;
   cannedCycleMoveCount = 0;
@@ -265,7 +264,7 @@ bool GCodes::Push()
   
   drivesRelativeStack[stackPointer] = drivesRelative;
   axesRelativeStack[stackPointer] = axesRelative;
-  feedrateStack[stackPointer] = gFeedRate; 
+  feedrateStack[stackPointer] = moveBuffer[DRIVES];
   fileStack[stackPointer] = fileBeingPrinted;
   stackPointer++;
   platform->PushMessageIndent();
@@ -298,8 +297,7 @@ bool GCodes::Pop()
   
   // Do a null move to set the correct feedrate
   
-  gFeedRate = feedrateStack[stackPointer];
-  moveBuffer[DRIVES] = gFeedRate;
+  moveBuffer[DRIVES] = feedrateStack[stackPointer];
   
   checkEndStops = false;
   moveAvailable = true;
@@ -388,9 +386,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 	// Deal with feedrate
 
 	if(gb->Seen(FEEDRATE_LETTER))
-	  gFeedRate = gb->GetFValue()*distanceScale*0.016666667; // G Code feedrates are in mm/minute; we need mm/sec
-
-	moveBuffer[DRIVES] = gFeedRate;  // We always set it, as Move may have modified the last one.
+		moveBuffer[DRIVES] = gb->GetFValue()*distanceScale*0.016666667; // G Code feedrates are in mm/minute; we need mm/sec
 
 	return true;
 }
@@ -557,6 +553,7 @@ bool GCodes::SetPositions(GCodeBuffer *gb)
 		reprap.GetMove()->Transform(moveBuffer);
 		reprap.GetMove()->SetLiveCoordinates(moveBuffer);
 		reprap.GetMove()->SetPositions(moveBuffer);
+		reprap.GetMove()->SetFeedrate(platform->InstantDv(platform->SlowestDrive()));  // On a G92 we must effectively be stationary
 	}
 
 	return true;

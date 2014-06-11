@@ -130,6 +130,8 @@ void Platform::Init()
   homeFeedrates = HOME_FEEDRATES;
   headOffsets = HEAD_OFFSETS;
 
+  SetSlowestDrive();
+
   // HEATERS - Bed is assumed to be the first
 
   tempSensePins = TEMP_SENSE_PINS;
@@ -225,6 +227,16 @@ void Platform::Init()
   longWait = lastTime;
   
   active = true;
+}
+
+void Platform::SetSlowestDrive()
+{
+	slowestDrive = 0;
+	for(int8_t drive = 1; drive < DRIVES; drive++)
+	{
+		if(InstantDv(drive) < InstantDv(slowestDrive))
+			slowestDrive = drive;
+	}
 }
 
 void Platform::InitZProbe()
