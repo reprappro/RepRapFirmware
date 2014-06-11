@@ -25,5 +25,5 @@ M557 P3 X222 Y0                     ; ...levelling
 M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
 M201 X800 Y800 Z15 E1000            ; Accelerations (mm/s^2)
 M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
-M566 X600 Y600 Z30 E600				   ; Minimum speeds mm/minute
+M566 X600 Y600 Z30 E20              ; Minimum speeds mm/minute
 
