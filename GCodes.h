@@ -83,7 +83,6 @@ class GCodes
     char* GetCurrentCoordinates();										// Get where we are as a string
     bool PrintingAFile() const;											// Are we in the middle of printing a file?
     void Diagnostics();													// Send helpful information out
-    //int8_t GetSelectedHead();											// return which tool is selected
     bool HaveIncomingData() const;										// Is there something that we have to do?
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
     
@@ -94,7 +93,10 @@ class GCodes
     bool DoCannedCycleMove(bool ce);									// Do a move from an internally programmed canned cycle
     bool DoFileCannedCycles(const char* fileName);						// Run a GCode macro in a file
     bool FileCannedCyclesReturn();										// End a macro
-    bool ActOnGcode(GCodeBuffer* gb);									// Do the G Code
+    bool ActOnCode(GCodeBuffer* gb);									// Do a G, M or T Code
+    bool HandleGcode(int code, GCodeBuffer* gb);						// Do a G Code
+    bool HandleMcode(int code, GCodeBuffer* gb);						// Do an M Code
+    bool HandleTcode(int code, GCodeBuffer* gb);						// Do a T Code
     bool SetUpMove(GCodeBuffer* gb);									// Set up a new movement
     bool DoDwell(GCodeBuffer *gb);										// Wait for a bit
     bool DoHome(char *reply, bool& error);								// Home some axes
