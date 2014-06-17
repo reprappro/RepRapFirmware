@@ -41,6 +41,7 @@ class RepRap
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+    void PrintTool(int toolNumber, char* reply);
 	void FlagTemperatureFault(int8_t dudHeater);
 	void ClearTemperatureFault(int8_t wasDudHeater);
     Platform* GetPlatform() const;
@@ -71,8 +72,19 @@ inline GCodes* RepRap::GetGCodes() const { return gCodes; }
 inline Webserver* RepRap::GetWebserver() const { return webserver; }
 inline bool RepRap::Debug() const { return debug; }
 inline Tool* RepRap::GetCurrentTool() { return currentTool; }
-inline void RepRap::FlagTemperatureFault(int8_t dudHeater) { if(toolList != NULL) toolList->FlagTemperatureFault(dudHeater); }
-inline void RepRap::ClearTemperatureFault(int8_t wasDudHeater) { if(toolList != NULL) toolList->ClearTemperatureFault(wasDudHeater); }
+
+inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
+{
+	if(toolList != NULL)
+		toolList->FlagTemperatureFault(dudHeater);
+}
+
+inline void RepRap::ClearTemperatureFault(int8_t wasDudHeater)
+{
+	reprap.GetHeat()->ResetFault(wasDudHeater);
+	if(toolList != NULL)
+		toolList->ClearTemperatureFault(wasDudHeater);
+}
 
 inline void RepRap::SetDebug(bool d)
 {

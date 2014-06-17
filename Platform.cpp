@@ -138,7 +138,7 @@ void Platform::Init()
   heatOnPins = HEAT_ON_PINS;
   thermistorBetas = THERMISTOR_BETAS;
   thermistorSeriesRs = THERMISTOR_SERIES_RS;
-  thermistorInfRs = THERMISTOR_25_RS;
+  thermistorRAt25 = THERMISTOR_25_RS;
   usePID = USE_PID;
   pidKis = PID_KIS;
   pidKds = PID_KDS;
@@ -209,7 +209,7 @@ void Platform::Init()
     		pinModeNonDue(heatOnPins[i], OUTPUT);
     	else
     		pinMode(heatOnPins[i], OUTPUT);
-    thermistorInfRs[i] = ( thermistorInfRs[i]*exp(-thermistorBetas[i]/(25.0 - ABS_ZERO)) );
+    thermistorRAt25[i] = ( thermistorRAt25[i]*exp(-thermistorBetas[i]/(25.0 - ABS_ZERO)) );
     tempSum[i] = 0;
   }
 
@@ -378,7 +378,6 @@ void Platform::ClassReport(char* className, float &lastTime)
 // then the thermistor resistance, R = V.RS/(1024 - V)
 // and the temperature, T = BETA/ln(R/R_INF)
 // To get degrees celsius (instead of kelvin) add -273.15 to T
-//#define THERMISTOR_R_INFS ( THERMISTOR_25_RS*exp(-THERMISTOR_BETAS/298.15) ) // Compute in Platform constructor
 
 // Result is in degrees celsius
 
@@ -395,7 +394,7 @@ float Platform::GetTemperature(int8_t heater)
 //	  return ABS_ZERO;
 //  }
   float r = (float)rawTemp + 0.5;
-  r = ABS_ZERO + thermistorBetas[heater]/log( (r*thermistorSeriesRs[heater]/((AD_RANGE + 1) - r))/thermistorInfRs[heater] );
+  r = ABS_ZERO + thermistorBetas[heater]/log( (r*thermistorSeriesRs[heater]/((AD_RANGE + 1) - r))/thermistorRAt25[heater] );
   return r;
 }
 

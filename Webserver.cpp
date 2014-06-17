@@ -957,6 +957,11 @@ void Webserver::SetName(const char* nm)
 	myName[SHORT_STRING_LENGTH] = 0; // NB array is dimensioned to SHORT_STRING_LENGTH+1
 }
 
+const char* Webserver::GetName() const
+{
+	return myName;
+}
+
 // Get the actual amount of gcode buffer space we have
 unsigned int Webserver::GetGcodeBufferSpace() const
 {

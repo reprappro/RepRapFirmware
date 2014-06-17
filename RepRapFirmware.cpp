@@ -324,6 +324,22 @@ void RepRap::AddTool(Tool* tool)
 	toolList->AddTool(tool);
 }
 
+void RepRap::PrintTool(int toolNumber, char* reply)
+{
+	Tool* tool = toolList;
+
+	while(tool)
+	{
+		if(tool->Number() == toolNumber)
+		{
+			tool->Print(reply);
+			return;
+		}
+		tool = tool->Next();
+	}
+	platform->Message(HOST_MESSAGE, "Attempt to print details of non-existent tool.");
+}
+
 void RepRap::SelectTool(int toolNumber)
 {
 	Tool* tool = toolList;

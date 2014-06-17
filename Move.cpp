@@ -729,7 +729,7 @@ void Move::SetAxisCompensation(int8_t axis, float tangent)
 	}
 }
 
-void Move::SetProbedBedEquation()
+void Move::SetProbedBedEquation(char* reply)
 {
 	switch(NumberOfProbePoints())
 	{
@@ -778,6 +778,13 @@ void Move::SetProbedBedEquation()
 
 	default:
 		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
+	}
+
+	snprintf(reply, STRING_LENGTH, "Bed equation fits points ");
+	for(int8_t point = 0; point < NumberOfProbePoints(); point++)
+	{
+		snprintf(scratchString, STRING_LENGTH, "[%.1f, %.1f, %.3f] ", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
+		strncat(reply, scratchString, STRING_LENGTH);
 	}
 }
 

@@ -483,6 +483,7 @@ class Platform
   void Step(byte drive);
   void Disable(byte drive); // There is no drive enable; drives get enabled automatically the first time they are used.
   void SetMotorCurrent(byte drive, float current);
+  float MotorCurrent(byte drive) const;
   float DriveStepsPerUnit(int8_t drive) const;
   void SetDriveStepsPerUnit(int8_t drive, float value);
   float Acceleration(int8_t drive) const;
@@ -526,7 +527,14 @@ class Platform
   float PidMax(int8_t heater) const;
   float DMix(int8_t heater) const;
   bool UsePID(int8_t heater) const;
+  float ThermistorBeta(int8_t heater) const;
+  float ThermistorSeriesR(int8_t heater) const;
+  float ThermistorRAt25(int8_t heater) const;
+  void SetThermistorBeta(int8_t heater, float b);
+  void SetThermistorSeriesR(int8_t heater, float r);
+  void SetThermistorRAt25(int8_t heater, float r);
   float HeatSampleTime() const;
+  void SetHeatSampleTime(float st);
   void CoolingFan(float speed);
   void SetPidValues(size_t heater, float pVal, float iVal, float dVal);
 
@@ -602,7 +610,7 @@ class Platform
   int8_t heatOnPins[HEATERS];
   float thermistorBetas[HEATERS];
   float thermistorSeriesRs[HEATERS];
-  float thermistorInfRs[HEATERS];
+  float thermistorRAt25[HEATERS];
   bool usePID[HEATERS];
   float pidKis[HEATERS];
   float pidKds[HEATERS];
@@ -848,6 +856,17 @@ inline void Platform::SetMotorCurrent(byte drive, float current)
 	}
 }
 
+inline float Platform::MotorCurrent(byte drive) const
+{
+	unsigned short pot;
+	if(drive < 4)
+		pot = mcpDuet.getNonVolatileWiper(potWipes[drive]);
+	else
+		pot = mcpExpansion.getNonVolatileWiper(potWipes[drive]);
+	return (float)pot*maxStepperDigipotVoltage/(0.256*8.0*senseResistor);
+}
+
+
 inline float Platform::HomeFeedRate(int8_t axis) const
 {
   return homeFeedrates[axis];
@@ -937,21 +956,6 @@ inline int Platform::GetZProbeType() const
 	return zProbeType;
 }
 
-//inline void Platform::SetMixingDrives(int num_drives)
-//{
-//	if(num_drives>(DRIVES-AXES))
-//	{
-//		Message(HOST_MESSAGE, "More mixing extruder drives set with M160 than exist in firmware configuration\n");
-//		return;
-//	}
-//	numMixingDrives = num_drives;
-//}
-//
-//inline int Platform::GetMixingDrives()
-//{
-//	return numMixingDrives;
-//}
-
 //********************************************************************************************************
 
 // Drive the RepRap machine - Heat and temperature
@@ -974,6 +978,11 @@ inline void Platform::PollTemperatures()
 inline float Platform::HeatSampleTime() const
 {
   return heatSampleTime; 
+}
+
+inline void Platform::SetHeatSampleTime(float st)
+{
+	heatSampleTime = st;
 }
 
 inline bool Platform::UsePID(int8_t heater) const
@@ -1015,6 +1024,38 @@ inline float Platform::PidMax(int8_t heater) const
 inline float Platform::DMix(int8_t heater) const
 {
   return dMix[heater];  
+}
+
+
+inline float Platform::ThermistorBeta(int8_t heater) const
+{
+	return thermistorBetas[heater];
+}
+
+inline float Platform::ThermistorSeriesR(int8_t heater) const
+{
+	return thermistorSeriesRs[heater];
+}
+
+inline float Platform::ThermistorRAt25(int8_t heater) const
+{
+	return thermistorRAt25[heater]*exp(thermistorBetas[heater]/(25.0 - ABS_ZERO));
+}
+
+inline void Platform::SetThermistorBeta(int8_t heater, float b)
+{
+	thermistorBetas[heater] = b;
+	thermistorRAt25[heater] = ( ThermistorRAt25(heater)*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO)) );
+}
+
+inline void Platform::SetThermistorSeriesR(int8_t heater, float r)
+{
+	thermistorSeriesRs[heater] = r;
+}
+
+inline void Platform::SetThermistorRAt25(int8_t heater, float r)
+{
+	thermistorRAt25[heater] = r*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO));
 }
 
 // This is a bit of a compromise - old RepRaps used fan speeds in the range

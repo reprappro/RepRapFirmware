@@ -24,7 +24,7 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.80"
+#define VERSION "0.81"
 #define DATE "2014-06-17"
 #define LAST_AUTHOR "reprappro"
 
@@ -84,8 +84,6 @@ enum Compatibility
 #define LIST_SEPARATOR ':'						// Lists in G Codes
 #define FILE_LIST_SEPARATOR ','					// Put this between file names when listing them
 #define FILE_LIST_BRACKET '"'					// Put these round file names when listing them
-
-#define GCODE_LETTERS { 'X', 'Y', 'Z', 'E', 'F' } // The drives and feedrate in a GCode
 
 #define LONG_TIME 300.0 // Seconds
 
