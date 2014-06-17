@@ -171,6 +171,7 @@ void PID::Spin()
   		  snprintf(scratchString, STRING_LENGTH, "%f", temperature);
 		  platform->Message(HOST_MESSAGE, scratchString);
 		  platform->Message(HOST_MESSAGE, "\n");
+		  reprap.FlagTemperatureFault(heater);
 	  }
   } else
   {
