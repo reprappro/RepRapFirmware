@@ -1996,7 +1996,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 	case 302: // Allow cold extrudes
 		break;
 
-	case 304: // Set/report thermistor parameters
+	case 305: // Set/report thermistor parameters
 	{
 		if(!gb->Seen('P')) // Must specify the heater
 			break;
