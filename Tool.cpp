@@ -194,6 +194,14 @@ void Tool::ResetTemperatureFault(int8_t wasDudHeater)
 		}
 }
 
+bool Tool::AllHeatersAtHighTemperature()
+{
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+		if(reprap.GetHeat()->GetTemperature(heaters[heater]) < HOT_ENOUGH_TO_EXTRUDE)
+			return false;
+	return true;
+}
+
 void Tool::Activate(Tool* currentlyActive)
 {
 	if(active)
@@ -239,6 +247,18 @@ void Tool::GetVariables(float* standby, float* active)
 		active[heater] = activeTemperatures[heater];
 		standby[heater] = standbyTemperatures[heater];
 	}
+}
+
+// If drives cannot be used for some reason, return 0,
+// otherwise return the number of them.
+
+int Tool::DriveCount()
+{
+	if(heaterFault)
+		return 0;
+	if(reprap.ColdExtrude() || AllHeatersAtHighTemperature())
+		return driveCount;
+	return 0;
 }
 
 

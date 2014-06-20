@@ -1994,6 +1994,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 	break;
 
 	case 302: // Allow cold extrudes
+		reprap.AllowColdExtrude();
 		break;
 
 	case 305: // Set/report thermistor parameters

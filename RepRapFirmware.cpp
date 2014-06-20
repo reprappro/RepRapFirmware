@@ -177,6 +177,7 @@ void RepRap::Init()
   heat->Init();
   currentTool = NULL;
   active = true;
+  coldExtrude = false;
 
   platform->Message(HOST_MESSAGE, NAME);
   platform->Message(HOST_MESSAGE, " Version ");

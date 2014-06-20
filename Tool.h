@@ -58,6 +58,7 @@ private:
 
 	void SetTemperatureFault(int8_t dudHeater);
 	void ResetTemperatureFault(int8_t wasDudHeater);
+	bool AllHeatersAtHighTemperature();
 	int myNumber;
 	int* drives;
 	int driveCount;
@@ -70,12 +71,6 @@ private:
 	bool heaterFault;
 };
 
-inline int Tool::DriveCount()
-{
-	if(heaterFault) // If one of our heaters is dud, we pretend to have no drives so none get used
-		return 0;
-	return driveCount;
-}
 
 inline int Tool::Drive(int driveNumber)
 {

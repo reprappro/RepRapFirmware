@@ -41,6 +41,9 @@ class RepRap
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+    void AllowColdExtrude();
+    void DenyColdExtrude();
+    bool ColdExtrude();
     void PrintTool(int toolNumber, char* reply);
 	void FlagTemperatureFault(int8_t dudHeater);
 	void ClearTemperatureFault(int8_t wasDudHeater);
@@ -63,6 +66,7 @@ class RepRap
     bool debug;
     float fastLoop, slowLoop;
     float lastTime;
+    bool coldExtrude;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -72,6 +76,8 @@ inline GCodes* RepRap::GetGCodes() const { return gCodes; }
 inline Webserver* RepRap::GetWebserver() const { return webserver; }
 inline bool RepRap::Debug() const { return debug; }
 inline Tool* RepRap::GetCurrentTool() { return currentTool; }
+inline bool RepRap::ColdExtrude() { return coldExtrude; }
+inline void RepRap::AllowColdExtrude() { coldExtrude = true; }
 
 inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 {

@@ -127,11 +127,11 @@ void PID::Init()
 
 void PID::SwitchOn()
 {
-	if(reprap.Debug())
-	{
-		snprintf(scratchString, STRING_LENGTH, "Heater %d switched on.\n", heater);
-		platform->Message(BOTH_MESSAGE, scratchString);
-	}
+//	if(reprap.Debug())
+//	{
+//		snprintf(scratchString, STRING_LENGTH, "Heater %d switched on.\n", heater);
+//		platform->Message(BOTH_MESSAGE, scratchString);
+//	}
 	switchedOff = false;
 }
 
