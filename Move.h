@@ -23,7 +23,8 @@ Licence: GPL
 
 #define DDA_RING_LENGTH 5
 #define LOOK_AHEAD_RING_LENGTH 30
-#define LOOK_AHEAD 20    // Must be less than LOOK_AHEAD_RING_LENGTH
+#define LOOK_AHEAD 20         // Must be less than LOOK_AHEAD_RING_LENGTH
+
 
 enum MovementProfile
 {
@@ -217,6 +218,10 @@ class Move
     void InverseBedTransform(float move[]);		        // Go from a bed-transformed point back to user coordinates
     void AxisTransform(float move[]);			        // Take a position and apply the axis-angle compensations
     void InverseAxisTransform(float move[]);		    // Go from an axis transformed point back to user coordinates
+    void BarycentricCoordinates(int8_t p0, int8_t p1,   // Compute the barycentric coordinates of a point in a trinagle
+    		int8_t p2, float x, float y, float& l1,     // (see http://en.wikipedia.org/wiki/Barycentric_coordinate_system).
+    		float& l2, float& l3);
+    float TriangleZ(float x, float y);					// Interpolate onto a triangular grid
     bool DDARingAdd(LookAhead* lookAhead);				// Add a processed look-ahead entry to the DDA ring
     DDA* DDARingGet();									// Get the next DDA ring entry to be run
     bool DDARingEmpty();								// Anything there?
@@ -266,10 +271,10 @@ class Move
     uint8_t probePointSet[NUMBER_OF_PROBE_POINTS];	// Has the XY of this point been set?  Has the Z been probed?
     float aX, aY, aC; 								// Bed plane explicit equation z' = z + aX*x + aY*y + aC
     float tanXY, tanYZ, tanXZ; 						// Axis compensation - 90 degrees + angle gives angle between axes
+    bool identityBedTransform;						// Is the bed transform in operation?
     float xRectangle, yRectangle;					// The side lengths of the rectangle used for second-degree bed compensation
     float lastZHit;									// The last Z value hit by the probe
     bool zProbing;									// Are we bed probing as well as moving?
-    bool secondDegreeCompensation;					// Are we using second degree bed compensation.  If not, linear
     float longWait;									// A long time for things that need to be done occasionally
 };
 
@@ -528,6 +533,18 @@ inline float Move::GetLastProbedZ()
 	return lastZHit;
 }
 
+// Note that we don't set the tan values to 0 here.  This means that the bed probe
+// values will be a fraction of a millimeter out in X and Y, which, as the bed should
+// be nearly flat (and the probe doesn't coincide with the nozzle anyway), won't matter.
+// But it means that the tan values can be set for the machine
+// at the start in the configuration file and be retained, without having to know and reset
+// them after every Z probe of the bed.
+
+inline void Move::SetIdentityTransform()
+{
+	identityBedTransform = true;
+}
+
 inline bool Move::AllProbeCoordinatesSet(int index)
 {
 	return probePointSet[index] == (xSet | ySet | zSet);
@@ -540,26 +557,22 @@ inline bool Move::XYProbeCoordinatesSet(int index)
 
 inline int Move::NumberOfProbePoints()
 {
-	if(AllProbeCoordinatesSet(0) && AllProbeCoordinatesSet(1) && AllProbeCoordinatesSet(2))
+	for(int i = 0; i < NUMBER_OF_PROBE_POINTS; i++)
 	{
-		if(AllProbeCoordinatesSet(3))
-			return 4;
-		else
-			return 3;
+		if(!AllProbeCoordinatesSet(i))
+			return i;
 	}
-	return 0;
+	return NUMBER_OF_PROBE_POINTS;
 }
 
 inline int Move::NumberOfXYProbePoints()
 {
-	if(XYProbeCoordinatesSet(0) && XYProbeCoordinatesSet(1) && XYProbeCoordinatesSet(2))
+	for(int i = 0; i < NUMBER_OF_PROBE_POINTS; i++)
 	{
-		if(XYProbeCoordinatesSet(3))
-			return 4;
-		else
-			return 3;
+		if(!XYProbeCoordinatesSet(i))
+			return i;
 	}
-	return 0;
+	return NUMBER_OF_PROBE_POINTS;
 }
 
 /*
@@ -580,6 +593,7 @@ inline float Move::SecondDegreeTransformZ(float x, float y)
 	y = (y - yBedProbePoints[0])*yRectangle;
 	return (1.0 - x)*(1.0 - y)*zBedProbePoints[0] + x*(1.0 - y)*zBedProbePoints[3] + (1.0 - x)*y*zBedProbePoints[1] + x*y*zBedProbePoints[2];
 }
+
 
 
 
