@@ -92,6 +92,7 @@ void Platform::Init()
   mcpExpansion.setMCP4461Address(0x2E); //not required for mcpDuet, as this uses the default address
   sysDir = SYS_DIR;
   configFile = CONFIG_FILE;
+  defaultFile = DEFAULT_FILE;
 
   ipAddress = IP_ADDRESS;
   netMask = NET_MASK;

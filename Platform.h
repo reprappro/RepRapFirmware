@@ -468,6 +468,7 @@ class Platform
   const char* GetSysDir() const;  // Where the system files are
   const char* GetTempDir() const; // Where temporary files are
   const char* GetConfigFile() const; // Where the configuration is stored (in the system dir).
+  const char* GetDefaultFile() const; // Where the default configuration is stored (in the system dir).
   
   void Message(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
@@ -639,6 +640,7 @@ class Platform
   char* sysDir;
   char* tempDir;
   char* configFile;
+  char* defaultFile;
   
 // Network connection
 
@@ -717,6 +719,11 @@ inline const char* Platform::GetTempDir() const
 inline const char* Platform::GetConfigFile() const
 {
   return configFile;
+}
+
+inline const char* Platform::GetDefaultFile() const
+{
+  return defaultFile;
 }
 
 

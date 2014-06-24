@@ -179,18 +179,26 @@ void RepRap::Init()
   active = true;
   coldExtrude = false;
 
-  platform->Message(HOST_MESSAGE, NAME);
-  platform->Message(HOST_MESSAGE, " Version ");
-  platform->Message(HOST_MESSAGE, VERSION);
-  platform->Message(HOST_MESSAGE, ", dated ");
-  platform->Message(HOST_MESSAGE, DATE);
-  platform->Message(HOST_MESSAGE, ".\n\nExecuting ");
-  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
-  platform->Message(HOST_MESSAGE, "...\n\n");
+  snprintf(scratchString, STRING_LENGTH, "%s Version %s dated %s\n", NAME, VERSION, DATE);
+  platform->Message(HOST_MESSAGE, scratchString);
 
+  FileStore* startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
+
+  platform->Message(HOST_MESSAGE, "\n\nExecuting ");
+  if(startup != NULL)
+  {
+	  startup->Close();
+	  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
+	  platform->Message(HOST_MESSAGE, "...\n\n");
+	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
+  } else
+  {
+	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
+	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
+	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());
+  }
   // We inject an M98 into the serial input stream to run the start-up macro
 
-  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
   platform->GetLine()->InjectString(scratchString);
 
   bool runningTheFile = false;
@@ -207,14 +215,10 @@ void RepRap::Init()
 	  }
   }
 
-
-  //while(gCodes->RunConfigurationGCodes()); // Wait till the file is finished
-
   platform->Message(HOST_MESSAGE, "\nStarting network...\n");
   platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
 
-  platform->Message(HOST_MESSAGE, "\n");
-  snprintf(scratchString, STRING_LENGTH, "%s is up and running.\n", NAME);
+  snprintf(scratchString, STRING_LENGTH, "\n%s is up and running.\n", NAME);
   platform->Message(HOST_MESSAGE, scratchString);
   fastLoop = FLT_MAX;
   slowLoop = 0.0;
