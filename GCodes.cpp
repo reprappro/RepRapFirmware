@@ -2202,21 +2202,8 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		reprap.GetMove()->SetIdentityTransform();
 		break;
 
-	case 562: // Reset temperature fault - use with great caution
-		if(gb->Seen('P'))
-		{
-			int heater = gb->GetIValue();
-			reprap.ClearTemperatureFault(heater);
-		}
-		break;
-
 	case 563: // Define tool
 		AddNewTool(gb, reply);
-		break;
-
-	case 564: // Think outside the box?
-		if(gb->Seen('S'))
-			limitAxes = (gb->GetIValue() != 0);
 		break;
 
 	case 566: // Set/print minimum feedrates
@@ -2367,6 +2354,33 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		}
 		break;
 
+	//****************************
+	// These last are M codes only for the cognoscenti - TODO: maybe password protect one day?
+
+	case 562: // Reset temperature fault - use with great caution
+		if(gb->Seen('P'))
+		{
+			int heater = gb->GetIValue();
+			reprap.ClearTemperatureFault(heater);
+		}
+		break;
+
+	case 564: // Think outside the box?
+		if(gb->Seen('S'))
+			limitAxes = (gb->GetIValue() != 0);
+		break;
+
+	case 569:
+		if(gb->Seen('P'))
+		{
+			int8_t drive = gb->GetIValue();
+			if(gb->Seen('S'))
+				platform->SetDirectionValue(drive, gb->GetIValue());
+			else
+				snprintf(reply, STRING_LENGTH, "A %d sends drive %d forwards.", platform->GetDirectionValue(drive), drive);
+		}
+		break;
+
 	case 999: // Reset. FIXME: Implement this?
 		break;
 
@@ -2374,6 +2388,19 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		error = true;
 		snprintf(reply, STRING_LENGTH, "invalid M Code: %s", gb->Buffer());
 	}
+
+	if(reprap.GetWebserver()->PasswordGiven())
+	{
+		switch(code)
+		{
+
+
+		default:
+			break;
+		}
+	}
+
+
 	if(result)
 		HandleReply(error, gb == serialGCode, reply, 'M', code, resend);
 	return result;

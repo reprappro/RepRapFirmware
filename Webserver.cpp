@@ -982,3 +982,8 @@ void Webserver::WebDebug(bool wdb)
 	webDebug = wdb;
 }
 
+bool Webserver::PasswordGiven()
+{
+	return gotPassword;
+}
+

@@ -103,6 +103,7 @@ void Platform::Init()
 
   stepPins = STEP_PINS;
   directionPins = DIRECTION_PINS;
+  directions = DIRECTIONS;
   enablePins = ENABLE_PINS;
   disableDrives = DISABLE_DRIVES;
   lowStopPins = LOW_STOP_PINS;

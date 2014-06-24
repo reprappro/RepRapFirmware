@@ -56,6 +56,7 @@ class Webserver
     const char* GetName() const;
     void ConnectionError();
     void WebDebug(bool wdb);
+    bool PasswordGiven();
 
     friend class Platform;
 
