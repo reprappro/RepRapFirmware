@@ -33,6 +33,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	driveCount = dCount;
 	heaterCount = hCount;
 	heaterFault = false;
+	mixing = false;
 
 	if(driveCount > 0)
 	{
@@ -44,8 +45,13 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 			return;
 		}
 		drives = new int[driveCount];
+		mix = new float[driveCount];
+		float r = 1.0/(float)driveCount;
 		for(int8_t drive = 0; drive < driveCount; drive++)
+		{
 			drives[drive] = d[drive];
+			mix[drive] = r;
+		}
 	}
 
 	if(heaterCount > 0)
@@ -136,17 +142,22 @@ float Tool::InstantDv()
 // Add a tool to the end of the linked list.
 // (We must already be in it.)
 
-void Tool::AddTool(Tool* t)
+void Tool::AddTool(Tool* tool)
 {
-	Tool* last = this;
-	Tool* n = next;
-	while(n != NULL)
+	Tool* t = this;
+	Tool* last;
+	while(t != NULL)
 	{
-		last = n;
-		n = n->Next();
+		if(t->Number() == tool->Number())
+		{
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Add tool: tool number already in use.\n");
+			return;
+		}
+		last = t;
+		t = t->Next();
 	}
-	t->next = NULL; // Defensive...
-	last->next = t;
+	tool->next = NULL; // Defensive...
+	last->next = tool;
 }
 
 // There is a temperature fault on a heater.
@@ -249,16 +260,12 @@ void Tool::GetVariables(float* standby, float* active)
 	}
 }
 
-// If drives cannot be used for some reason, return 0,
-// otherwise return the number of them.
-
-int Tool::DriveCount()
+bool Tool::ToolCanDrive()
 {
 	if(heaterFault)
-		return 0;
+		return false;
 	if(reprap.ColdExtrude() || AllHeatersAtHighTemperature())
-		return driveCount;
-	return 0;
+		return true;
+	return false;
 }
-
 

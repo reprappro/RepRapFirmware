@@ -34,11 +34,17 @@ public:
 	void GetOffset(float& xx, float& yy, float& zz);
 	int DriveCount();
 	int Drive(int driveNumber);
+	bool ToolCanDrive();
 	int HeaterCount();
 	int Heater(int heaterNumber);
 	int Number();
 	void SetVariables(float* standby, float* active);
 	void GetVariables(float* standby, float* active);
+	void DefineMix(float* m);
+	float* GetMix() const;
+	void TurnMixingOn();
+	void TurnMixingOff();
+	bool Mixing();
 	float MaxFeedrate();
 	float InstantDv();
 	void Print(char* reply);
@@ -61,6 +67,8 @@ private:
 	bool AllHeatersAtHighTemperature();
 	int myNumber;
 	int* drives;
+	float* mix;
+	bool mixing;
 	int driveCount;
 	int* heaters;
 	float* activeTemperatures;
@@ -97,6 +105,36 @@ inline int Tool::Number()
 	return myNumber;
 }
 
+inline void Tool::DefineMix(float* m)
+{
+	for(int8_t drive = 0; drive < driveCount; drive++)
+		mix[drive] = m[drive];
+}
+
+inline float* Tool::GetMix() const
+{
+	return mix;
+}
+
+inline void Tool::TurnMixingOn()
+{
+	mixing = true;
+}
+
+inline void Tool::TurnMixingOff()
+{
+	mixing = false;
+}
+
+inline bool Tool::Mixing()
+{
+	return mixing;
+}
+
+inline int Tool::DriveCount()
+{
+	return driveCount;
+}
 
 
 
