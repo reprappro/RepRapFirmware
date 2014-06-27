@@ -88,6 +88,7 @@ protected:
 	void SetDriveCoordinateAndZeroEndSpeed(float a, int8_t drive);		// Force an end ppoint and st its speed to stopped
 	bool CheckEndStops();												// Are we checking endstops on this move?
 	void Release();														// This move has been processed and executed
+    void PrintMove();													// For diagnostics
 
 private:
 
@@ -119,7 +120,7 @@ class DDA
 protected:
 
 	DDA(Move* m, Platform* p, DDA* n);
-	MovementProfile Init(LookAhead* lookAhead, float& u, float& v); // Set up the DDA.  Also used experimentally in look ahead.
+	MovementProfile Init(LookAhead* lookAhead, float& u, float& v, bool debug); // Set up the DDA.  Also used experimentally in look ahead.
 	void Start();													// Start executing the DDA.  I.e. move the move.
 	void Step();													// Take one step of the DDA.  Called by timed interrupt.
 	bool Active();													// Is the DDA running?
@@ -234,7 +235,6 @@ class Move
     bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
     		float minSpeed, float maxSpeed,
     		float acceleration, bool ce);
-    void PrintMove(LookAhead* lookAhead);				// For diagnostics
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
 
 
