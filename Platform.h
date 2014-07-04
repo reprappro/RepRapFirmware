@@ -375,13 +375,14 @@ class FileStore //: public InputOutput
 {
 public:
 
-	int8_t Status(); // Returns OR of IOStatus
-	bool Read(char& b);
-	void Write(char b);
-	void Write(const char* s);
-	void Close();
-	void GoToEnd(); // Position the file at the end (so you can write on the end).
-	unsigned long Length(); // File size in bytes
+	int8_t Status();        	// Returns OR of IOStatus
+	bool Read(char& b);     	// Read 1 byte
+	void Write(char b);     	// Write 1 byte
+	void Write(const char* s); 	// Write a string
+	void Close();				// Shut the file and tidy up
+	void GoToEnd();         	// Position the file at the end (so you can write on the end).
+	unsigned long Length(); 	// File size in bytes
+	float FractionRead();   	// How far in we are
 
 friend class Platform;
 
@@ -390,13 +391,14 @@ protected:
 	FileStore(Platform* p);
 	void Init();
     bool Open(const char* directory, const char* fileName, bool write);
-        
+
+private:
+
   bool inUse;
   byte buf[FILE_BUF_LEN];
   int bufferPointer;
+  unsigned long bytesRead;
   
-private:
-
   void ReadBuffer();
   void WriteBuffer();
 
@@ -1184,6 +1186,18 @@ inline Line* Platform::GetLine() const
 	return line;
 }
 
+inline void Platform::PushMessageIndent()
+{
+	messageIndent += 2;
+}
+
+inline void Platform::PopMessageIndent()
+{
+	messageIndent -= 2;
+}
+
+//******************************************************************************************
+
 inline int8_t Line::Status() const
 {
 	return numChars == 0 ? nothing : byteAvailable;
@@ -1218,16 +1232,6 @@ inline void Line::Write(long l)
 {
 	snprintf(scratchString, STRING_LENGTH, "%d", l);
 	SerialUSB.print(scratchString);
-}
-
-inline void Platform::PushMessageIndent()
-{
-	messageIndent += 2;
-}
-
-inline void Platform::PopMessageIndent()
-{
-	messageIndent -= 2;
 }
 
 

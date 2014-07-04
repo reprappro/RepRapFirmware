@@ -670,6 +670,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 
   writing = write;
   lastBufferEntry = FILE_BUF_LEN - 1;
+  bytesRead = 0;
   FRESULT openReturn;
 
   if(writing)
@@ -739,6 +740,14 @@ unsigned long FileStore::Length()
 	return 0;
 }
 
+float FileStore::FractionRead()
+{
+	unsigned long len = Length();
+	if(len <= 0)
+		return 0.0;
+	return (float)bytesRead/(float)len;
+}
+
 int8_t FileStore::Status()
 {
   if(!inUse)
@@ -783,7 +792,7 @@ bool FileStore::Read(char& b)
 
   b = (char)buf[bufferPointer];
   bufferPointer++;
-
+  bytesRead++;
   return true;
 }
 
