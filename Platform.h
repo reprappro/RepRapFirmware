@@ -543,6 +543,9 @@ class Platform
   void SetHeatSampleTime(float st);
   void CoolingFan(float speed);
   void SetPidValues(size_t heater, float pVal, float iVal, float dVal);
+  float TimeToHot() const;
+  void SetTimeToHot(float t);
+
 
 //-------------------------------------------------------------------------------------------------------
   protected:
@@ -630,6 +633,7 @@ class Platform
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
   int8_t coolingFanPin;
+  float timeToHot;
 
 // Serial/USB
 
@@ -1084,6 +1088,16 @@ inline void Platform::SetThermistorSeriesR(int8_t heater, float r)
 inline void Platform::SetThermistorRAt25(int8_t heater, float r)
 {
 	thermistorRAt25[heater] = r*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO));
+}
+
+inline float Platform::TimeToHot() const
+{
+	return timeToHot;
+}
+
+inline void Platform::SetTimeToHot(float t)
+{
+	timeToHot = t;
 }
 
 // This is a bit of a compromise - old RepRaps used fan speeds in the range

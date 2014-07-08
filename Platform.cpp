@@ -153,6 +153,7 @@ void Platform::Init()
   standbyTemperatures = STANDBY_TEMPERATURES;
   activeTemperatures = ACTIVE_TEMPERATURES;
   coolingFanPin = COOLING_FAN_PIN;
+  timeToHot = TIME_TO_HOT;
   //turnHeatOn = HEAT_ON;
 
   webDir = WEB_DIR;
