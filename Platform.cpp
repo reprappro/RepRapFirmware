@@ -590,6 +590,12 @@ void TC3_Handler()
 	reprap.Interrupt();
 }
 
+void TC4_Handler()
+{
+	TC_GetStatus(TC1, 1);
+	reprap.GetNetwork()->Interrupt();
+}
+
 void Platform::InitialiseInterrupts()
 {
 	// Timer interrupt for stepper motors
@@ -599,6 +605,17 @@ void Platform::InitialiseInterrupts()
 	TC1 ->TC_CHANNEL[0].TC_IER = TC_IER_CPCS;
 	TC1 ->TC_CHANNEL[0].TC_IDR = ~TC_IER_CPCS;
 	SetInterrupt(STANDBY_INTERRUPT_RATE);
+
+	// Timer interrupt to keep the networking timers running (called at 8Hz)
+	pmc_enable_periph_clk((uint32_t) TC4_IRQn);
+	TC_Configure(TC1, 1, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK2);
+	uint32_t rc = VARIANT_MCK/8/16; // 8 because we selected TIMER_CLOCK2 above
+	TC_SetRA(TC1, 1, rc/2); // 50% high, 50% low
+	TC_SetRC(TC1, 1, rc);
+	TC_Start(TC1, 1);
+	TC1 ->TC_CHANNEL[1].TC_IER = TC_IER_CPCS;
+	TC1 ->TC_CHANNEL[1].TC_IDR = ~TC_IER_CPCS;
+	NVIC_EnableIRQ(TC4_IRQn);
 
 	// Tick interrupt for ADC conversions
 	tickState = 0;
@@ -610,6 +627,7 @@ void Platform::InitialiseInterrupts()
 //void Platform::DisableInterrupts()
 //{
 //	NVIC_DisableIRQ(TC3_IRQn);
+///	NVIC_DisableIRQ(TC4_IRQn);
 //}
 
 // Process a 1ms tick interrupt
