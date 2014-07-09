@@ -341,9 +341,14 @@ void Webserver::ProcessGcode(const char* gc)
 		{
 			char c;
 			size_t i = 0;
+			bool reading_whitespace = false;
 			while (i < ARRAY_UPB(gcodeReply) && configFile->Read(c))
 			{
-				gcodeReply[i++] = c;
+				if (!reading_whitespace || (c != ' ' && c != '\t'))
+				{
+					gcodeReply[i++] = c;
+				}
+				reading_whitespace = (c == ' ' || c == '\t');
 			}
 			configFile->Close();
 			gcodeReply[i] = 0;
@@ -496,8 +501,13 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 	}
 }
 
-void Webserver::MessageStringToWebInterface(const char *s, bool error, bool finished)
+void Webserver::MessageStringToWebInterface(const char *s, bool error)
 {
+	if (!webserverActive)
+	{
+		return;
+	}
+
 	if (strlen(s) == 0 && !error)
 	{
 		strcpy(gcodeReply, "ok");
@@ -516,22 +526,21 @@ void Webserver::MessageStringToWebInterface(const char *s, bool error, bool fini
 		gcodeReply[ARRAY_UPB(gcodeReply)] = 0;
 	}
 
-	if (finished)
-	{
-		httpInterpreter->ReceivedGcodeReply();
-		telnetInterpreter->HandleGcodeReply(gcodeReply);
-	}
+	httpInterpreter->ReceivedGcodeReply();
+	telnetInterpreter->HandleGcodeReply(s);
 }
 
-void Webserver::AppendReplyToWebInterface(const char *s, bool error, bool finished)
+void Webserver::AppendReplyToWebInterface(const char *s, bool error)
 {
-	strncat(gcodeReply, s, ARRAY_UPB(gcodeReply));
-
-	if (finished)
+	if (!webserverActive)
 	{
-		httpInterpreter->ReceivedGcodeReply();
-		telnetInterpreter->HandleGcodeReply(gcodeReply);
+		return;
 	}
+
+	strncat(gcodeReply, s, ARRAY_UPB(gcodeReply));
+	httpInterpreter->ReceivedGcodeReply();
+
+	telnetInterpreter->HandleGcodeReply(s);
 }
 
 
@@ -2276,7 +2285,7 @@ void Webserver::TelnetInterpreter::ProcessLine()
 void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
 {
 	Network *net = reprap.GetNetwork();
-	if (state >= authenticated && net->MakeTelnetRequest())
+	if (state >= authenticated && net->MakeTelnetRequest(strlen(reply)))
 	{
 		RequestState *req = net->GetRequest();
 

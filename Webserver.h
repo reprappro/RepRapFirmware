@@ -48,7 +48,7 @@ const unsigned int maxCommandWords = 4;			// max number of space-separated words
 const unsigned int maxQualKeys = 5;				// max number of key/value pairs in the qualifier
 const unsigned int maxHeaders = 10;				// max number of key/value pairs in the headers
 
-const unsigned int jsonReplyLength = 1000;		// size of buffer used to hold JSON reply
+const unsigned int jsonReplyLength = 2000;		// size of buffer used to hold JSON reply
 
 /* FTP */
 
@@ -131,8 +131,8 @@ class Webserver
 
   protected:
 
-    void MessageStringToWebInterface(const char *s, bool error, bool finished = true);
-    void AppendReplyToWebInterface(const char* s, bool error, bool finished = true);
+    void MessageStringToWebInterface(const char *s, bool error);
+    void AppendReplyToWebInterface(const char* s, bool error);
 
   private:
 

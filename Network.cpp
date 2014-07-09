@@ -62,7 +62,6 @@ static tcp_pcb *telnet_pcb = NULL;
 
 static bool closingDataPort = false;
 
-static bool canReceive = true;
 static uint8_t volatile inLwip = 0;
 
 
@@ -704,6 +703,13 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 	{
 		--inLwip;
 	}
+	else if (r->status == dataSending)
+	{
+		// This transaction is already in use for sending (e.g. a Telnet request),
+		// so all we have to do is to remove it from readyTransactions.
+		readyTransactions = r->next;
+		--inLwip;
+	}
 	else
 	{
 		readyTransactions = r->next;
@@ -720,6 +726,7 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 			if (buf != NULL)
 			{
 				FreeSendBuffer(buf);
+				buf = NULL;
 			}
 			AppendTransaction(&freeTransactions, r);
 //			debugPrintf("Conn lost before send\n");
@@ -729,6 +736,7 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 			r->persistConnection = keepConnectionOpen;
 			r->nextWrite = NULL;
 			r->fileBeingSent = f;
+			r->status = dataSending;
 			if (f != NULL && r->sendBuffer == NULL)
 			{
 				SendBuffer *buf;
@@ -737,7 +745,6 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 					r->sendBuffer = buf;
 					r->outputBuffer = r->sendBuffer->tcpOutputBuffer;
 					r->fileBeingSent = f;
-					r->status = dataSending;
 				}
 				else
 				{
@@ -772,21 +779,13 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 // That way we can speed up freeing the current RequestState.
 void Network::CloseRequest()
 {
-	// Safety check
+	// Free the current RequestState's data (if any)
 	++inLwip;
 	RequestState *r = readyTransactions;
-	RequestStatus status = r->GetStatus();
-	if (status == dataSending)
-	{
-		--inLwip;
-		RepRapNetworkMessage("Network: Cannot close sending request!\n");
-		return;
-	}
-
-	// Free the current RequestState's data
 	r->FreePbuf();
 
 	// Terminate this connection if this RequestState indicates a graceful disconnect
+	RequestStatus status = r->status;
 	if (!r->LostConnection() && status == disconnected)
 	{
 		ConnectionState *locCs = r->cs;		// take a copy because our cs field is about to get cleared
@@ -801,12 +800,17 @@ void Network::CloseRequest()
 		tcp_close(pcb);
 	}
 
-	// Free the current transaction
+	// Remove the current item from readyTransactions
 	readyTransactions = r->next;
 	--inLwip;
 
-	AppendTransaction(&freeTransactions, r);
+	// Append it to freeTransactions again unless it's already on another list
+	if (status != dataSending)
+	{
+		AppendTransaction(&freeTransactions, r);
+	}
 }
+
 
 // The current RequestState must be processed again, e.g. because we're still waiting for another
 // data connection.
@@ -889,9 +893,9 @@ bool Network::CloseDataPort()
 	return true;
 }
 
+// These methods keep track of our connections in case we need to send to one of them
 void Network::SaveDataConnection()
 {
-	// store our data connection so we can identify it again later
 	++inLwip;
 	dataCs = readyTransactions->cs;
 	--inLwip;
@@ -911,85 +915,65 @@ void Network::SaveTelnetConnection()
 	--inLwip;
 }
 
+// Stored connections can be be restored by calling one of the following functions
 bool Network::MakeDataRequest()
 {
-	// Make sure we have a connection
-	if (dataCs == NULL)
-	{
-		return false;
-	}
-
-	// Get a free transaction
-	++inLwip;
-	RequestState *r = freeTransactions;
-	if (r == NULL)
-	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::MakeDataRequest() - no free transactions!\n");
-		return false;
-	}
-	freeTransactions = r->next;
-
-	// Set up the RequestState and replace the first entry of readyTransactions
-	r->Set(NULL, dataCs, dataSending);
-	--inLwip;
-
-	PrependTransaction(&readyTransactions, r);
-
-	return true;
+	return MakeRequest(0, dataCs);
 }
 
 bool Network::MakeFTPRequest()
 {
-	// Make sure we have a connection
-	if (ftpCs == NULL)
-	{
-		return false;
-	}
-
-	// Get a free transaction
-	++inLwip;
-	RequestState *r = freeTransactions;
-	if (r == NULL)
-	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::MakeFTPRequest() - no free transactions!\n");
-		return false;
-	}
-	freeTransactions = r->next;
-
-	// Set up the RequestState and replace the first entry of readyTransactions
-	r->Set(NULL, ftpCs, dataSending);
-	--inLwip;
-
-	PrependTransaction(&readyTransactions, r);
-
-	return true;
+	return MakeRequest(0, ftpCs);
 }
 
-bool Network::MakeTelnetRequest()
+bool Network::MakeTelnetRequest(unsigned int dataLength)
+{
+	return MakeRequest(dataLength, telnetCs);
+}
+
+// Retrieves the sending connection to which dataLength bytes can be appended or
+// returns a free transaction if dataLength is 0.
+bool Network::MakeRequest(unsigned int dataLength, ConnectionState *cs)
 {
 	// Make sure we have a connection
-	if (telnetCs == NULL)
+	if (cs == NULL)
 	{
 		return false;
 	}
 
-	// Get a free transaction
+	// See if we are already writing data on this connection
+	RequestState *r = (dataLength > 0) ? writingTransactions : NULL;
 	++inLwip;
-	RequestState *r = freeTransactions;
-	if (r == NULL)
+	while (r != NULL)
 	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::MakeTelnetRequest() - no free transactions!\n");
-		return false;
+		if (r->cs == cs)
+		{
+			while (r->nextWrite != NULL)
+			{
+				r = r->nextWrite;
+			}
+			break;
+		}
+		r = r->next;
 	}
-	freeTransactions = r->next;
 
-	// Set up the RequestState and replace the first entry of readyTransactions
-	r->Set(NULL, telnetCs, dataSending);
+	// If we are sending and there isn't enough space to append a message, we must get a free transaction
+	if (r == NULL || r->fileBeingSent != NULL || r->outputPointer + dataLength > tcpOutputBufferSize)
+	{
+		r = freeTransactions;
+		if (r == NULL)
+		{
+			--inLwip;
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::MakeRequest() - no free transactions!\n");
+			return false;
+		}
+		freeTransactions = r->next;
+		r->Set(NULL, cs, dataReceiving);
+	}
 	--inLwip;
 
+	// Replace the first entry of readyTransactions with our new transaction,
+	// so it can be removed again by SendAndClose().
 	PrependTransaction(&readyTransactions, r);
 
 	return true;
@@ -1099,7 +1083,6 @@ void RequestState::Write(char b)
 		Network *net = reprap.GetNetwork();
 		if (net->AllocateSendBuffer(sendBuffer))
 		{
-			status = dataSending;
 			outputBuffer = sendBuffer->tcpOutputBuffer;
 		}
 		else
