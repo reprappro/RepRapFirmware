@@ -915,6 +915,20 @@ void Network::SaveTelnetConnection()
 	--inLwip;
 }
 
+// Check if there are enough resources left to allocate another RequestState for sending
+bool Network::CanMakeRequest()
+{
+	++inLwip;
+	if (freeTransactions == NULL)
+	{
+		--inLwip;
+		return false;
+	}
+	--inLwip;
+
+	return (sendBuffer != NULL);
+}
+
 // Stored connections can be be restored by calling one of the following functions
 bool Network::MakeDataRequest()
 {
@@ -935,8 +949,8 @@ bool Network::MakeTelnetRequest(unsigned int dataLength)
 // returns a free transaction if dataLength is 0.
 bool Network::MakeRequest(unsigned int dataLength, ConnectionState *cs)
 {
-	// Make sure we have a connection
-	if (cs == NULL)
+	// Make sure we have a connection and that we have another SendBuffer left
+	if (cs == NULL || sendBuffer == NULL)
 	{
 		return false;
 	}
@@ -1103,17 +1117,33 @@ void RequestState::Write(char b)
 	outputPointer++;
 }
 
-// This is not called for data, only for internally-
-// generated short strings at the start of a transmission,
-// so it should never overflow the buffer (which is checked
-// anyway).
-
-void RequestState::Write(const char* s)
+// This functions attempts to append a string to the send buffer. If the string is too big,
+// this function will return false, so another RequestState must be used for sending.
+bool RequestState::Write(const char* s)
 {
-	while (*s)
+	unsigned int len = strlen(s);
+	if (outputPointer + len >= tcpOutputBufferSize)
 	{
-		Write(*s++);
+		return false;
 	}
+
+	if (sendBuffer == NULL)
+	{
+		Network *net = reprap.GetNetwork();
+		if (net->AllocateSendBuffer(sendBuffer))
+		{
+			outputBuffer = sendBuffer->tcpOutputBuffer;
+		}
+		else
+		{
+			// We cannot write because there are no more send buffers available.
+			return false;
+		}
+	}
+
+	memcpy(outputBuffer + outputPointer, s, len);
+	outputPointer += len;
+	return true;
 }
 
 // Write formatted data to the output buffer
@@ -1126,7 +1156,6 @@ void RequestState::Printf(const char* fmt, ...)
 		Network *net = reprap.GetNetwork();
 		if (net->AllocateSendBuffer(sendBuffer))
 		{
-			status = dataSending;
 			outputBuffer = sendBuffer->tcpOutputBuffer;
 		}
 		else

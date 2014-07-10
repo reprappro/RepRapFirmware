@@ -1767,16 +1767,41 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 20:  // Deprecated...
+		bool encapsulate_list;
 		if (platform->Emulating() == me || platform->Emulating() == reprapFirmware)
 		{
-			snprintf(reply, STRING_LENGTH, "GCode files:\n%s",
-					platform->GetMassStorage()->FileList(platform->GetGCodeDir(), gb == serialGCode));
+			strcpy(reply, "GCode files:\n");
+			encapsulate_list = false;
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "%s",
-					platform->GetMassStorage()->FileList(platform->GetGCodeDir(), gb == serialGCode));
+			strcpy(reply, "");
+			encapsulate_list = true;
 		}
+
+		FileInfo file_info;
+		if (platform->GetMassStorage()->FindFirst(platform->GetGCodeDir(), file_info))
+		{
+			// iterate through all entries and append each file name
+			do {
+				if (encapsulate_list)
+				{
+					sncatf(reply, STRING_LENGTH -1, "%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
+				}
+				else
+				{
+					sncatf(reply, STRING_LENGTH -1, "%s\n", file_info.fileName);
+				}
+			} while (platform->GetMassStorage()->FindNext(file_info));
+
+			// remove the last character
+			reply[strlen(reply) -1] = 0;
+		}
+		else
+		{
+			strcat(reply, "NONE");
+		}
+
 		break;
 
 	case 21: // Initialise SD - ignore

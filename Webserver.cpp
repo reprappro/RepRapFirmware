@@ -868,8 +868,24 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, const char
 	else if (StringEquals(request, "files"))
 	{
 		const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-		const char* fileList = platform->GetMassStorage()->FileList(dir, false);
-		snprintf(jsonResponse, ARRAY_UPB(jsonResponse), "{\"files\":[%s]}", fileList);
+
+		FileInfo file_info;
+		if (platform->GetMassStorage()->FindFirst(dir, file_info))
+		{
+			strcpy(jsonResponse, "{\"files\":[");
+
+			do {
+				// build the file list here, but keep 2 characters free to terminate the JSON message
+				sncatf(jsonResponse, ARRAY_UPB(jsonResponse) - 2, "%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
+			} while (platform->GetMassStorage()->FindNext(file_info));
+
+			jsonResponse[strlen(jsonResponse) -1] = 0;
+			strncat(jsonResponse, "]}", ARRAY_UPB(jsonResponse));
+		}
+		else
+		{
+			strcpy(jsonResponse, "{\"files\":[NONE]}");
+		}
 	}
 	else if (StringEquals(request, "fileinfo") && StringEquals(key, "name"))
 	{
@@ -1935,8 +1951,44 @@ void Webserver::FtpInterpreter::ProcessLine()
 				// send file list via data port
 				if (net->MakeDataRequest())
 				{
-					RequestState *data_req = net->GetRequest();
-					data_req->Write(platform->GetMassStorage()->UnixFileList(currentDir));
+					FileInfo file_info;
+					if (platform->GetMassStorage()->FindFirst(currentDir, file_info))
+					{
+						RequestState *data_req = net->GetRequest();
+						char line[300];
+
+						do {
+							// Example for a typical UNIX-like file list:
+							// "drwxr-xr-x    2 ftp      ftp             0 Apr 11 2013 bin\r\n"
+							char dirChar = (file_info.isDirectory) ? 'd' : '-';
+							snprintf(line, ARRAY_UPB(line), "%crw-rw-rw- 1 ftp ftp %13d %s %02d %04d %s\r\n",
+									dirChar, file_info.size, platform->GetMassStorage()->GetMonthName(file_info.month),
+									file_info.day, file_info.year, file_info.fileName);
+
+							// We may have to send the FTP file list in multiple chunks, so check
+							// if there's enough room left to write the current line.
+							if (!data_req->Write(line))
+							{
+								if (net->CanMakeRequest())
+								{
+									net->SendAndClose(NULL, true);
+
+									net->MakeDataRequest();
+									data_req = net->GetRequest();
+									data_req->Write(line);
+								}
+								else
+								{
+									debugPrintf("Webserver: FTP file list was truncated\n");
+									// Note: If f_closedir() was implemented in FatFs, we'd have to call
+									// FindNext() here until it returns false.
+									break;
+								}
+							}
+
+						} while (platform->GetMassStorage()->FindNext(file_info));
+					}
+
 					net->SendAndClose(NULL);
 					state = doingPasvIO;
 				}

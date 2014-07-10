@@ -78,7 +78,7 @@ public:
 	bool ReadBuffer(char *&buffer, unsigned int &len);
 	void SentPacketAcknowledged(unsigned int len);
 	void Write(char b);
-	void Write(const char* s);
+	bool Write(const char* s);
 	void Printf(const char *fmt, ...);
 	bool Send();
 
@@ -150,6 +150,9 @@ public:
 	void SaveDataConnection();
 	void SaveFTPConnection();
 	void SaveTelnetConnection();
+
+	bool CanMakeRequest();
+
 	bool MakeDataRequest();
 	bool MakeFTPRequest();
 	bool MakeTelnetRequest(unsigned int dataLength);

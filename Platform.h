@@ -284,7 +284,6 @@ const int atxPowerPin = 12;						// Arduino Due pin number that controls the ATX
 const uint16_t lineInBufsize = 256;				// use a power of 2 for good performance
 const uint16_t lineOutBufSize = 2048;			// ideally this should be large enough to hold the results of an M503 command,
 												// but could be reduced if we ever need the memory
-const uint16_t fileListLength = 2000;			// increased to allow for the larger size of the Unix-compatible list when using FTP
 
 /****************************************************************************************************/
 
@@ -373,12 +372,25 @@ private:
 	unsigned int outputColumn;
 };
 
+class FileInfo
+{
+public:
+
+	bool isDirectory;
+	unsigned long size;
+	uint8_t day;
+	uint8_t month;
+	uint16_t year;
+	char fileName[255];
+};
+
 class MassStorage
 {
 public:
 
-  const char* FileList(const char* directory, bool fromLine); // Returns a list of all the files in the named directory
-  const char* UnixFileList(const char* directory); // Returns a UNIX-compatible file list for the specified directory
+  bool FindFirst(const char *directory, FileInfo &file_info);
+  bool FindNext(FileInfo &file_info);
+  const char* GetMonthName(const uint8_t month);
   const char* CombineName(const char* directory, const char* fileName);
   bool Delete(const char* directory, const char* fileName);
   bool MakeDirectory(const char *parentDir, const char *dirName);
@@ -395,10 +407,10 @@ protected:
 
 private:
 
-  char fileList[fileListLength];
   char scratchString[STRING_LENGTH];
   Platform* platform;
   FATFS fileSystem;
+  DIR findDir;
 };
 
 // This class handles input from, and output to, files.
