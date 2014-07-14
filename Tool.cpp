@@ -32,6 +32,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	active = false;
 	driveCount = dCount;
 	heaterCount = hCount;
+	heaterFault = false;
 
 	if(driveCount > 0)
 	{
@@ -122,6 +123,55 @@ void Tool::AddTool(Tool* t)
 	}
 	t->next = NULL; // Defensive...
 	last->next = t;
+}
+
+// There is a temperature fault on a heater.
+// Disable all tools using that heater.
+// This function must be called for the first
+// entry in the linked list.
+
+void Tool::FlagTemperatureFault(int8_t heater)
+{
+	Tool* n = this;
+	while(n != NULL)
+	{
+		n->SetTemperatureFault(heater);
+		n = n->Next();
+	}
+}
+
+void Tool::ClearTemperatureFault(int8_t heater)
+{
+	Tool* n = this;
+	while(n != NULL)
+	{
+		n->ResetTemperatureFault(heater);
+		n = n->Next();
+	}
+}
+
+void Tool::SetTemperatureFault(int8_t dudHeater)
+{
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+	{
+		if(dudHeater == heaters[heater])
+		{
+			heaterFault = true;
+			return;
+		}
+	}
+}
+
+void Tool::ResetTemperatureFault(int8_t wasDudHeater)
+{
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+	{
+		if(wasDudHeater == heaters[heater])
+		{
+			heaterFault = false;
+			return;
+		}
+	}
 }
 
 void Tool::Activate(Tool* currentlyActive)

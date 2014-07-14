@@ -41,6 +41,8 @@ class RepRap
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+    void FlagTemperatureFault(int8_t dudHeater);
+    void ClearTemperatureFault(int8_t wasDudHeater);
     Platform* GetPlatform() const;
     Move* GetMove() const;
     Heat* GetHeat() const;
@@ -83,6 +85,8 @@ inline Network* RepRap::GetNetwork() const { return network; }
 inline Webserver* RepRap::GetWebserver() const { return webserver; }
 inline bool RepRap::Debug() const { return debug; }
 inline Tool* RepRap::GetCurrentTool() { return currentTool; }
+inline void RepRap::FlagTemperatureFault(int8_t dudHeater) { if(toolList != NULL) toolList->FlagTemperatureFault(dudHeater); }
+inline void RepRap::ClearTemperatureFault(int8_t wasDudHeater) { if(toolList != NULL) toolList->ClearTemperatureFault(wasDudHeater); }
 inline uint16_t RepRap::GetExtrudersInUse() const { return activeExtruders; }
 inline uint16_t RepRap::GetHeatersInUse() const { return activeHeaters; }
 

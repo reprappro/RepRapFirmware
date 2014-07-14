@@ -150,6 +150,7 @@ void PID::Spin()
 		  switchedOff = true;
 		  snprintf(scratchString, STRING_LENGTH, "Temperature measurement fault on heater %d, T = %.1f\n", heater, temperature);
 		  platform->Message(HOST_MESSAGE, scratchString);
+		  reprap.FlagTemperatureFault(heater);
 	  }
   }
   else

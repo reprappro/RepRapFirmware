@@ -325,9 +325,17 @@ bool GCodes::Pop()
 
 bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyLimits)
 {
+	// Zero every extruder drive as some drives may not be changed
+
+	for(int8_t drive = AXES; drive < DRIVES; drive++)
+	{
+		moveBuffer[drive] = 0.0;
+	}
+
 	// First do extrusion, and check, if we are extruding, that we have a tool to extrude with
 
 	Tool* tool = reprap.GetCurrentTool();
+
 	if(gb->Seen(EXTRUDE_LETTER))
 	{
 		if(tool == NULL)
@@ -335,43 +343,40 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 			platform->Message(BOTH_ERROR_MESSAGE, "Attempting to extrude with no tool selected.\n");
 			return false;
 		}
-		float eMovement[DRIVES-AXES];
+
 		int eMoveCount = tool->DriveCount();
-		gb->GetFloatArray(eMovement, eMoveCount);
-		if(tool->DriveCount() != eMoveCount)
+		if(eMoveCount > 0) // The usual reason that this might be 0 is a heater fault
 		{
-			snprintf(scratchString, STRING_LENGTH, "Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
-			platform->Message(HOST_MESSAGE, scratchString);
-			return false;
-		}
-
-		// Zero every extruder drive as some drives may not be changed
-
-		for(int8_t drive = AXES; drive < DRIVES; drive++)
-		{
-			moveBuffer[drive] = 0.0;
-		}
-
-		// Set the drive values for this tool.
-
-		for(int8_t eDrive = 0; eDrive < eMoveCount; eDrive++)
-		{
-			int8_t drive = tool->Drive(eDrive);
-			float moveArg = eMovement[eDrive] * distanceScale;
-			if(doingG92)
+			float eMovement[DRIVES-AXES];
+			gb->GetFloatArray(eMovement, eMoveCount);
+			if(tool->DriveCount() != eMoveCount)
 			{
-				moveBuffer[drive + AXES] = 0.0;		// no move required
-				lastPos[drive] = moveArg;
+				snprintf(scratchString, STRING_LENGTH, "Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
+				platform->Message(HOST_MESSAGE, scratchString);
+				return false;
 			}
-			else if(drivesRelative)
+
+			// Set the drive values for this tool.
+
+			for(int8_t eDrive = 0; eDrive < eMoveCount; eDrive++)
 			{
-				moveBuffer[drive + AXES] = moveArg * extrusionFactors[drive];
-				lastPos[drive] += moveArg;
-			}
-			else
-			{
-				moveBuffer[drive + AXES] = (moveArg - lastPos[drive]) * extrusionFactors[drive];
-				lastPos[drive] = moveArg;
+				int8_t drive = tool->Drive(eDrive);
+				float moveArg = eMovement[eDrive] * distanceScale;
+				if (doingG92)
+				{
+					moveBuffer[drive + AXES] = 0.0;		// no move required
+					lastPos[drive] = moveArg;
+				}
+				else if (drivesRelative)
+				{
+					moveBuffer[drive + AXES] = moveArg * extrusionFactors[drive];
+					lastPos[drive] += moveArg;
+				}
+				else
+				{
+					moveBuffer[drive + AXES] = (moveArg - lastPos[drive]) * extrusionFactors[drive];
+					lastPos[drive] = moveArg;
+				}
 			}
 		}
 	}
@@ -2487,8 +2492,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 562: // Reset temperature fault - use with great caution
 		if (gb->Seen('P'))
 		{
-			int iValue = gb->GetIValue();
-			reprap.GetHeat()->ResetFault(iValue);
+			int heater = gb->GetIValue();
+			reprap.GetHeat()->ResetFault(heater);
+			reprap.ClearTemperatureFault(heater);
 		}
 		break;
 

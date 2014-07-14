@@ -50,10 +50,14 @@ protected:
 	void Activate(Tool* currentlyActive);
 	void Standby();
 	void AddTool(Tool* t);
+	void FlagTemperatureFault(int8_t dudHeater);
+	void ClearTemperatureFault(int8_t wasDudHeater);
 	void UpdateExtrudersAndHeaters(uint16_t &extruders, uint16_t &heaters);
 
 private:
 
+	void SetTemperatureFault(int8_t dudHeater);
+	void ResetTemperatureFault(int8_t wasDudHeater);
 	int myNumber;
 	int* drives;
 	int driveCount;
@@ -63,10 +67,14 @@ private:
 	int heaterCount;
 	Tool* next;
 	bool active;
+	bool heaterFault;
 };
 
 inline int Tool::DriveCount()
 {
+	if(heaterFault) // If one of our heaters is dud, we pretend to have no drives so none get used
+		return 0;
+
 	return driveCount;
 }
 

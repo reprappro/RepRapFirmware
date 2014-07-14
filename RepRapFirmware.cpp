@@ -392,7 +392,6 @@ void RepRap::SelectTool(int toolNumber)
 		StandbyTool(currentTool->Number());
 	}
 	currentTool = NULL;
-
 }
 
 void RepRap::StandbyTool(int toolNumber)
