@@ -1027,13 +1027,28 @@ void Platform::SetMotorCurrent(byte drive, float current)
 }
 
 
-//Changed to be compatible with existing gcode norms
-// M106 S0 = fully off M106 S255 = fully on
+// This is a bit of a compromise - old RepRaps used fan speeds in the range
+// [0, 255], which is very hardware dependent.  It makes much more sense
+// to specify speeds in [0.0, 1.0].  This looks at the value supplied (which
+// the G Code reader will get right for a float or an int) and attempts to
+// do the right thing whichever the user has done.  This will only not work
+// for an old-style fan speed of 1/255...
+
 void Platform::CoolingFan(float speed)
 {
 	if(coolingFanPin >= 0)
 	{
-		byte p =(byte)speed;
+		byte p;
+
+		if(speed <= 1.0)
+		{
+			p = (byte)(255.0 * max<float>(0.0, speed));
+		}
+		else
+		{
+			p = (byte)speed;
+		}
+
 		// The cooling fan output pin gets inverted if HEAT_ON == 0
 		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? (255 - p) : p);
 	}
@@ -1043,17 +1058,17 @@ void Platform::CoolingFan(float speed)
 
 void Platform::SetInterrupt(float s) // Seconds
 {
-  if (s <= 0.0)
-  {
-    //NVIC_DisableIRQ(TC3_IRQn);
-    Message(HOST_MESSAGE, "Negative interrupt!\n");
-    s = STANDBY_INTERRUPT_RATE;
-  }
-  uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
-  TC_SetRA(TC1, 0, rc/2); //50% high, 50% low
-  TC_SetRC(TC1, 0, rc);
-  TC_Start(TC1, 0);
-  NVIC_EnableIRQ(TC3_IRQn);
+	if (s <= 0.0)
+	{
+		//NVIC_DisableIRQ(TC3_IRQn);
+		Message(HOST_MESSAGE, "Negative interrupt!\n");
+		s = STANDBY_INTERRUPT_RATE;
+	}
+	uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
+	TC_SetRA(TC1, 0, rc/2); //50% high, 50% low
+	TC_SetRC(TC1, 0, rc);
+	TC_Start(TC1, 0);
+	NVIC_EnableIRQ(TC3_IRQn);
 }
 
 //-----------------------------------------------------------------------------------------------------
