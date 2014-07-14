@@ -41,6 +41,7 @@ public:
 	void GetVariables(float* standby, float* active);
 	float MaxFeedrate();
 	float InstantDv();
+	void Print(char* reply);
 
 	friend class RepRap;
 

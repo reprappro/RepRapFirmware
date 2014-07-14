@@ -25,7 +25,7 @@ Licence: GPL
 #define STACK 5
 #define GCODE_LENGTH 100 // Maximum length of internally-generated G Code string
 
-#define GCODE_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
+#define AXIS_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
 #define FEEDRATE_LETTER 'F'// GCode feedrate
 #define EXTRUDE_LETTER 'E' // GCode extrude
 
@@ -113,10 +113,10 @@ class GCodes
     bool DoHome(char *reply, bool& error);								// Home some axes
     bool DoSingleZProbeAtPoint();										// Probe at a given point
     bool DoSingleZProbe();												// Probe where we are
-    bool SetSingleZProbeAtAPosition(GCodeBuffer *gb);					// Probes at a given position - see the comment at the head of the function itself
-    bool DoMultipleZProbe();											// Probes a series of points and sets the bed equation
+    bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, char *reply);		// Probes at a given position - see the comment at the head of the function itself
+    bool DoMultipleZProbe(char *reply);									// Probes a series of points and sets the bed equation
     bool SetPrintZProbe(GCodeBuffer *gb, char *reply);					// Either return the probe value, or set its threshold
-    bool SetOffsets(GCodeBuffer *gb);									// Deal with a G10
+    void SetOrReportOffsets(char* reply, GCodeBuffer *gb);				// Deal with a G10
     bool SetPositions(GCodeBuffer *gb);									// Deal with a G92
     bool LoadMoveBufferFromGCode(GCodeBuffer *gb,  						// Set up a move for the Move class
     		bool doingG92, bool applyLimits);
@@ -138,7 +138,7 @@ class GCodes
     void SetPidParameters(GCodeBuffer *gb, int heater, char reply[STRING_LENGTH]);	// Set the P/I/D parameters for a heater
     void SetHeaterParameters(GCodeBuffer *gb, char reply[STRING_LENGTH]); // Set the thermistor and ADC parameters for a heater
     int8_t Heater(int8_t head) const;									// Legacy G codes start heaters at 0, but we use 0 for the bed.  This sorts that out.
-    void AddNewTool(GCodeBuffer *gb);									// Create a new tool definition
+    void AddNewTool(GCodeBuffer *gb, char* reply);						// Create a new tool definition
     void SetToolHeaters(float temperature);								// Set all a tool's heaters to the temperature.  For M104...
     bool ChangeTool(int newToolNumber);									// Select a new tool
 
@@ -161,7 +161,7 @@ class GCodes
     float feedrateStack[STACK];					// For dealing with Push and Pop
     FileData fileStack[STACK];
     int8_t stackPointer;						// Push and Pop stack pointer
-    char gCodeLetters[AXES]; 					// 'X', 'Y', 'Z'
+    char axisLetters[AXES]; 					// 'X', 'Y', 'Z'
     float lastPos[DRIVES - AXES]; 				// Just needed for relative moves; i.e. not X, Y and Z
 	float record[DRIVES+1];						// Temporary store for move positions
 	float moveToDo[DRIVES+1];					// Where to go set by G1 etc

@@ -777,7 +777,7 @@ void Platform::Diagnostics()
 	strncpy(scratchString, "Bed probe heights:", STRING_LENGTH);
 	for (size_t i = 0; i < NUMBER_OF_PROBE_POINTS; ++i)
 	{
-		sncatf(scratchString, STRING_LENGTH, " %.3f", reprap.GetMove()->zBedProbePoint(i));
+		sncatf(scratchString, STRING_LENGTH, " %.3f", reprap.GetMove()->ZBedProbePoint(i));
 	}
 	strncat(scratchString, "\n", STRING_LENGTH);
 	AppendMessage(BOTH_MESSAGE, scratchString);
@@ -1014,7 +1014,7 @@ void Platform::SetMotorCurrent(byte drive, float current)
 //	snprintf(scratchString, STRING_LENGTH, "%d", pot);
 //	Message(HOST_MESSAGE, scratchString);
 //	Message(HOST_MESSAGE, "\n");
-	if(drive < 4)
+	if (drive < 4)
 	{
 		mcpDuet.setNonVolatileWiper(potWipes[drive], pot);
 		mcpDuet.setVolatileWiper(potWipes[drive], pot);
@@ -1024,6 +1024,21 @@ void Platform::SetMotorCurrent(byte drive, float current)
 		mcpExpansion.setNonVolatileWiper(potWipes[drive], pot);
 		mcpExpansion.setVolatileWiper(potWipes[drive], pot);
 	}
+}
+
+float Platform::MotorCurrent(byte drive)
+{
+	unsigned short pot;
+	if (drive < 4)
+	{
+		pot = mcpDuet.getNonVolatileWiper(potWipes[drive]);
+	}
+	else
+	{
+		pot = mcpExpansion.getNonVolatileWiper(potWipes[drive]);
+	}
+
+	return (float)pot * maxStepperDigipotVoltage / (0.256 * 8.0 * senseResistor);
 }
 
 

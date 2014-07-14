@@ -182,18 +182,19 @@ class Move
     void SetXBedProbePoint(int index, float x);	// Record the X coordinate of a probe point
     void SetYBedProbePoint(int index, float y);	// Record the Y coordinate of a probe point
     void SetZBedProbePoint(int index, float z);	// Record the Z coordinate of a probe point
-    float xBedProbePoint(int index) const;		// Get the X coordinate of a probe point
-    float yBedProbePoint(int index) const;		// Get the Y coordinate of a probe point
-    float zBedProbePoint(int index)const ;		// Get the Z coordinate of a probe point
+    float XBedProbePoint(int index) const;		// Get the X coordinate of a probe point
+    float YBedProbePoint(int index) const;		// Get the Y coordinate of a probe point
+    float ZBedProbePoint(int index)const ;		// Get the Z coordinate of a probe point
     int NumberOfProbePoints() const;				// How many points to probe have been set?  0 if incomplete
     int NumberOfXYProbePoints() const;			// How many XY coordinates of probe points have been set (Zs may not have been probed yet)
     bool AllProbeCoordinatesSet(int index) const;	// XY, and Z all set for this one?
     bool XYProbeCoordinatesSet(int index) const;	// Just XY set for this one?
     void SetZProbing(bool probing);				// Set the Z probe live
-    void SetProbedBedEquation();				// When we have a full set of probed points, work out the bed's equation
+    void SetProbedBedEquation(char *reply);		// When we have a full set of probed points, work out the bed's equation
     float SecondDegreeTransformZ(float x, float y) const; // Used for second degree bed equation
     float GetLastProbedZ() const;				// What was the Z when the probe last fired?
     void SetAxisCompensation(int8_t axis, float tangent); // Set an axis-pair compensation angle
+    float AxisCompensation(int8_t axis);		// The tangent value
     void SetIdentityTransform();				// Cancel the bed equation; does not reset axis angle compensation
     void Transform(float move[]) const;			// Take a position and apply the bed and the axis-angle compensations
     void InverseTransform(float move[]) const;	// Go from a transformed point back to user coordinates
@@ -508,17 +509,17 @@ inline void Move::SetZBedProbePoint(int index, float z)
 	probePointSet[index] |= zSet;
 }
 
-inline float Move::xBedProbePoint(int index) const
+inline float Move::XBedProbePoint(int index) const
 {
 	return xBedProbePoints[index];
 }
 
-inline float Move::yBedProbePoint(int index) const
+inline float Move::YBedProbePoint(int index) const
 {
 	return yBedProbePoints[index];
 }
 
-inline float Move::zBedProbePoint(int index) const
+inline float Move::ZBedProbePoint(int index) const
 {
 	return zBedProbePoints[index];
 }
@@ -640,6 +641,23 @@ inline float Move::ComputeCurrentCoordinate(int8_t drive, LookAhead* la, DDA* ru
 	return previous + (la->MachineToEndPoint(drive) - previous)*(float)runningDDA->stepCount/(float)runningDDA->totalSteps;
 }
 
+inline float Move::AxisCompensation(int8_t axis)
+{
+	switch(axis)
+	{
+		case X_AXIS:
+			return tanXY;
 
+		case Y_AXIS:
+			return tanYZ;
+
+		case Z_AXIS:
+			return tanXZ;
+
+		default:
+			platform->Message(HOST_MESSAGE, "Axis compensation requested for non-existent axis.");
+	}
+	return 0.0;
+}
 
 #endif
