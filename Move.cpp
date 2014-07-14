@@ -967,6 +967,16 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 
 		stopAStep = (long)((dCross*totalSteps)/distance);
 		startDStep = stopAStep + 1;
+	} else if(totalSteps > 5 && stopAStep <= 1 && startDStep >= totalSteps - 1)
+	{
+		// If we try to get to speed in a single step, the error from the
+		// Euler integration can create silly speeds.
+
+		result = change;
+		u = myLookAheadEntry->FeedRate();
+		v = u;
+		stopAStep = 0;
+		startDStep = totalSteps;
 	}
 
 	return result;
@@ -1070,15 +1080,16 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   // velocity to get time.
   
   timeStep = timeStep/velocity;
+  //timeStep = sqrt(2.0*timeStep/acceleration);
   
-//  if(debug)
-//  {
-//	  myLookAheadEntry->PrintMove();
-//
-//	  snprintf(scratchString, STRING_LENGTH, "DDA startV: %.2f, distance: %.1f, steps: %d, stopA: %d, startD: %d, timestep: %.5f\n",
-//			  velocity, distance, totalSteps, stopAStep, startDStep, timeStep);
-//	  platform->Message(HOST_MESSAGE, scratchString);
-//  }
+  if(debug)
+  {
+	  myLookAheadEntry->PrintMove();
+
+	  snprintf(scratchString, STRING_LENGTH, "DDA startV: %.2f, distance: %.1f, steps: %d, stopA: %d, startD: %d, timestep: %.5f\n",
+			  velocity, distance, totalSteps, stopAStep, startDStep, timeStep);
+	  platform->Message(HOST_MESSAGE, scratchString);
+  }
 
   return result;
 }
