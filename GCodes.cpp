@@ -345,15 +345,26 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 		}
 
 		int eMoveCount = tool->DriveCount();
-		if(eMoveCount > 0) // The usual reason that this might be 0 is a heater fault
+		if(eMoveCount > 0 && tool->ToolCanDrive())
 		{
 			float eMovement[DRIVES-AXES];
-			gb->GetFloatArray(eMovement, eMoveCount);
-			if(tool->DriveCount() != eMoveCount)
+			if(tool->Mixing())
 			{
-				snprintf(scratchString, STRING_LENGTH, "Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
-				platform->Message(HOST_MESSAGE, scratchString);
-				return false;
+				float length = gb->GetFValue();
+				for(int8_t drive = 0; drive < tool->DriveCount(); drive++)
+				{
+					eMovement[drive] = length * tool->GetMix()[drive];
+				}
+			}
+			else
+			{
+				gb->GetFloatArray(eMovement, eMoveCount);
+				if(tool->DriveCount() != eMoveCount)
+				{
+					snprintf(scratchString, STRING_LENGTH, "Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
+					platform->Message(HOST_MESSAGE, scratchString);
+					return false;
+				}
 			}
 
 			// Set the drive values for this tool.
@@ -2724,6 +2735,60 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						strncat(reply, ":", STRING_LENGTH);
 					}
 				}
+			}
+		}
+		break;
+
+	case 567: // Set/report tool mix ratios
+		if(gb->Seen('P'))
+		{
+			int8_t tNumber = gb->GetIValue();
+			Tool* tool = reprap.GetTool(tNumber);
+			if(tool != NULL)
+			{
+				if(gb->Seen(EXTRUDE_LETTER))
+				{
+					float eVals[DRIVES-AXES];
+					int eCount = tool->DriveCount();
+					gb->GetFloatArray(eVals, eCount);
+					if(eCount != tool->DriveCount())
+					{
+						snprintf(reply, STRING_LENGTH, "Setting mix ratios - wrong number of E drives: %s\n", gb->Buffer());
+					}
+					else
+					{
+						tool->DefineMix(eVals);
+					}
+				}
+				else
+				{
+					snprintf(reply, STRING_LENGTH, "Tool %d mix ratios: ", tNumber);
+					char sep = ':';
+					for(int8_t drive = 0; drive < tool->DriveCount(); drive++)
+					{
+						snprintf(scratchString, STRING_LENGTH, "%.3f%c", tool->GetMix()[drive], sep);
+						strncat(reply, scratchString, STRING_LENGTH);
+						if(drive >= tool->DriveCount() - 2)
+						{
+							sep = ' ';
+						}
+					}
+				}
+			}
+		}
+		break;
+
+	case 568: // Turn on/off automatic tool mixing
+		if(gb->Seen('P'))
+		{
+			Tool* tool = reprap.GetTool(gb->GetIValue());
+			if(tool != NULL)
+			{
+				if(gb->Seen('S'))
+					if(gb->GetIValue() != 0)
+						tool->TurnMixingOn();
+					else
+						tool->TurnMixingOff();
 			}
 		}
 		break;
