@@ -24,7 +24,7 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.86a-zpl"
+#define VERSION "0.87a-zpl"
 #define DATE "2014-07-15"
 #define AUTHORS "reprappro, dc42, zpl"
 
@@ -51,6 +51,7 @@ enum Compatibility
 #define TEMPERATURE_CLOSE_ENOUGH (3.0) 		// Celsius
 #define TEMPERATURE_LOW_SO_DONT_CARE (40.0)	// Celsius
 #define HOT_ENOUGH_TO_EXTRUDE (170.0)       // Celsius
+#define TIME_TO_HOT (120.0)					// Seconds
 
 // If temperatures fall outside this range, something nasty has happened.
 
