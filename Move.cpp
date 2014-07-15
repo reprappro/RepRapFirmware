@@ -431,19 +431,6 @@ void Move::SetStepHypotenuse()
 	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
 }
 
-/*
- * For diagnostics
- */
-
-void Move::PrintMove(LookAhead* lookAhead)
-{
-	snprintf(scratchString, STRING_LENGTH, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, v: %.3f\n",
-			lookAhead->MachineToEndPoint(X_AXIS), lookAhead->MachineToEndPoint(Y_AXIS), lookAhead->MachineToEndPoint(Z_AXIS),
-			lookAhead->MinSpeed(), lookAhead->MaxSpeed(), lookAhead->Acceleration(), lookAhead->FeedRate(), lookAhead->V()
-	);
-	platform->Message(HOST_MESSAGE, scratchString);
-}
-
 // Take an item from the look-ahead ring and add it to the DDA ring, if
 // possible.
 
@@ -466,7 +453,7 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     // We don't care about Init()'s return value - that should all have been sorted out by LookAhead.
     
     float u, v;
-    ddaRingAddPointer->Init(lookAhead, u, v);
+    ddaRingAddPointer->Init(lookAhead, u, v, true);
     //PrintMove(lookAhead);
     ddaRingAddPointer = ddaRingAddPointer->Next();
     ReleaseDDARingLock();
@@ -528,7 +515,7 @@ void Move::DoLookAhead()
         {
           float u = n0->V();
           float v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v) & change)
+          if(lookAheadDDA->Init(n1, u, v, false) & change)
           {
             n0->SetV(u);
             n1->SetV(v); 
@@ -550,7 +537,7 @@ void Move::DoLookAhead()
         {
           float u = n0->V();
           float v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v) & change)
+          if(lookAheadDDA->Init(n1, u, v, false) & change)
           {
             n0->SetV(u);
             n1->SetV(v); 
@@ -1010,7 +997,7 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 }
 
 
-MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
+MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
 {
   active = false;
   myLookAheadEntry = lookAhead;
@@ -1118,6 +1105,15 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   
   timeStep = timeStep/velocity;
   
+//  if(debug)
+//  {
+//	  myLookAheadEntry->PrintMove();
+//
+//	  snprintf(scratchString, STRING_LENGTH, "DDA startV: %.2f, distance: %.1f, steps: %d, stopA: %d, startD: %d, timestep: %.5f\n",
+//			  velocity, distance, totalSteps, stopAStep, startDStep, timeStep);
+//	  platform->Message(HOST_MESSAGE, scratchString);
+//  }
+
   return result;
 }
 
@@ -1311,7 +1307,15 @@ long LookAhead::EndPointToMachine(int8_t drive, float coord)
 	return  (long)roundf(coord*reprap.GetPlatform()->DriveStepsPerUnit(drive));
 }
 
+/*
+ * For diagnostics
+ */
 
-
-
+void LookAhead::PrintMove()
+{
+	snprintf(scratchString, STRING_LENGTH, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, u: %.3f, v: %.3f\n",
+			MachineToEndPoint(X_AXIS), MachineToEndPoint(Y_AXIS), MachineToEndPoint(Z_AXIS),
+			MinSpeed(), MaxSpeed(), Acceleration(), FeedRate(), Previous()->V(), V());
+	platform->Message(HOST_MESSAGE, scratchString);
+}
 

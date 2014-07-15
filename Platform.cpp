@@ -966,10 +966,16 @@ void Platform::SetDirection(byte drive, bool direction)
 {
 	if(directionPins[drive] < 0)
 		return;
+
+	bool d = (direction == FORWARDS) ? directions[drive] : !directions[drive];
 	if(drive == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
-		digitalWriteNonDue(directionPins[drive], direction);
+	{
+		digitalWriteNonDue(directionPins[drive], d);
+	}
 	else
-		digitalWrite(directionPins[drive], direction);
+	{
+		digitalWrite(directionPins[drive], d);
+	}
 }
 
 void Platform::Disable(byte drive)

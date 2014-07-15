@@ -2672,23 +2672,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		reprap.GetMove()->SetIdentityTransform();
 		break;
 
-	case 562: // Reset temperature fault - use with great caution
-		if (gb->Seen('P'))
-		{
-			int heater = gb->GetIValue();
-			reprap.ClearTemperatureFault(heater);
-		}
-		break;
-
 	case 563: // Define tool
 		AddNewTool(gb, reply);
-		break;
-
-    case 564: // Think outside the box?
-    	if(gb->Seen('S'))
-    	{
-    	    limitAxes = (gb->GetIValue() != 0);
-    	}
 		break;
 
     case 566: // Set/print minimum feedrates
@@ -2843,6 +2828,39 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			snprintf(reply, STRING_LENGTH, "%s", gb->GetIValue());
 			resend = true;
+		}
+		break;
+
+	//****************************
+	// These last are M codes only for the cognoscenti - TODO: maybe password protect one day?
+
+	case 562: // Reset temperature fault - use with great caution
+		if (gb->Seen('P'))
+		{
+			int heater = gb->GetIValue();
+			reprap.ClearTemperatureFault(heater);
+		}
+		break;
+
+    case 564: // Think outside the box?
+    	if(gb->Seen('S'))
+    	{
+    	    limitAxes = (gb->GetIValue() != 0);
+    	}
+		break;
+
+    case 569: // Set axis direction
+		if(gb->Seen('P'))
+		{
+			int8_t drive = gb->GetIValue();
+			if(gb->Seen('S'))
+			{
+				platform->SetDirectionValue(drive, gb->GetIValue());
+			}
+			else
+			{
+				snprintf(reply, STRING_LENGTH, "A %d sends drive %d forwards.", platform->GetDirectionValue(drive), drive);
+			}
 		}
 		break;
 
