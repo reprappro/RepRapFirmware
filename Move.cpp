@@ -126,7 +126,7 @@ void Move::Init()
   xRectangle = 1.0/(0.8*platform->AxisMaximum(X_AXIS));
   yRectangle = xRectangle;
 
-  secondDegreeCompensation = false;
+  identityBedTransform = true;
 
   lastTime = platform->Time();
   longWait = lastTime;
@@ -668,32 +668,32 @@ LookAhead* Move::LookAheadRingGet()
   return result;
 }
 
-// Note that we don't set the tan values to 0 here.  This means that the bed probe
-// values will be a fraction of a millimetre out in X and Y, which, as the bed should
-// be nearly flat (and the probe doesn't coincide with the nozzle anyway), won't matter.
-// But it means that the tan values can be set for the machine
-// at the start in the configuration file and be retained, without having to know and reset
-// them after every Z probe of the bed.
-
-void Move::SetIdentityTransform()
-{
-	aX = 0.0;
-	aY = 0.0;
-	aC = 0.0;
-	secondDegreeCompensation = false;
-}
-
 // Do the bed transform AFTER the axis transform
 
 void Move::BedTransform(float xyzPoint[]) const
 {
-	if(secondDegreeCompensation)
+	if(identityBedTransform)
+		return;
+
+	switch(NumberOfProbePoints())
 	{
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
-	}
-	else
-	{
+	case 0:
+		return;
+
+	case 3:
 		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC;
+		break;
+
+	case 4:
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
+		break;
+
+	case 5:
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + TriangleZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
+		break;
+
+	default:
+		platform->Message(HOST_MESSAGE, "BedTransform: wrong number of sample points.");
 	}
 }
 
@@ -701,13 +701,28 @@ void Move::BedTransform(float xyzPoint[]) const
 
 void Move::InverseBedTransform(float xyzPoint[]) const
 {
-	if(secondDegreeCompensation)
+	if(identityBedTransform)
+		return;
+
+	switch(NumberOfProbePoints())
 	{
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
-	}
-	else
-	{
+	case 0:
+		return;
+
+	case 3:
 		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - (aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC);
+		break;
+
+	case 4:
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
+		break;
+
+	case 5:
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - TriangleZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
+		break;
+
+	default:
+		platform->Message(HOST_MESSAGE, "InverseBedTransform: wrong number of sample points.");
 	}
 }
 
@@ -759,32 +774,75 @@ void Move::SetAxisCompensation(int8_t axis, float tangent)
 	}
 }
 
+void Move::BarycentricCoordinates(int8_t p1, int8_t p2, int8_t p3, float x, float y, float& l1, float& l2, float& l3) const
+{
+	float y23 = yBedProbePoints[p2] - yBedProbePoints[p3];
+	float x3 = x - xBedProbePoints[p3];
+	float x32 = xBedProbePoints[p3] - xBedProbePoints[p2];
+	float y3 = y - yBedProbePoints[p3];
+	float x13 = xBedProbePoints[p1] - xBedProbePoints[p3];
+	float y13 = yBedProbePoints[p1] - yBedProbePoints[p3];
+	float iDet = 1.0 / (y23 * x13 + x32 * y13);
+	l1 = (y23 * x3 + x32 * y3) * iDet;
+	l2 = (-y13 * x3 + x13 * y3) * iDet;
+	l3 = 1.0 - l1 - l2;
+}
+
+/*
+ * Interpolate on a triangular grid.  The triangle corners are indexed:
+ *
+ *   ^  [1]      [2]
+ *   |
+ *   Y      [4]
+ *   |
+ *   |  [0]      [3]
+ *      -----X---->
+ *
+ */
+float Move::TriangleZ(float x, float y) const
+{
+	float l1, l2, l3;
+	int8_t j;
+	for(int8_t i = 0; i < 4; i++)
+	{
+		j = (i + 1) % 4;
+		BarycentricCoordinates(i, j, 4, x, y, l1, l2, l3);
+		if(l1 > TRIANGLE_0 && l2 > TRIANGLE_0 && l3 > TRIANGLE_0)
+		{
+			return l1 * zBedProbePoints[i] + l2 * zBedProbePoints[j] + l3 * zBedProbePoints[4];
+		}
+	}
+	platform->Message(HOST_MESSAGE, "Triangle interpolation: point outside all triangles!");
+	return 0.0;
+}
+
 void Move::SetProbedBedEquation(char *reply)
 {
+	float x10, y10, z10;
+	float x20, y20, z20;
+
 	switch(NumberOfProbePoints())
 	{
 	case 3:
 		/*
 		 * Transform to a plane
 		 */
-		secondDegreeCompensation = false;
-		float xkj, ykj, zkj;
-		float xlj, ylj, zlj;
 		float a, b, c, d;   // Implicit plane equation - what we need to do a proper job
 
-		xkj = xBedProbePoints[1] - xBedProbePoints[0];
-		ykj = yBedProbePoints[1] - yBedProbePoints[0];
-		zkj = zBedProbePoints[1] - zBedProbePoints[0];
-		xlj = xBedProbePoints[2] - xBedProbePoints[0];
-		ylj = yBedProbePoints[2] - yBedProbePoints[0];
-		zlj = zBedProbePoints[2] - zBedProbePoints[0];
-		a = ykj*zlj - zkj*ylj;
-		b = zkj*xlj - xkj*zlj;
-		c = xkj*ylj - ykj*xlj;
-		d = -(xBedProbePoints[1]*a + yBedProbePoints[1]*b + zBedProbePoints[1]*c);
-		aX = -a/c;
-		aY = -b/c;
-		aC = -d/c;
+		x10 = xBedProbePoints[1] - xBedProbePoints[0];
+		y10 = yBedProbePoints[1] - yBedProbePoints[0];
+		z10 = zBedProbePoints[1] - zBedProbePoints[0];
+		x20 = xBedProbePoints[2] - xBedProbePoints[0];
+		y20 = yBedProbePoints[2] - yBedProbePoints[0];
+		z20 = zBedProbePoints[2] - zBedProbePoints[0];
+		a = y10 * z20 - z10 * y20;
+		b = z10 * x20 - x10 * z20;
+		c = x10 * y20 - y10 * x20;
+		d = -(xBedProbePoints[1] * a + yBedProbePoints[1] * b + zBedProbePoints[1] * c);
+		aX = -a / c;
+		aY = -b / c;
+		aC = -d / c;
+		identityBedTransform = false;
 		break;
 
 	case 4:
@@ -801,10 +859,22 @@ void Move::SetProbedBedEquation(char *reply)
 		 *   These are the scaling factors to apply to x and y coordinates to get them into the
 		 *   unit interval [0, 1].
 		 */
-		secondDegreeCompensation = true;
-		xRectangle = 1.0/(xBedProbePoints[3] - xBedProbePoints[0]);
-		yRectangle = 1.0/(yBedProbePoints[1] - yBedProbePoints[0]);
+		xRectangle = 1.0 / (xBedProbePoints[3] - xBedProbePoints[0]);
+		yRectangle = 1.0 / (yBedProbePoints[1] - yBedProbePoints[0]);
+		identityBedTransform = false;
 		break;
+
+	case 5:
+		for(int8_t i = 0; i < 4; i++)
+		{
+			x10 = xBedProbePoints[i] - xBedProbePoints[4];
+			y10 = yBedProbePoints[i] - yBedProbePoints[4];
+			z10 = zBedProbePoints[i] - zBedProbePoints[4];
+			xBedProbePoints[i] = xBedProbePoints[4] + 2.0 * x10;
+			yBedProbePoints[i] = yBedProbePoints[4] + 2.0 * y10;
+			zBedProbePoints[i] = zBedProbePoints[4] + 2.0 * z10;
+		}
+		identityBedTransform = false;
 
 	default:
 		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
@@ -872,7 +942,7 @@ the u and u values need to be changed.
 In the case of only extruders moving, the distance moved is taken to be the Pythagoran distance in
 the configuration space of the extruders.
 
-TODO: Worry about having more than eight extruders
+TODO: Worry about having more than eight drives
 
 */
 
@@ -1080,10 +1150,7 @@ void DDA::Step()
 
       counter[drive] -= totalSteps;
       
-//      if(drive < AXES)
-        drivesMoving |= 1<<drive;
-//      else
-//        extrudersMoving |= 1<<(drive - AXES);
+      drivesMoving |= 1<<drive;
         
       // Hit anything?
   
@@ -1113,10 +1180,7 @@ void DDA::Step()
   
   if(active)
   {
- //   if(drivesMoving)
-      timeStep = move->stepDistances[drivesMoving]/velocity;
- //   else
- //     timeStep = move->extruderStepDistances[extrudersMoving]/velocity;
+    timeStep = move->stepDistances[drivesMoving] / velocity;
       
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?
@@ -1203,9 +1267,7 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
 
 // This returns the cosine of the angle between
 // the movement up to this, and the movement
-// away from this.  Note that it
-// includes Z movements, though Z values will almost always 
-// not change.  Uses lazy evaluation.
+// away from this.  Uses lazy evaluation.
 
 float LookAhead::Cosine()
 {
@@ -1217,19 +1279,19 @@ float LookAhead::Cosine()
   float b2 = 0.0;
   float m1;
   float m2;
-  for(int8_t i = 0; i < AXES; i++)
+  for(int8_t drive = 0; drive < DRIVES; drive++)
   {
-	m1 = MachineToEndPoint(i);
-    m2 = Next()->MachineToEndPoint(i) - m1;
-    m1 = m1 - Previous()->MachineToEndPoint(i);
+	m1 = MachineToEndPoint(drive);
+    m2 = Next()->MachineToEndPoint(drive) - m1;
+    m1 = m1 - Previous()->MachineToEndPoint(drive);
     a2 += m1*m1;
     b2 += m2*m2;
     cosine += m1*m2;
   }
   
-  if(a2 <= 0.0 || b2 <= 0.0)
+  if(a2 <= 0.0 || b2 <= 0.0) // Avoid division by 0.0
   {
-	cosine = 0.0;		// one of the moves is just an extruder move (probably a retraction), so orthogonal (in 4D space!) to XYZ moves
+	cosine = 0.0;
     return cosine;
   }
  
