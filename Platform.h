@@ -356,18 +356,19 @@ class FileStore //: public InputOutput
 {
 public:
 
-	int8_t Status(); // Returns OR of IOStatus
-	bool Read(char& b);
-	int Read(char* buf, unsigned int nBytes);
-	bool Write(char b);
-	bool Write(const char *s, unsigned int len);
-	bool Write(const char* s);
-	bool Close();
-	bool Seek(unsigned long pos);
-	bool GoToEnd(); // Position the file at the end (so you can write on the end).
-	unsigned long Length(); // File size in bytes
-	void Duplicate();
-	bool Flush();
+	int8_t Status();								// Returns OR of IOStatus
+	bool Read(char& b);								// Read 1 byte
+	int Read(char* buf, unsigned int nBytes);		// Read a block of nBytes length
+	bool Write(char b);								// Write 1 byte
+	bool Write(const char *s, unsigned int len);	// Write a block of len bytes
+	bool Write(const char* s);						// Write a string
+	bool Close();									// Shut the file and tidy up
+	bool Seek(unsigned long pos);					// Jump to pos in the file
+	bool GoToEnd();									// Position the file at the end (so you can write on the end).
+	unsigned long Length();							// File size in bytes
+	float FractionRead();							// How far in we are
+	void Duplicate();								// Create a second reference to this file
+	bool Flush();									// Write remaining buffer data
 
 friend class Platform;
 
@@ -375,22 +376,23 @@ protected:
 
 	FileStore(Platform* p);
 	void Init();
-    bool Open(const char* directory, const char* fileName, bool write);
+	bool Open(const char* directory, const char* fileName, bool write);
         
-  bool inUse;
-  byte buf[FILE_BUF_LEN];
-  int bufferPointer;
-  
 private:
 
-  bool ReadBuffer();
-  bool WriteBuffer();
+	bool inUse;
+	byte buf[FILE_BUF_LEN];
+	int bufferPointer;
+	unsigned long bytesRead;
 
-  FIL file;
-  Platform* platform;
-  bool writing;
-  unsigned int lastBufferEntry;
-  unsigned int openCount;
+	bool ReadBuffer();
+	bool WriteBuffer();
+
+	FIL file;
+	Platform* platform;
+	bool writing;
+	unsigned int lastBufferEntry;
+	unsigned int openCount;
 };
 
 
@@ -645,6 +647,8 @@ public:
   void CoolingFan(float speed);
   void SetPidParameters(size_t heater, const PidParameters& params);
   const PidParameters& GetPidParameters(size_t heater);
+  float TimeToHot() const;
+  void SetTimeToHot(float t);
 
 //-------------------------------------------------------------------------------------------------------
   
@@ -746,6 +750,7 @@ private:
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
   int8_t coolingFanPin;
+  float timeToHot;
 
 // Serial/USB
 
@@ -1040,6 +1045,16 @@ inline float Platform::HeatSampleTime() const
 inline void Platform::SetHeatSampleTime(float st)
 {
 	heatSampleTime = st;
+}
+
+inline float Platform::TimeToHot() const
+{
+	return timeToHot;
+}
+
+inline void Platform::SetTimeToHot(float t)
+{
+	timeToHot = t;
 }
 
 inline const byte* Platform::IPAddress() const

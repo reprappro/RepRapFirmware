@@ -206,6 +206,7 @@ void Platform::Init()
 	standbyTemperatures = STANDBY_TEMPERATURES;
 	activeTemperatures = ACTIVE_TEMPERATURES;
 	coolingFanPin = COOLING_FAN_PIN;
+	timeToHot = TIME_TO_HOT;
 
 	webDir = WEB_DIR;
 	gcodeDir = GCODE_DIR;
@@ -1048,7 +1049,6 @@ float Platform::MotorCurrent(byte drive)
 	return (float)pot * maxStepperDigipotVoltage / (0.256 * 8.0 * senseResistor);
 }
 
-
 // This is a bit of a compromise - old RepRaps used fan speeds in the range
 // [0, 255], which is very hardware dependent.  It makes much more sense
 // to specify speeds in [0.0, 1.0].  This looks at the value supplied (which
@@ -1555,6 +1555,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 
 	writing = write;
 	lastBufferEntry = FILE_BUF_LEN - 1;
+	bytesRead = 0;
 	FRESULT openReturn;
 
 	if (writing)
@@ -1660,6 +1661,17 @@ unsigned long FileStore::Length()
 	return file.fsize;
 }
 
+float FileStore::FractionRead()
+{
+	unsigned long len = Length();
+	if(len <= 0)
+	{
+		return 0.0;
+	}
+
+	return (float)bytesRead / (float)len;
+}
+
 int8_t FileStore::Status()
 {
 	if (!inUse)
@@ -1712,6 +1724,7 @@ bool FileStore::Read(char& b)
 
 	b = (char) buf[bufferPointer];
 	bufferPointer++;
+	bytesRead++;
 
 	return true;
 }
@@ -1725,14 +1738,15 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 		return -1;
 	}
 	bufferPointer = FILE_BUF_LEN;	// invalidate the buffer
-	UINT bytesRead;
-	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytesRead);
+	UINT bytes_read;
+	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytes_read);
 	if (readStatus)
 	{
 		platform->Message(HOST_MESSAGE, "Error reading file.\n");
 		return -1;
 	}
-	return (int)bytesRead;
+	bytesRead += bytes_read;
+	return (int)bytes_read;
 }
 
 bool FileStore::WriteBuffer()

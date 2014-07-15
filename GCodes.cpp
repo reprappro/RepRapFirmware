@@ -2778,6 +2778,17 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
+	case 570: // Set/report heater timeout
+		if(gb->Seen('S'))
+		{
+			platform->SetTimeToHot(gb->GetFValue());
+		}
+		else
+		{
+			snprintf(reply, STRING_LENGTH, "Time allowed to get to temperature: %.1f seconds.", platform->TimeToHot());
+		}
+		break;
+
     case 906: // Set/report Motor currents
 		{
 			bool seen = false;
