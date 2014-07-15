@@ -2431,7 +2431,22 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		SetPidParameters(gb, 1, reply);
 		break;
 
-	case 302: // Allow cold extrudes
+	case 302: // Allow, deny or report cold extrudes
+		if (gb->Seen('S'))
+		{
+			if (gb->GetIValue() > 0)
+			{
+				reprap.AllowColdExtrude();
+			}
+			else
+			{
+				reprap.DenyColdExtrude();
+			}
+		}
+		else
+		{
+			snprintf(reply, STRING_LENGTH, "Cold extrudes are %s", reprap.ColdExtrude() ? "enabled" : "disabled");
+		}
 		break;
 
 	case 304: // Set/report heated bed PID values

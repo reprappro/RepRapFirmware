@@ -41,6 +41,9 @@ class RepRap
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+    void AllowColdExtrude();
+    void DenyColdExtrude();
+    bool ColdExtrude();
     void PrintTool(int toolNumber, char* reply);
     void FlagTemperatureFault(int8_t dudHeater);
     void ClearTemperatureFault(int8_t wasDudHeater);
@@ -76,6 +79,7 @@ class RepRap
     bool resetting;
     uint16_t activeExtruders;
     uint16_t activeHeaters;
+    bool coldExtrude;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -88,6 +92,9 @@ inline bool RepRap::Debug() const { return debug; }
 inline Tool* RepRap::GetCurrentTool() { return currentTool; }
 inline uint16_t RepRap::GetExtrudersInUse() const { return activeExtruders; }
 inline uint16_t RepRap::GetHeatersInUse() const { return activeHeaters; }
+inline bool RepRap::ColdExtrude() { return coldExtrude; }
+inline void RepRap::AllowColdExtrude() { coldExtrude = true; }
+inline void RepRap::DenyColdExtrude() { coldExtrude = false; }
 
 inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 {
