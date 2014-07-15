@@ -24,7 +24,7 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.84a-zpl"
+#define VERSION "0.85a-zpl"
 #define DATE "2014-07-15"
 #define AUTHORS "reprappro, dc42, zpl"
 
@@ -73,7 +73,8 @@ enum Compatibility
 #define INDEX_PAGE "reprap.htm"
 //#define MESSAGE_FILE "messages.txt"	// currently unused
 #define FOUR04_FILE "html404.htm"
-#define CONFIG_FILE "config.g" 			// The file that sets the machine's parameters
+#define CONFIG_FILE "config.g"         // The file that sets the machine's parameters
+#define DEFAULT_FILE "default.g"       // If the config file isn't found
 #define HOME_X_G "homex.g"
 #define HOME_Y_G "homey.g"
 #define HOME_Z_G "homez.g"
