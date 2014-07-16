@@ -80,7 +80,7 @@ void PidParameters::SetThermistorR25AndBeta(float r25, float beta)
 
 bool PidParameters::operator==(const PidParameters& other) const
 {
-	return kI == other.kI && kD == other.kD && kP == other.kP && fullBand == other.fullBand && pidMin == other.pidMin
+	return kI == other.kI && kD == other.kD && kP == other.kP && kT == other.kT && fullBand == other.fullBand && pidMin == other.pidMin
 			&& pidMax == other.pidMax && thermistorBeta == other.thermistorBeta && thermistorInfR == other.thermistorInfR
 			&& thermistorSeriesR == other.thermistorSeriesR && adcLowOffset == other.adcLowOffset
 			&& adcHighOffset == other.adcHighOffset;
@@ -123,6 +123,7 @@ void Platform::Init()
 		nvData.macAddress = MAC_ADDRESS;
 
 		nvData.zProbeType = 0;	// Default is to use the switch
+		nvData.xEndstopConnected = false;
 		nvData.switchZProbeParameters.Init(0.0);
 		nvData.irZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
 		nvData.alternateZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
@@ -135,6 +136,7 @@ void Platform::Init()
 			pp.kI = defaultPidKis[i];
 			pp.kD = defaultPidKds[i];
 			pp.kP = defaultPidKps[i];
+			pp.kT = defaultPidKts[i];
 			pp.fullBand = defaultFullBand[i];
 			pp.pidMin = defaultPidMin[i];
 			pp.pidMax = defaultPidMax[i];
@@ -169,6 +171,7 @@ void Platform::Init()
 
 	stepPins = STEP_PINS;
 	directionPins = DIRECTION_PINS;
+	directions = DIRECTIONS;
 	enablePins = ENABLE_PINS;
 	disableDrives = DISABLE_DRIVES;
 	lowStopPins = LOW_STOP_PINS;
@@ -221,21 +224,21 @@ void Platform::Init()
 	{
 		if (stepPins[i] >= 0)
 		{
-		  if(i == E0_DRIVE || i == E3_DRIVE) //STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
+		  if(i == E0_DRIVE || i == E3_DRIVE) // STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
 				pinModeNonDue(stepPins[i], OUTPUT);
 			else
 				pinMode(stepPins[i], OUTPUT);
 		}
 		if (directionPins[i] >= 0)
 		{
-		  if(i == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
+		  if(i == E0_DRIVE) // DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
 				pinModeNonDue(directionPins[i], OUTPUT);
 			else
 				pinMode(directionPins[i], OUTPUT);
 		}
 		if (enablePins[i] >= 0)
 		{
-		  if(i == Z_AXIS || i==E0_DRIVE || i==E2_DRIVE) //ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
+		  if(i == Z_AXIS || i == E0_DRIVE || i == E2_DRIVE) // ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
 				pinModeNonDue(enablePins[i], OUTPUT);
 			else
 				pinMode(enablePins[i], OUTPUT);
@@ -261,16 +264,19 @@ void Platform::Init()
 	{
 		if (heatOnPins[i] >= 0)
 		{
-    		if(i == E0_HEATER || i==E1_HEATER) //HEAT_ON_PINS {6, X5, X7, 7, 8, 9}
+			if(i == E0_HEATER || i == E1_HEATER) // HEAT_ON_PINS {6, X5, X7, 7, 8, 9}
 			{
+				digitalWriteNonDue(heatOnPins[i], HIGH);	// turn the heater off
 				pinModeNonDue(heatOnPins[i], OUTPUT);
 			}
 			else
 			{
+				digitalWrite(heatOnPins[i], HIGH);			// turn the heater off
 				pinMode(heatOnPins[i], OUTPUT);
 			}
 		}
-		thermistorFilters[i].Init();
+		analogReadResolution(12);
+		thermistorFilters[i].Init(analogRead(tempSensePins[i]));
 		heaterAdcChannels[i] = PinToAdcChannel(tempSensePins[i]);
 
 		// Calculate and store the ADC average sum that corresponds to an overheat condition, so that we can check is quickly in the tick ISR
@@ -307,8 +313,8 @@ void Platform::SetSlowestDrive()
 
 void Platform::InitZProbe()
 {
-	zProbeOnFilter.Init();
-	zProbeOffFilter.Init();
+	zProbeOnFilter.Init(0);
+	zProbeOffFilter.Init(0);
 
 	if (nvData.zProbeType == 1 || nvData.zProbeType == 2)
 	{
@@ -375,6 +381,17 @@ int Platform::GetZProbeSecondaryValues(int& v1, int& v2)
 int Platform::GetZProbeType() const
 {
 	return nvData.zProbeType;
+}
+
+void Platform::SetXEndstopConnected(bool connected)
+{
+	nvData.xEndstopConnected = connected;
+	WriteNvData();
+}
+
+bool Platform::GetXEndstopConnected() const
+{
+	return nvData.xEndstopConnected;
 }
 
 float Platform::ZProbeStopHeight() const
@@ -798,8 +815,11 @@ void Platform::Diagnostics()
 	reprap.Timing();
 
 #if LWIP_STATS
-	// Print LWIP stats to USB only
-	stats_display();
+	// Normally we should NOT try to display LWIP stats here, because it uses debugPrintf(), which will hang the system is no USB cable is connected.
+	if (reprap.Debug())
+	{
+		stats_display();
+	}
 #endif
 }
 
@@ -934,7 +954,8 @@ void Platform::SetHeater(size_t heater, const float& power)
 EndStopHit Platform::Stopped(int8_t drive)
 {
 	if (nvData.zProbeType > 0)
-	{  // Z probe is used for both X and Z.
+	{
+		// Z probe can be used for both X and Z.
 		if (drive != Y_AXIS)
 		{
 			int zProbeVal = ZProbe();
@@ -945,7 +966,7 @@ EndStopHit Platform::Stopped(int8_t drive)
 				return lowHit;
 			else if (zProbeVal * 10 >= zProbeADValue * 9)	// if we are at/above 90% of the target value
 				return lowNear;
-			else
+			else if (drive != X_AXIS || !nvData.xEndstopConnected)
 				return noStop;
 		}
 	}

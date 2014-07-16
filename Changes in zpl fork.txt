@@ -1,0 +1,15 @@
+Additional features in comparison to dc42's and/or RRP's official firmware:
+
+* Cooling support: M106 can invert PWM cooling if "I1" is passed to it once (required for a 4-pin PWM fan)
+
+* Interrupt-driven ethernet input to increase reliability
+
+* FTP server support with long file lists (up to 20KB)
+
+* Telnet support
+
+* Config output: M503 removes duplicate whitespaces to display the new RRP config template completely
+
+* Cold extrudes: M302 can allow or deny them with the "P" parameter, it reports the status if no arguments are specified
+
+* Z-probing: M558 can enable the X-axis endstop for IR probes if "X1" is passed to it

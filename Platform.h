@@ -159,13 +159,13 @@ const float defaultThermistor25RS[HEATERS] = {10000.0, 100000.0, 100000.0, 10000
 // This allows us to switch between PID and bang-bang using the M301 and M304 commands.
 
 // We use method 2 (see above)
-const float defaultPidKis[HEATERS] = {2.2, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME}; // Integral PID constants
-const float defaultPidKds[HEATERS] = {80, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME};	// Derivative PID constants
-const float defaultPidKps[HEATERS] = {-1, 20, 20, 20, 20, 20}; 							// Proportional PID constants, negative values indicate use bang-bang instead of PID
-const float defaultFullBand[HEATERS] = {150, 150.0, 150.0, 150.0, 150.0, 150.0};		// errors larger than this cause heater to be on or off and I-term set to zero
-
-const float defaultPidMin[HEATERS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};	// minimum value of I-term
-const float defaultPidMax[HEATERS] = {180, 180, 180, 180, 180, 180};	// maximum value of I-term, must be high enough to reach 245C for ABS printing
+const float defaultPidKis[HEATERS] = {5.0 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME}; // Integral PID constants
+const float defaultPidKds[HEATERS] = {500.0 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME};	// Derivative PID constants
+const float defaultPidKps[HEATERS] = {-1, 5.0, 5.0, 5.0, 5.0, 5.0};				// Proportional PID constants, negative values indicate use bang-bang instead of PID
+const float defaultPidKts[HEATERS] = {2.7, 0.35, 0.35, 0.35, 0.35, 0.35};		// approximate PWM value needed to maintain temperature, per degC above soom temperature
+const float defaultFullBand[HEATERS] = {5.0, 40.0, 40.0, 40.0, 40.0, 40.0};		// errors larger than this cause heater to be on or off
+const float defaultPidMin[HEATERS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};			// minimum value of I-term
+const float defaultPidMax[HEATERS] = {255, 100, 100, 100, 100, 100};			// maximum value of I-term, must be high enough to reach 245C for ABS printing
 
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
@@ -174,12 +174,11 @@ const float defaultPidMax[HEATERS] = {180, 180, 180, 180, 180, 180};	// maximum 
 
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO}
-#define COOLING_FAN_PIN X6 //pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
-#define HEAT_ON 0 // 0 for inverted heater (eg Duet v0.6) 1 for not (e.g. Duet v0.4)
+#define COOLING_FAN_PIN X6 										// pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
 
 // For the theory behind ADC oversampling, see http://www.atmel.com/Images/doc8003.pdf
 const unsigned int adOversampleBits = 1;					// number of bits we oversample when reading temperatures
-												// We hope that the compiler is clever enough to spot that division by this is a >> operation, but it doesn't really matter
+
 // Define the number of temperature readings we average for each thermistor. This should be a power of 2 and at least 4 ** adOversampleBits.
 // Keep numThermistorReadingsAveraged * NUM_HEATERS * 2ms no greater than HEAT_SAMPLE_TIME or the PIDs won't work well.
 const unsigned int numThermistorReadingsAveraged = (HEATERS > 3) ? 32 : 64;
@@ -441,7 +440,7 @@ private:
 	float thermistorBeta, thermistorInfR;				// private because these must be changed together
 
 public:
-	float kI, kD, kP;
+	float kI, kD, kP, kT;
 	float fullBand, pidMin, pidMax;
 	float thermistorSeriesR;
 	float adcLowOffset, adcHighOffset;
@@ -468,17 +467,17 @@ template<size_t numAveraged> class AveragingFilter
 public:
 	AveragingFilter()
 	{
-		Init();
+		Init(0);
 	}
 
-	void Init() volatile
+	void Init(uint16_t val) volatile
 	{
-		sum = 0;
+		sum = (uint32_t)val * (uint32_t)numAveraged;;
 		index = 0;
 		isValid = false;
 		for(size_t i = 0; i < numAveraged; ++i)
 		{
-			readings[i] = 0;
+			readings[i] = val;
 		}
 	}
 
@@ -503,7 +502,7 @@ public:
 	}
 
 	// Return true if we have a valid average
-	bool IsValid()  const volatile
+	bool IsValid() const volatile
 	{
 		return isValid;
 	}
@@ -626,6 +625,8 @@ public:
   int GetZProbeSecondaryValues(int& v1, int& v2);
   void SetZProbeType(int iZ);
   int GetZProbeType() const;
+  void SetXEndstopConnected(bool connected);
+  bool GetXEndstopConnected() const;
   void SetZProbing(bool starting);
   bool GetZProbeParameters(struct ZProbeParameters& params) const;
   bool SetZProbeParameters(const struct ZProbeParameters& params);
@@ -673,6 +674,7 @@ private:
 	  ZProbeParameters irZProbeParameters;			// Z probe values for the IR sensor
 	  ZProbeParameters alternateZProbeParameters;	// Z probe values for the alternate sensor
 	  int zProbeType;								// the type of Z probe we are currently using
+	  bool xEndstopConnected;						// Are we using a microswitch for X homing?
 	  PidParameters pidParams[HEATERS];
 	  byte ipAddress[4];
 	  byte netMask[4];

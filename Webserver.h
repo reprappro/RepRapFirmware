@@ -69,8 +69,8 @@ class ProtocolInterpreter
 	public:
 
 		ProtocolInterpreter(Platform *p, Webserver *ws);
-		virtual void ConnectionEstablished() {}
-		virtual void ConnectionLost(uint16_t local_port) {}
+		virtual void ConnectionEstablished() { }
+		virtual void ConnectionLost(uint16_t local_port) { }
 		virtual bool CharFromClient(const char c) = 0;
 		virtual void ResetState() = 0;
 
@@ -293,13 +293,14 @@ class Webserver
     // File info methods
     bool GetFileInfo(const char *fileName, unsigned long& length, float& height, float& filamentUsed, float& layerHeight, char* generatedBy, size_t generatedByLength);
     static bool FindHeight(const char* buf, size_t len, float& height);
+    static bool FindLayerHeight(const char* buf, size_t len, float& layerHeight);
     static bool FindFilamentUsed(const char* buf, size_t len, float& filamentUsed);
     static void CopyParameterText(const char* src, char *dst, size_t length);
 
     // Buffer to hold gcode that is ready for processing
     char gcodeBuffer[gcodeBufLength];
     unsigned int gcodeReadIndex, gcodeWriteIndex;	// head and tail indices into gcodeBuffer
-    char gcodeReply[STRING_LENGTH + 1];
+    char gcodeReply[2048];
 
     // Misc
     char password[SHORT_STRING_LENGTH + 1];

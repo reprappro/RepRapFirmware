@@ -157,7 +157,9 @@ void Move::Spin()
      if(nextFromLookAhead != NULL)
      {
        if(!DDARingAdd(nextFromLookAhead))
+       {
          platform->Message(HOST_MESSAGE, "Can't add to non-full DDA ring!\n"); // Should never happen...
+       }
      }
   }
   
@@ -172,8 +174,8 @@ void Move::Spin()
   // If there's a G Code move available, add it to the look-ahead
   // ring for processing.
 
-  bool checkEndStopsOnNextMove;
-  if(gCodes->ReadMove(nextMove, checkEndStopsOnNextMove))
+  uint8_t endStopsToCheck;
+  if(gCodes->ReadMove(nextMove, endStopsToCheck))
   {
 	Transform(nextMove);
 
@@ -228,7 +230,7 @@ void Move::Spin()
      float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
      float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
 
-     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES],minSpeed, maxSpeed, acceleration, checkEndStopsOnNextMove))
+     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
      {
     	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
      }
@@ -625,7 +627,7 @@ void Move::Interrupt()
 
 // Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
 
-bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, bool ce)
+bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, uint8_t ce)
 {
     if(LookAheadRingFull())
       return false;
@@ -1019,7 +1021,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   v = myLookAheadEntry->V();
   const long* positionNow = myLookAheadEntry->Previous()->MachineCoordinates();
   u = myLookAheadEntry->Previous()->V();
-  checkEndStops = myLookAheadEntry->CheckEndStops();
+  endStopsToCheck = myLookAheadEntry->EndStopsToCheck();
   int8_t bigDirection = 0;
 
   // How far are we going, both in steps and in mm?
@@ -1162,7 +1164,7 @@ void DDA::Step()
         
       // Hit anything?
   
-      if(checkEndStops)
+      if((endStopsToCheck & (1 << drive)) != 0)
       {
         switch(platform->Stopped(drive))
         {
@@ -1237,7 +1239,7 @@ LookAhead::LookAhead(Move* m, Platform* p, LookAhead* n)
   next = n;
 }
 
-void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, bool ce)
+void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, uint8_t ce)
 {
   v = fRate;
   requestedFeedrate = fRate;
@@ -1257,9 +1259,11 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
   }
 
   for(int8_t i = 0; i < DRIVES; i++)
+  {
     endPoint[i] = ep[i];
+  }
   
-  checkEndStops = ce;
+  endStopsToCheck = ce;
   
   // Cosines are lazily evaluated; flag this as unevaluated
   

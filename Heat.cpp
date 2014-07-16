@@ -32,7 +32,9 @@ Heat::Heat(Platform* p, GCodes* g)
 void Heat::Init()
 {
   for(int8_t heater=0; heater < HEATERS; heater++)
+  {
     pids[heater]->Init();
+  }
   lastTime = platform->Time();
   longWait = lastTime;
   active = true;
@@ -41,7 +43,9 @@ void Heat::Init()
 void Heat::Exit()
 {
   for(int8_t heater=0; heater < HEATERS; heater++)
+  {
 	 pids[heater]->SwitchOff();
+  }
   platform->Message(HOST_MESSAGE, "Heat class exited.\n");
   active = false;
 }
@@ -56,7 +60,9 @@ void Heat::Spin()
     return;
   lastTime = t;
   for(int8_t heater=0; heater < HEATERS; heater++)
+  {
     pids[heater]->Spin();
+  }
   platform->ClassReport("Heat", longWait);
 }
 
@@ -190,7 +196,8 @@ void PID::Spin()
 	  }
   }
 
-  float error = ((active) ? activeTemperature : standbyTemperature) - temperature;
+  float targetTemperature = (active) ? activeTemperature : standbyTemperature;
+  float error = targetTemperature - temperature;
   const PidParameters& pp = platform->GetPidParameters(heater);
   
   if(!pp.UsePID())
@@ -201,17 +208,19 @@ void PID::Spin()
   
   if(error < -pp.fullBand)
   {
-     temp_iState = 0.0;
-     platform->SetHeater(heater, 0.0);
-     lastTemperature = temperature;
-     return;
+    // actual temperature is well above target
+    temp_iState = (targetTemperature - 25.0 + pp.fullBand) * pp.kT;	// set the I term to our estimate of what will be needed ready for the switch to PID
+    platform->SetHeater(heater, 0.0);
+    lastTemperature = temperature;
+    return;
   }
   if(error > pp.fullBand)
   {
-     temp_iState = 0.0;
-     platform->SetHeater(heater, 1.0);
-     lastTemperature = temperature;
-     return;
+    // actual temperature is well below target
+    temp_iState = (targetTemperature - 25.0 - pp.fullBand) * pp.kT;	// set the I term to our estimate of what will be needed ready for the switch to PID
+    platform->SetHeater(heater, 1.0);
+    lastTemperature = temperature;
+    return;
   }  
    
   temp_iState += error * pp.kI;

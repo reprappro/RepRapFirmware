@@ -113,7 +113,7 @@ void Tool::Print(char* reply)
 	}
 }
 
-float Tool::MaxFeedrate()
+float Tool::MaxFeedrate() const
 {
 	if(driveCount <= 0)
 	{
@@ -132,7 +132,7 @@ float Tool::MaxFeedrate()
 	return result;
 }
 
-float Tool::InstantDv()
+float Tool::InstantDv() const
 {
 	if(driveCount <= 0)
 	{
@@ -221,7 +221,7 @@ void Tool::ResetTemperatureFault(int8_t wasDudHeater)
 	}
 }
 
-bool Tool::AllHeatersAtHighTemperature()
+bool Tool::AllHeatersAtHighTemperature() const
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
@@ -273,7 +273,7 @@ void Tool::SetVariables(float* standby, float* active)
 	}
 }
 
-void Tool::GetVariables(float* standby, float* active)
+void Tool::GetVariables(float* standby, float* active) const
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
@@ -282,7 +282,7 @@ void Tool::GetVariables(float* standby, float* active)
 	}
 }
 
-bool Tool::ToolCanDrive()
+bool Tool::ToolCanDrive() const
 {
 	if(heaterFault)
 		return false;
@@ -294,7 +294,7 @@ bool Tool::ToolCanDrive()
 }
 
 // Update the number of active drives and extruders in use to reflect what this tool uses
-void Tool::UpdateExtrudersAndHeaters(uint16_t &numExtruders, uint16_t &numHeaters)
+void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHeaters) const
 {
 	for(int8_t drive = 0; drive < driveCount; drive++)
 	{
