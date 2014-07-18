@@ -13,3 +13,7 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 * Cold extrudes: M302 can allow or deny them with the "P" parameter, it reports the status if no arguments are specified
 
 * Z-probing: M558 can enable the X-axis endstop for IR probes if "X1" is passed to it
+
+* File information for files being printed are displayed on page reload (except for layer stats)
+
+* Bug fix: Layer height for web interface is read from both start and end of a gcode file

@@ -455,8 +455,7 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     // We don't care about Init()'s return value - that should all have been sorted out by LookAhead.
     
     float u, v;
-    ddaRingAddPointer->Init(lookAhead, u, v, true);
-    //PrintMove(lookAhead);
+    ddaRingAddPointer->Init(lookAhead, u, v, reprap.Debug());
     ddaRingAddPointer = ddaRingAddPointer->Next();
     ReleaseDDARingLock();
     return true;

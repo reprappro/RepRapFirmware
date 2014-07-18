@@ -131,6 +131,14 @@ class Webserver
 
   protected:
 
+	// File information about the file being printed
+	bool fileInfoDetected;
+	unsigned long length;
+	float height, filament[DRIVES - AXES], layerHeight;
+	unsigned int numFilaments;
+	char generatedBy[50], fileBeingPrinted[255];
+	float printStartTime;
+
     void MessageStringToWebInterface(const char *s, bool error);
     void AppendReplyToWebInterface(const char* s, bool error);
 
@@ -291,10 +299,11 @@ class Webserver
     void StoreGcodeData(const char* data, size_t len);
 
     // File info methods
-    bool GetFileInfo(const char *fileName, unsigned long& length, float& height, float& filamentUsed, float& layerHeight, char* generatedBy, size_t generatedByLength);
+    bool GetFileInfo(const char *directory, const char *fileName, unsigned long& length, float& height, float *filamentUsed,
+        unsigned int& numFilaments, float& layerHeight, char* generatedBy, size_t generatedByLength);
     static bool FindHeight(const char* buf, size_t len, float& height);
     static bool FindLayerHeight(const char* buf, size_t len, float& layerHeight);
-    static bool FindFilamentUsed(const char* buf, size_t len, float& filamentUsed);
+    static unsigned int FindFilamentUsed(const char* buf, size_t len,  float *filamentUsed, unsigned int maxFilaments);
     static void CopyParameterText(const char* src, char *dst, size_t length);
 
     // Buffer to hold gcode that is ready for processing
