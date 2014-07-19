@@ -99,6 +99,7 @@ Licence: GPL
 #define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
 #define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_AXES {true, false, true}		// Axes for which the Z-probe is normally used
 const unsigned int numZProbeReadingsAveraged = 8;	// we average this number of readings with IR on, and the same number with IR off
 
 #define MAX_FEEDRATES {100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0} // mm/sec
@@ -625,8 +626,8 @@ public:
   int GetZProbeSecondaryValues(int& v1, int& v2);
   void SetZProbeType(int iZ);
   int GetZProbeType() const;
-  void SetXEndstopConnected(bool connected);
-  bool GetXEndstopConnected() const;
+  void SetZProbeAxes(const bool axes[AXES]);
+  void GetZProbeAxes(bool (&axes)[AXES]);
   void SetZProbing(bool starting);
   bool GetZProbeParameters(struct ZProbeParameters& params) const;
   bool SetZProbeParameters(const struct ZProbeParameters& params);
@@ -674,7 +675,7 @@ private:
 	  ZProbeParameters irZProbeParameters;			// Z probe values for the IR sensor
 	  ZProbeParameters alternateZProbeParameters;	// Z probe values for the alternate sensor
 	  int zProbeType;								// the type of Z probe we are currently using
-	  bool xEndstopConnected;						// Are we using a microswitch for X homing?
+	  bool zProbeAxes[AXES];						// Z probe is used for these axes
 	  PidParameters pidParams[HEATERS];
 	  byte ipAddress[4];
 	  byte netMask[4];

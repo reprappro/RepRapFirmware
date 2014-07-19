@@ -123,7 +123,7 @@ void Platform::Init()
 		nvData.macAddress = MAC_ADDRESS;
 
 		nvData.zProbeType = 0;	// Default is to use the switch
-		nvData.xEndstopConnected = false;
+		nvData.zProbeAxes = Z_PROBE_AXES;
 		nvData.switchZProbeParameters.Init(0.0);
 		nvData.irZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
 		nvData.alternateZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
@@ -383,15 +383,20 @@ int Platform::GetZProbeType() const
 	return nvData.zProbeType;
 }
 
-void Platform::SetXEndstopConnected(bool connected)
+void Platform::SetZProbeAxes(const bool axes[AXES])
 {
-	nvData.xEndstopConnected = connected;
-	WriteNvData();
+	for(int axis=0; axis<AXES; axis++)
+	{
+		nvData.zProbeAxes[axis] = axes[axis];
+	}
 }
 
-bool Platform::GetXEndstopConnected() const
+void Platform::GetZProbeAxes(bool (&axes)[AXES])
 {
-	return nvData.xEndstopConnected;
+	for(int axis=0; axis<AXES; axis++)
+	{
+		axes[axis] = nvData.zProbeAxes[axis];
+	}
 }
 
 float Platform::ZProbeStopHeight() const
@@ -953,22 +958,18 @@ void Platform::SetHeater(size_t heater, const float& power)
 
 EndStopHit Platform::Stopped(int8_t drive)
 {
-	if (nvData.zProbeType > 0)
+	if (nvData.zProbeType > 0 && drive < AXES && nvData.zProbeAxes[drive])
 	{
-		// Z probe can be used for both X and Z.
-		if (drive != Y_AXIS)
-		{
-			int zProbeVal = ZProbe();
-			int zProbeADValue =
-					(nvData.zProbeType == 3) ?
-							nvData.alternateZProbeParameters.adcValue : nvData.irZProbeParameters.adcValue;
-			if (zProbeVal >= zProbeADValue)
-				return lowHit;
-			else if (zProbeVal * 10 >= zProbeADValue * 9)	// if we are at/above 90% of the target value
-				return lowNear;
-			else if (drive != X_AXIS || !nvData.xEndstopConnected)
-				return noStop;
-		}
+		int zProbeVal = ZProbe();
+		int zProbeADValue =
+				(nvData.zProbeType == 3) ?
+						nvData.alternateZProbeParameters.adcValue : nvData.irZProbeParameters.adcValue;
+		if (zProbeVal >= zProbeADValue)
+			return lowHit;
+		else if (zProbeVal * 10 >= zProbeADValue * 9)	// if we are at/above 90% of the target value
+			return lowNear;
+		else
+			return noStop;
 	}
 
 	if (lowStopPins[drive] >= 0)

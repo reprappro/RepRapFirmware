@@ -2691,25 +2691,40 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-    case 558: // Set Z probe type and set whether the X axis microswitch can be used
+    case 558: // Set or report Z probe type and for which axes it is used
 		{
 			bool seen = false;
-
 			if(gb->Seen('P'))
 			{
 				platform->SetZProbeType(gb->GetIValue());
 				seen = true;
 			}
-			if (gb->Seen('X'))
+
+			bool zProbeAxes[AXES];
+			platform->GetZProbeAxes(zProbeAxes);
+			for(int axis=0; axis<AXES; axis++)
 			{
-				platform->SetXEndstopConnected(gb->GetIValue() > 0);
-				seen = true;
+				if (gb->Seen(axisLetters[axis]))
+				{
+					zProbeAxes[axis] = (gb->GetIValue() > 0);
+					seen = true;
+				}
 			}
 
-			if (!seen)
+			if (seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Z Probe: %d - X microswitch endstop: %s",
-						platform->GetZProbeType(), platform->GetXEndstopConnected() ? "connected" : "not connected");
+				platform->SetZProbeAxes(zProbeAxes);
+			}
+			else
+			{
+				snprintf(reply, STRING_LENGTH, "Z Probe type is %d and it is used for these axes:", platform->GetZProbeType());
+				for(int axis=0; axis<AXES; axis++)
+				{
+					if (zProbeAxes[axis])
+					{
+						sncatf(reply, STRING_LENGTH, " %c", axisLetters[axis]);
+					}
+				}
 			}
 		}
     	break;
