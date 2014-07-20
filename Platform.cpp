@@ -389,6 +389,7 @@ void Platform::SetZProbeAxes(const bool axes[AXES])
 	{
 		nvData.zProbeAxes[axis] = axes[axis];
 	}
+	WriteNvData();
 }
 
 void Platform::GetZProbeAxes(bool (&axes)[AXES])

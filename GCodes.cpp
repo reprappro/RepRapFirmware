@@ -1778,12 +1778,12 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		break;
 
 	case 90: // Absolute coordinates
-		drivesRelative = false;
+		//drivesRelative = false;
 		axesRelative = false;
 		break;
 
 	case 91: // Relative coordinates
-		drivesRelative = true; // Non-axis movements (i.e. extruders)
+		//drivesRelative = true; // Non-axis movements (i.e. extruders)
 		axesRelative = true;   // Axis movements (i.e. X, Y and Z)
 		break;
 
@@ -1942,11 +1942,14 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 82:	// Use absolute extruder positioning
-		for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
+		if (drivesRelative)	// don't reset the absolute extruder position if it was already absolute
 		{
-			lastPos[extruder - AXES] = 0.0;
+			for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
+			{
+				lastPos[extruder - AXES] = 0.0;
+			}
+			drivesRelative = false;
 		}
-		drivesRelative = false;
 		break;
 
 	case 83:	// Use relative extruder positioning
@@ -2228,7 +2231,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 135: // Set PID sample interval
-		// Note by zpl: This doesn't seem to be fully implemented yet
 		if(gb->Seen('S'))
 		{
 			platform->SetHeatSampleTime(gb->GetFValue() * 0.001);  // Value is in milliseconds; we want seconds
@@ -2388,7 +2390,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
     	result = OffsetAxes(gb);
     	break;
 
-	case 208: // Set/print maximum axis lengths. If there is an S parameter with value 1 then we set the min value, alse we set the max value.
+	case 208: // Set/print maximum axis lengths. If there is an S parameter with value 1 then we set the min value, else we set the max value.
 		{
 			bool setMin = (gb->Seen('S') ? (gb->GetIValue() == 1): false);
 			bool seen = false;

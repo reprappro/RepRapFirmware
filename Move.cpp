@@ -455,7 +455,7 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     // We don't care about Init()'s return value - that should all have been sorted out by LookAhead.
     
     float u, v;
-    ddaRingAddPointer->Init(lookAhead, u, v, reprap.Debug());
+    ddaRingAddPointer->Init(lookAhead, u, v);
     ddaRingAddPointer = ddaRingAddPointer->Next();
     ReleaseDDARingLock();
     return true;
@@ -516,7 +516,7 @@ void Move::DoLookAhead()
         {
           float u = n0->V();
           float v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v, false) & change)
+          if(lookAheadDDA->Init(n1, u, v) & change)
           {
             n0->SetV(u);
             n1->SetV(v); 
@@ -538,7 +538,7 @@ void Move::DoLookAhead()
         {
           float u = n0->V();
           float v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v, false) & change)
+          if(lookAheadDDA->Init(n1, u, v) & change)
           {
             n0->SetV(u);
             n1->SetV(v); 
@@ -993,23 +993,37 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		stopAStep = (long)((dCross*totalSteps)/distance);
 		startDStep = stopAStep + 1;
 	}
-	else if(totalSteps > 5 && stopAStep <= 1 && startDStep >= totalSteps - 1)
+	else if(totalSteps > 5 && stopAStep <= 1)
 	{
-		// If we try to get to speed in a single step, the error from the
-		// Euler integration can create silly speeds.
-
 		result = change;
 		u = myLookAheadEntry->FeedRate();
-		v = u;
-		stopAStep = 0;
-		startDStep = totalSteps;
+
+		if (startDStep >= totalSteps - 1)
+		{
+			// If we try to get to speed in a single step, the error from the
+			// Euler integration can create silly speeds.
+
+			stopAStep = 0;
+			startDStep = totalSteps;
+			v = u;
+		}
+		else
+		{
+			// Sometimes we get silly acceleration values, because (feedRate*feedRate - u*u) can become less than zero.
+
+			stopAStep = fabs(stopAStep);
+			if (stopAStep <= 1 || stopAStep >= startDStep)
+			{
+				stopAStep = startDStep - 1;
+			}
+		}
 	}
 
 	return result;
 }
 
 
-MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
+MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 {
   active = false;
   myLookAheadEntry = lookAhead;
@@ -1118,14 +1132,14 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   timeStep = timeStep/velocity;
   //timeStep = sqrt(2.0*timeStep/acceleration);
   
-  if(debug)
+  /*if(bigDirection == E0_DRIVE)
   {
-	  myLookAheadEntry->PrintMove();
+	  //myLookAheadEntry->PrintMove();
 
-	  snprintf(scratchString, STRING_LENGTH, "DDA startV: %.2f, distance: %.1f, steps: %d, stopA: %d, startD: %d, timestep: %.5f\n",
-			  velocity, distance, totalSteps, stopAStep, startDStep, timeStep);
+	  snprintf(scratchString, STRING_LENGTH, "DDA startV: %.2f, distance: %.1f, steps: %d, stopA: %d, startD: %d, timestep: %.5f, feedrate: %.5f\n",
+			  velocity, distance, totalSteps, stopAStep, startDStep, timeStep, feedRate);
 	  platform->Message(HOST_MESSAGE, scratchString);
-  }
+  }*/
 
   return result;
 }
@@ -1136,7 +1150,7 @@ void DDA::Start()
     platform->SetDirection(drive, directions[drive]);
 
   platform->SetInterrupt(timeStep); // seconds
-  active = true;  
+  active = true;
 }
 
 void DDA::Step()

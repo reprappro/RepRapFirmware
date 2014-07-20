@@ -119,7 +119,7 @@ class DDA
 protected:
 
 	DDA(Move* m, Platform* p, DDA* n);
-	MovementProfile Init(LookAhead* lookAhead, float& u, float& v, bool debug); // Set up the DDA.  Also used experimentally in look ahead.
+	MovementProfile Init(LookAhead* lookAhead, float& u, float& v);				// Set up the DDA.  Also used experimentally in look ahead.
 	void Start();																// Start executing the DDA.  I.e. move the move.
 	void Step();																// Take one step of the DDA.  Called by timed interrupt.
 	bool Active() const;
