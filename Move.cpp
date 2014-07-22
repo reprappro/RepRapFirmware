@@ -174,7 +174,7 @@ void Move::Spin()
   // If there's a G Code move available, add it to the look-ahead
   // ring for processing.
 
-  uint8_t endStopsToCheck;
+  EndstopChecks endStopsToCheck;
   if(gCodes->ReadMove(nextMove, endStopsToCheck))
   {
 	Transform(nextMove);
@@ -215,25 +215,25 @@ void Move::Spin()
     Absolute(normalisedDirectionVector, DRIVES);
     if(Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
     {
-    	platform->Message(HOST_MESSAGE, "\nAttempt to normailse zero-length move.\n");  // Should never get here - noMove above
+        platform->Message(HOST_MESSAGE, "\nAttempt to normalise zero-length move.\n");  // Should never get here - noMove above
         platform->ClassReport("Move", longWait);
         return;
     }
     
     // Real move - record its feedrate with it, not here.
 
-     currentFeedrate = -1.0;
+    currentFeedrate = -1.0;
 
-     // Set the feedrate maximum and minimum, and the acceleration
+    // Set the feedrate maximum and minimum, and the acceleration
 
-     float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
-     float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
-     float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
+    float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
+    float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
+    float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
 
-     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
-     {
-    	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
-     }
+    if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
+    {
+      platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+    }
   }
   platform->ClassReport("Move", longWait);
 }
@@ -626,7 +626,7 @@ void Move::Interrupt()
 
 // Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
 
-bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, uint8_t ce)
+bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, EndstopChecks ce)
 {
     if(LookAheadRingFull())
       return false;
@@ -868,11 +868,10 @@ void Move::SetProbedBedEquation(char *reply)
 		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
 	}
 
-	snprintf(reply, STRING_LENGTH, "Bed equation fits points ");
+	snprintf(reply, STRING_LENGTH, "Bed equation fits points");
 	for(int8_t point = 0; point < NumberOfProbePoints(); point++)
 	{
-		snprintf(scratchString, STRING_LENGTH, "[%.1f, %.1f, %.3f] ", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
-		strncat(reply, scratchString, STRING_LENGTH);
+		sncatf(reply, STRING_LENGTH, " [%.1f, %.1f, %.3f]", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
 	}
 }
 
@@ -1002,6 +1001,9 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		{
 			// If we try to get to speed in a single step, the error from the
 			// Euler integration can create silly speeds.
+
+			// Note by zpl: This may not be needed in dc42's fork, because all speeds are checked
+			// after the integration has been done, but I left this in just in case.
 
 			stopAStep = 0;
 			startDStep = totalSteps;
@@ -1252,7 +1254,7 @@ LookAhead::LookAhead(Move* m, Platform* p, LookAhead* n)
   next = n;
 }
 
-void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, uint8_t ce)
+void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, EndstopChecks ce)
 {
   v = fRate;
   requestedFeedrate = fRate;

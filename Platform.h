@@ -118,7 +118,7 @@ const unsigned int numZProbeReadingsAveraged = 8;	// we average this number of r
 
 #define AXIS_MAXIMA {220, 200, 200} 			// mm
 #define AXIS_MINIMA {0, 0, 0}					// mm
-#define HOME_FEEDRATES {50.0, 50.0, 100.0/60.0}	// mm/sec (increased Z because we slow down z-homing when approaching the target height)
+#define HOME_FEEDRATES {50.0, 50.0, 100.0/60.0}	// mm/sec (dc42 increased Z because we slow down z-homing when approaching the target height)
 #define HEAD_OFFSETS {0.0, 0.0, 0.0}			// mm
 
 #define X_AXIS 0  								// The index of the X axis in the arrays
@@ -162,11 +162,12 @@ const float defaultThermistor25RS[HEATERS] = {10000.0, 100000.0, 100000.0, 10000
 // We use method 2 (see above)
 const float defaultPidKis[HEATERS] = {5.0 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME, 0.1 / HEAT_SAMPLE_TIME}; // Integral PID constants
 const float defaultPidKds[HEATERS] = {500.0 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME};	// Derivative PID constants
-const float defaultPidKps[HEATERS] = {-1, 5.0, 5.0, 5.0, 5.0, 5.0};				// Proportional PID constants, negative values indicate use bang-bang instead of PID
-const float defaultPidKts[HEATERS] = {2.7, 0.35, 0.35, 0.35, 0.35, 0.35};		// approximate PWM value needed to maintain temperature, per degC above soom temperature
-const float defaultFullBand[HEATERS] = {5.0, 40.0, 40.0, 40.0, 40.0, 40.0};		// errors larger than this cause heater to be on or off
+const float defaultPidKps[HEATERS] = {-1, 10.0, 10.0, 10.0, 10.0, 10.0};		// Proportional PID constants, negative values indicate use bang-bang instead of PID
+const float defaultPidKts[HEATERS] = {2.7, 0.25, 0.25, 0.25, 0.25, 0.25};		// approximate PWM value needed to maintain temperature, per degC above room temperature
+const float defaultPidKss[HEATERS] = {1.0, 0.9, 0.9, 0.9, 0.9, 0.9};			// PWM scaling factor, to allow for variation in heater power and supply voltage
+const float defaultFullBand[HEATERS] = {5.0, 30.0, 30.0, 30.0, 30.0, 30.0};		// errors larger than this cause heater to be on or off
 const float defaultPidMin[HEATERS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};			// minimum value of I-term
-const float defaultPidMax[HEATERS] = {255, 100, 100, 100, 100, 100};			// maximum value of I-term, must be high enough to reach 245C for ABS printing
+const float defaultPidMax[HEATERS] = {255, 180, 180, 180, 180, 180};			// maximum value of I-term, must be high enough to reach 245C for ABS printing
 
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
@@ -441,7 +442,7 @@ private:
 	float thermistorBeta, thermistorInfR;				// private because these must be changed together
 
 public:
-	float kI, kD, kP, kT;
+	float kI, kD, kP, kT, kS;
 	float fullBand, pidMin, pidMax;
 	float thermistorSeriesR;
 	float adcLowOffset, adcHighOffset;

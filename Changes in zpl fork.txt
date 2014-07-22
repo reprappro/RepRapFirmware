@@ -16,4 +16,10 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * File information for files being printed are displayed on page reload (except for layer stats)
 
+* Lowered minimum extrusion temperature from 170C to 160C
+
+* Reduced Z-probe height for automatic bed compensation from 8mm to 5mm
+
 * Bug fix: Layer height for web interface is read from both start and end of a gcode file
+
+* Bug fix: Some extruder moves were not performed properly due to bad acceleration values

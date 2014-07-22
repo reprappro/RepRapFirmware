@@ -85,11 +85,10 @@ void Tool::Print(char* reply)
 		{
 			comma = ';';
 		}
-		snprintf(scratchString, STRING_LENGTH, "%d%c", drives[drive], comma);
-		strncat(reply, scratchString, STRING_LENGTH);
+		sncatf(reply, STRING_LENGTH, "%d%c", drives[drive], comma);
 	}
 
-	strncat(reply, "heaters (active/standby temps): ", STRING_LENGTH);
+	sncatf(reply, STRING_LENGTH, "heaters (active/standby temps): ");
 	comma = ',';
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
@@ -97,20 +96,11 @@ void Tool::Print(char* reply)
 			{
 				comma = ';';
 			}
-			snprintf(scratchString, STRING_LENGTH, "%d (%.1f/%.1f)%c", heaters[heater],
+			sncatf(reply, STRING_LENGTH, "%d (%.1f/%.1f)%c", heaters[heater],
 					activeTemperatures[heater], standbyTemperatures[heater], comma);
-			strncat(reply, scratchString, STRING_LENGTH);
 	}
 
-	strncat(reply, " status: ", STRING_LENGTH);
-	if(active)
-	{
-		strncat(reply, "selected", STRING_LENGTH);
-	}
-	else
-	{
-		strncat(reply, "standby", STRING_LENGTH);
-	}
+	sncatf(reply, STRING_LENGTH, " status: %s", active ? "selected" : "standby");
 }
 
 float Tool::MaxFeedrate() const

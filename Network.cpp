@@ -113,7 +113,7 @@ static void SendData(tcp_pcb *pcb, ConnectionState *cs)
 	}
 	else
 	{
-		debugPrintf("send_data: error %d\n", err);
+//		debugPrintf("send_data: error %d\n", err);
 		tcp_abort(cs->pcb);
 		cs->pcb = NULL;
 	}
@@ -525,7 +525,7 @@ bool Network::AllocateSendBuffer(SendBuffer *&buffer)
 	buffer = sendBuffer;
 	if (buffer == NULL)
 	{
-		debugPrintf("Network: Could not allocate send buffer!\n");
+//		debugPrintf("Network: Could not allocate send buffer!\n");
 		return false;
 	}
 
@@ -749,7 +749,7 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 				else
 				{
 					r->fileBeingSent = NULL;
-					debugPrintf("Could not allocate send buffer for file transfer!\n");
+//					debugPrintf("Could not allocate send buffer for file transfer!\n");
 				}
 			}
 
@@ -1241,7 +1241,7 @@ bool RequestState::Send()
 		float timeNow = reprap.GetPlatform()->Time();
 		if (timeNow - lastWriteTime > writeTimeout)
 		{
-			debugPrintf("Network: Timing out connection cs=%08x\n", (unsigned int)cs);
+//			debugPrintf("Network: Timing out connection cs=%08x\n", (unsigned int)cs);
 			Close();
 			return false;	// this RS will be freed next time round
 		}

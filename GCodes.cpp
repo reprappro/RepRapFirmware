@@ -474,7 +474,7 @@ int GCodes::SetUpMove(GCodeBuffer *gb)
 
 // The Move class calls this function to find what to do next.
 
-bool GCodes::ReadMove(float m[], uint8_t& ce)
+bool GCodes::ReadMove(float m[], EndstopChecks& ce)
 {
 	if (!moveAvailable)
 		return false;
@@ -564,7 +564,7 @@ bool GCodes::FileCannedCyclesReturn()
 // be ignored.  Recall that moveToDo[DRIVES] should contain the feedrate
 // you want (if action[DRIVES] is true).
 
-bool GCodes::DoCannedCycleMove(uint8_t ce)
+bool GCodes::DoCannedCycleMove(EndstopChecks ce)
 {
 	// Is the move already running?
 
@@ -1017,7 +1017,7 @@ const char* GCodes::GetCurrentCoordinates() const
 	snprintf(scratchString, STRING_LENGTH, "X:%f Y:%f Z:%f ", liveCoordinates[X_AXIS], liveCoordinates[Y_AXIS], liveCoordinates[Z_AXIS]);
 	for(int i = AXES; i< DRIVES; i++)
 	{
-		sncatf(scratchString, STRING_LENGTH, "E%d:%f ",i-AXES,liveCoordinates[i]);
+		sncatf(scratchString, STRING_LENGTH, "E%d:%f ", i-AXES, liveCoordinates[i]);
 	}
 	return scratchString;
 }
@@ -1259,11 +1259,10 @@ void GCodes::SetOrReportOffsets(char *reply, GCodeBuffer *gb)
 			else
 			{
 				reply[0] = 0;
-				snprintf(reply, STRING_LENGTH, "Tool %d - Active/standby temperature(s): ", toolNumber);
+				snprintf(reply, STRING_LENGTH, "Tool %d - Active/standby temperature(s):", toolNumber);
 				for(int8_t heater = 0; heater < hCount; heater++)
 				{
-					snprintf(scratchString, STRING_LENGTH, "%.1f/%.1f ", active[heater], standby[heater]);
-					strncat(reply, scratchString, STRING_LENGTH);
+					sncatf(reply, STRING_LENGTH, " %.1f/%.1f", active[heater], standby[heater]);
 				}
 			}
 		}
@@ -1550,6 +1549,12 @@ void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, char reply[STRING_LEN
 		if (gb->Seen('T'))
 		{
 			pp.kT = gb->GetFValue();
+			seen = true;
+		}
+		if (gb->Seen('S'))
+		{
+			pp.kS = gb->GetFValue();
+			seen = true;
 		}
 		if (gb->Seen('W'))
 		{
@@ -1568,8 +1573,8 @@ void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, char reply[STRING_LEN
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Heater %d P:%.2f I:%.3f D:%.2f T:%.2f W:%.1f B:%.1f\n",
-					heater, pp.kP, pp.kI * platform->HeatSampleTime(), pp.kD/platform->HeatSampleTime(), pp.kT, pp.pidMax, pp.fullBand);
+			snprintf(reply, STRING_LENGTH, "Heater %d P:%.2f I:%.3f D:%.2f T:%.2f S:%.2f W:%.1f B:%.1f\n",
+						heater, pp.kP, pp.kI * platform->HeatSampleTime(), pp.kD/platform->HeatSampleTime(), pp.kT, pp.kS, pp.pidMax, pp.fullBand);
 		}
 	}
 }
@@ -1778,11 +1783,13 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		break;
 
 	case 90: // Absolute coordinates
+		// DC 2014-07-21 we no longer change the extruder settings in response to G90/G91 commands
 		//drivesRelative = false;
 		axesRelative = false;
 		break;
 
 	case 91: // Relative coordinates
+		// DC 2014-07-21 we no longer change the extruder settings in response to G90/G91 commands
 		//drivesRelative = true; // Non-axis movements (i.e. extruders)
 		axesRelative = true;   // Axis movements (i.e. X, Y and Z)
 		break;
@@ -2005,16 +2012,15 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Steps/mm: X: %d, Y: %d, Z: %d, E: ",
-						(int)platform->DriveStepsPerUnit(X_AXIS), (int)platform->DriveStepsPerUnit(Y_AXIS),
-						(int)platform->DriveStepsPerUnit(Z_AXIS));
+				snprintf(reply, STRING_LENGTH, "Steps/mm: X: %.3f, Y: %.3f, Z: %.3f, E: ",
+						platform->DriveStepsPerUnit(X_AXIS), platform->DriveStepsPerUnit(Y_AXIS),
+						platform->DriveStepsPerUnit(Z_AXIS));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					snprintf(scratchString, STRING_LENGTH, "%f", platform->DriveStepsPerUnit(drive));
-					strncat(reply, scratchString, STRING_LENGTH);
+					sncatf(reply, STRING_LENGTH, "%.3f", platform->DriveStepsPerUnit(drive));
 					if(drive < DRIVES-1)
 					{
-						strncat(reply, ":", STRING_LENGTH);
+						sncatf(reply, STRING_LENGTH, ":");
 					}
 				}
 			}
@@ -2050,12 +2056,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			if(!reprap.GetHeat()->SwitchedOff(heater))
 			{
-				snprintf(scratchString, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
-				strncat(reply, scratchString, STRING_LENGTH);
+				sncatf(reply, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
 			}
 		}
-		snprintf(scratchString, STRING_LENGTH, "B: %.1f ", reprap.GetHeat()->GetTemperature(HOT_BED));
-		strncat(reply, scratchString, STRING_LENGTH);
+		sncatf(reply, STRING_LENGTH, "B: %.1f ", reprap.GetHeat()->GetTemperature(0));
 		break;
    
 	case 106: // Fan on or off
@@ -2090,6 +2094,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
     		float temperature = gb->GetFValue();
     		SetToolHeaters(temperature);
     	}
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())	// tell Move not to wait for more moves
+		{
+			return false;
+		}
     	result = reprap.GetHeat()->AllHeatersAtSetTemperatures(false);
     	break;
 
@@ -2194,8 +2202,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					comma = ' ';
 				}
 
-				snprintf(scratchString, STRING_LENGTH, "%c: %s%c ", axisLetters[axis], es, comma);
-				strncat(reply, scratchString, STRING_LENGTH);
+				sncatf(reply, STRING_LENGTH, "%c: %s%c ", axisLetters[axis], es, comma);
 			}
 		}
 		break;
@@ -2277,6 +2284,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				reprap.GetHeat()->SetActiveTemperature(HOT_BED, gb->GetFValue());
 				reprap.GetHeat()->Activate(HOT_BED);
+				if (!AllMovesAreFinishedAndMoveBufferIsLoaded())	// tell Move not to wait for more moves
+				{
+					return false;
+				}
 				result = reprap.GetHeat()->HeaterAtSetTemperature(HOT_BED);
 			}
 		}
@@ -2321,11 +2332,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						platform->Acceleration(Z_AXIS)/distanceScale);
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					snprintf(scratchString, STRING_LENGTH, "%f", platform->Acceleration(drive)/distanceScale);
-					strncat(reply, scratchString, STRING_LENGTH);
+					sncatf(reply, STRING_LENGTH, "%f", platform->Acceleration(drive)/distanceScale);
 					if(drive < DRIVES-1)
 					{
-						strncat(reply, ":", STRING_LENGTH);
+						sncatf(reply, STRING_LENGTH, ":");
 					}
 				}
 			}
@@ -2339,7 +2349,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				if(gb->Seen(axisLetters[axis]))
 				{
-					platform->SetMaxFeedrate(axis, gb->GetFValue()*distanceScale*0.016666667); // G Code feedrates are in mm/minute; we need mm/sec
+					platform->SetMaxFeedrate(axis, gb->GetFValue() * distanceScale * 0.016666667); // G Code feedrates are in mm/minute; we need mm/sec
 					seen = true;
 				}
 			}
@@ -2371,11 +2381,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						platform->MaxFeedrate(Z_AXIS)/(distanceScale*0.016666667));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					snprintf(scratchString, STRING_LENGTH, "%f", platform->MaxFeedrate(drive) / (distanceScale * 0.016666667));
-					strncat(reply, scratchString, STRING_LENGTH);
+					sncatf(reply, STRING_LENGTH, "%f", platform->MaxFeedrate(drive) / (distanceScale * 0.016666667));
 					if(drive < DRIVES-1)
 					{
-						strncat(reply, ":", STRING_LENGTH);
+						sncatf(reply, STRING_LENGTH, ":");
 					}
 				}
 			}
@@ -2421,9 +2430,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					{
 						comma = ' ';
 					}
-					snprintf(scratchString, STRING_LENGTH, "%c: %.1f min, %.1f max%c ", axisLetters[axis],
+					sncatf(reply, STRING_LENGTH, "%c: %.1f min, %.1f max%c ", axisLetters[axis],
 							platform->AxisMinimum(axis), platform->AxisMaximum(axis), comma);
-					strncat(reply, scratchString, STRING_LENGTH);
 				}
 			}
 		}
@@ -2453,9 +2461,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						comma = ' ';
 					}
 
-					snprintf(scratchString, STRING_LENGTH, "%c: %.1f%c ", axisLetters[axis],
+					sncatf(reply, STRING_LENGTH, "%c: %.1f%c ", axisLetters[axis],
 							platform->HomeFeedRate(axis) * 60.0 / distanceScale, comma);
-					strncat(reply, scratchString, STRING_LENGTH);
 				}
 			}
 		}
@@ -2621,29 +2628,28 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				case me:
 				case reprapFirmware:
-					snprintf(scratchString, STRING_LENGTH, "RepRap Firmware (i.e. in native mode)");
+					sncatf(reply, STRING_LENGTH, "RepRap Firmware (i.e. in native mode)");
 					break;
 
 				case marlin:
-					snprintf(scratchString, STRING_LENGTH, "Marlin");
+					sncatf(reply, STRING_LENGTH, "Marlin");
 					break;
 
 				case teacup:
-					snprintf(scratchString, STRING_LENGTH, "Teacup");
+					sncatf(reply, STRING_LENGTH, "Teacup");
 					break;
 
 				case sprinter:
-					snprintf(scratchString, STRING_LENGTH, "Sprinter");
+					sncatf(reply, STRING_LENGTH, "Sprinter");
 					break;
 
 				case repetier:
-					snprintf(scratchString, STRING_LENGTH, "Repetier");
+					sncatf(reply, STRING_LENGTH, "Repetier");
 					break;
 
 				default:
-					snprintf(scratchString, STRING_LENGTH, "Unknown: (%d)", platform->Emulating());
+					sncatf(reply, STRING_LENGTH, "Unknown: (%d)", platform->Emulating());
 			}
-			strncat(reply, scratchString, STRING_LENGTH);
 		}
 		break;
 
@@ -2808,11 +2814,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						platform->InstantDv(Z_AXIS)/(distanceScale*0.016666667));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					snprintf(scratchString, STRING_LENGTH, "%f", platform->InstantDv(drive) / (distanceScale * 0.016666667));
-					strncat(reply, scratchString, STRING_LENGTH);
+					sncatf(reply, STRING_LENGTH, "%f", platform->InstantDv(drive) / (distanceScale * 0.016666667));
 					if(drive < DRIVES-1)
 					{
-						strncat(reply, ":", STRING_LENGTH);
+						sncatf(reply, STRING_LENGTH, ":");
 					}
 				}
 			}
@@ -2846,8 +2851,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					char sep = ':';
 					for(int8_t drive = 0; drive < tool->DriveCount(); drive++)
 					{
-						snprintf(scratchString, STRING_LENGTH, "%.3f%c", tool->GetMix()[drive], sep);
-						strncat(reply, scratchString, STRING_LENGTH);
+						sncatf(reply, STRING_LENGTH, "%.3f%c", tool->GetMix()[drive], sep);
 						if(drive >= tool->DriveCount() - 2)
 						{
 							sep = ' ';
@@ -2920,10 +2924,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						platform->MotorCurrent(Z_AXIS));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					snprintf(scratchString, STRING_LENGTH, "%.1f", platform->MotorCurrent(drive));
-					strncat(reply, scratchString, STRING_LENGTH);
+					sncatf(reply, STRING_LENGTH, "%.1f", platform->MotorCurrent(drive));
 					if(drive < DRIVES-1)
-						strncat(reply, ":", STRING_LENGTH);
+					{
+						sncatf(reply, STRING_LENGTH, ":");
+					}
 				}
 			}
 		}
