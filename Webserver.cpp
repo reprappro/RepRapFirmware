@@ -101,7 +101,7 @@ const float pasvPortTimeout = 10.0;	 					// seconds to wait for the FTP data po
 
 // Constructor and initialisation
 Webserver::Webserver(Platform* p) : platform(p), webserverActive(false), readingConnection(NULL),
-		fileInfoDetected(false), numFilaments(DRIVES - AXES), printStartTime(0.0)
+		fileInfoDetected(false), filamentCount(DRIVES - AXES), printStartTime(0.0)
 {
 	httpInterpreter = new HttpInterpreter(p, this);
 	ftpInterpreter = new FtpInterpreter(p, this);
@@ -319,7 +319,7 @@ void Webserver::ProcessGcode(const char* gc)
 	}
 	else if (StringStartsWith(gc, "M23 "))	// select SD card file to print next
 	{
-		fileInfoDetected = GetFileInfo(platform->GetGCodeDir(), &gc[4], length, height, filament, numFilaments, layerHeight, generatedBy, ARRAY_SIZE(generatedBy));
+		fileInfoDetected = GetFileInfo(platform->GetGCodeDir(), &gc[4], length, height, filament, filamentCount, layerHeight, generatedBy, ARRAY_SIZE(generatedBy));
 		printStartTime = platform->Time();
 		strncpy(fileBeingPrinted, &gc[4], ARRAY_SIZE(fileBeingPrinted));
 		reprap.GetGCodes()->QueueFileToPrint(&gc[4]);
@@ -923,13 +923,13 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, const char
 						"{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
 							webserver->length, webserver->height, webserver->layerHeight);
 			char ch = '[';
-			if (webserver->numFilaments == 0)
+			if (webserver->filamentCount == 0)
 			{
 				sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c", ch);
 			}
 			else
 			{
-				for (unsigned int i = 0; i < webserver->numFilaments; ++i)
+				for (unsigned int i = 0; i < webserver->filamentCount; ++i)
 				{
 					sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c%.1f", ch, webserver->filament[i]);
 					ch = ',';
@@ -1107,6 +1107,9 @@ void Webserver::HttpInterpreter::GetStatusResponse(uint8_t type)
 		sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), ",\"probe\":\"%d\"", v0);
 		break;
 	}
+
+	// Send fan RPM value
+	sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), ",\"fanRPM\":%d", (unsigned int)platform->GetFanRPM());
 
 	// Send the amount of buffer space available for gcodes
 	sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), ",\"buff\":%u", webserver->GetGcodeBufferSpace());

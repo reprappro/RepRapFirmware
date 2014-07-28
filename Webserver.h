@@ -135,7 +135,7 @@ class Webserver
 	bool fileInfoDetected;
 	unsigned long length;
 	float height, filament[DRIVES - AXES], layerHeight;
-	unsigned int numFilaments;
+	unsigned int filamentCount;
 	char generatedBy[50], fileBeingPrinted[255];
 	float printStartTime;
 

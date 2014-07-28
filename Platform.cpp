@@ -28,6 +28,8 @@ extern "C" char *sbrk(int i);
 
 const uint8_t memPattern = 0xA5;
 
+static volatile unsigned int fanRpmCounter = 0;
+
 // Arduino initialise and loop functions
 // Put nothing in these other than calls to the RepRap equivalents
 
@@ -212,7 +214,9 @@ void Platform::Init()
 	standbyTemperatures = STANDBY_TEMPERATURES;
 	activeTemperatures = ACTIVE_TEMPERATURES;
 	coolingFanPin = COOLING_FAN_PIN;
+	coolingFanRpmPin = COOLING_FAN_RPM_PIN;
 	timeToHot = TIME_TO_HOT;
+	lastRpmResetTime = 0.0;
 
 	webDir = WEB_DIR;
 	gcodeDir = GCODE_DIR;
@@ -294,6 +298,12 @@ void Platform::Init()
 	{
 	  //pinModeNonDue(coolingFanPin, OUTPUT); //not required as analogwrite does this automatically
 	  analogWriteNonDue(coolingFanPin, 255); //inverse logic for Duet v0.6 this turns it off
+	}
+
+	if (coolingFanRpmPin >= 0)
+	{
+		pinMode(coolingFanRpmPin, INPUT);
+		digitalWrite(coolingFanRpmPin, HIGH); // Turn on pullup
 	}
 
 	InitialiseInterrupts();
@@ -624,6 +634,11 @@ void TC4_Handler()
 	reprap.GetNetwork()->Interrupt();
 }
 
+void FanInterrupt()
+{
+	fanRpmCounter++;
+}
+
 void Platform::InitialiseInterrupts()
 {
 	// Timer interrupt for stepper motors
@@ -644,6 +659,9 @@ void Platform::InitialiseInterrupts()
 	TC1 ->TC_CHANNEL[1].TC_IER = TC_IER_CPCS;
 	TC1 ->TC_CHANNEL[1].TC_IDR = ~TC_IER_CPCS;
 	NVIC_EnableIRQ(TC4_IRQn);
+
+	// Interrupt for 4-pin PWM fan sense line
+	attachInterrupt(coolingFanRpmPin, FanInterrupt, FALLING);
 
 	// Tick interrupt for ADC conversions
 	tickState = 0;
@@ -1100,6 +1118,27 @@ void Platform::CoolingFan(float speed)
 		// The cooling fan output pin gets inverted if HEAT_ON == 0
 		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? (255 - p) : p);
 	}
+}
+
+// Get current fan RPM
+
+float Platform::GetFanRPM()
+{
+	float now = Time();
+	float diff = now - lastRpmResetTime;
+
+	// Intel's 4-pin PWM fan specifications say we get two pulses per revolution
+	// That means we get 2 ISR calls per pulse and 4 calls per revolution
+	float result = fanRpmCounter / (4.0 * diff) * 60.0;
+
+	// Collect some values and reset the counters after a few seconds
+	if (diff > COOLING_FAN_RPM_SAMPLE_TIME)
+	{
+		fanRpmCounter = 0;
+		lastRpmResetTime = now;
+	}
+
+	return result;
 }
 
 // Interrupts
