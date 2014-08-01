@@ -1010,10 +1010,11 @@ void Webserver::HttpInterpreter::GetStatusResponse(uint8_t type)
 		snprintf(jsonResponse, ARRAY_SIZE(jsonResponse), "{\"status\":\"%c\",\"heaters\":", ch);
 
 		// Send the heater actual temperatures
+		const Heat *heat = reprap.GetHeat();
 		ch = '[';
 		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c\%.1f", ch, reprap.GetHeat()->GetTemperature(heater));
+			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c%.1f", ch, heat->GetTemperature(heater));
 			ch = ',';
 		}
 
@@ -1022,7 +1023,7 @@ void Webserver::HttpInterpreter::GetStatusResponse(uint8_t type)
 		ch = '[';
 		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c\%.1f", ch, reprap.GetHeat()->GetActiveTemperature(heater));
+			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c%.1f", ch, heat->GetActiveTemperature(heater));
 			ch = ',';
 		}
 
@@ -1031,7 +1032,16 @@ void Webserver::HttpInterpreter::GetStatusResponse(uint8_t type)
 		ch = '[';
 		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c\%.1f", ch, reprap.GetHeat()->GetStandbyTemperature(heater));
+			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c%.1f", ch, heat->GetStandbyTemperature(heater));
+			ch = ',';
+		}
+
+		// Send the heater statuses (0=off, 1=standby, 2=active)
+		sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "],\"hstat\":");
+		ch = '[';
+		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		{
+			sncatf(jsonResponse, ARRAY_SIZE(jsonResponse), "%c%d", ch, (int)heat->GetStatus(heater));
 			ch = ',';
 		}
 

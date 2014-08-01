@@ -48,14 +48,16 @@ class GCodeBuffer
     const char* GetString();							// Get a string after a key letter
     const void GetFloatArray(float a[], int& length);	// Get a :-separated list of floats after a key letter
     const void GetLongArray(long l[], int& length);		// Get a :-separated list of longs after a key letter
-    const char* Buffer();
+    const char* Buffer() const;
     bool Active() const;
     void SetFinished(bool f);							// Set the G Code executed (or not)
     void Pause();
     void CancelPause();
     const char* WritingFileDirectory() const;			// If we are writing the G Code to a file, where that file is
     void SetWritingFileDirectory(const char* wfd);		// Set the directory for the file to write the GCode in
-    
+    int GetToolNumberAdjust() const { return toolNumberAdjust; }
+    void SetToolNumberAdjust(int arg) { toolNumberAdjust = arg; }
+
   private:
 
     enum State { idle, executing, paused };
@@ -68,6 +70,7 @@ class GCodeBuffer
     bool inComment;										// Are we after a ';' character?
     State state;										// Idle, executing or paused
     const char* writingFileDirectory;					// If the G Code is going into a file, where that is
+    int toolNumberAdjust;
 };
 
 //****************************************************************************************************
@@ -141,8 +144,9 @@ class GCodes
     void SetHeaterParameters(GCodeBuffer *gb, char reply[STRING_LENGTH]); // Set the thermistor and ADC parameters for a heater
     int8_t Heater(int8_t head) const;									// Legacy G codes start heaters at 0, but we use 0 for the bed.  This sorts that out.
     void AddNewTool(GCodeBuffer *gb, char* reply);						// Create a new tool definition
-    void SetToolHeaters(float temperature);								// Set all a tool's heaters to the temperature.  For M104...
+    void SetToolHeaters(Tool *tool, float temperature);					// Set all a tool's heaters to the temperature.  For M104...
     bool ChangeTool(int newToolNumber);									// Select a new tool
+    bool ToolHeatersAtSetTemperatures(const Tool *tool) const;			// Wait for the heaters associated with the specified tool to reach their set temperatures
 
     Platform* platform;							// The RepRap machine
     bool active;								// Live and running?
@@ -190,6 +194,7 @@ class GCodes
     bool axisIsHomed[3];						// These record which of the axes have been homed
     bool waitingForMoveToComplete;
     bool coolingInverted;
+    float maxCoolingValue;
     float speedFactor;							// speed factor, including the conversion from mm/min to mm/sec, normally 1/60
     float speedFactorChange;					// factor by which we changed the speed factor since the last move
     float extrusionFactors[DRIVES - AXES];		// extrusion factors (normally 1.0)
@@ -205,7 +210,7 @@ inline int GCodeBuffer::GetIValue()
   return (int)GetLValue();
 }
 
-inline const char* GCodeBuffer::Buffer()
+inline const char* GCodeBuffer::Buffer() const
 {
   return gcodeBuffer;
 }

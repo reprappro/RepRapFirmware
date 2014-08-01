@@ -1127,8 +1127,8 @@ float Platform::GetFanRPM()
 	float now = Time();
 	float diff = now - lastRpmResetTime;
 
-	// Intel's 4-pin PWM fan specifications say we get two pulses per revolution
-	// That means we get 2 ISR calls per pulse and 4 calls per revolution
+	// Intel's 4-pin PWM fan specifications say we get two pulses per revolution.
+	// That means we get 2 ISR calls per pulse and 4 increments per revolution.
 	float result = fanRpmCounter / (4.0 * diff) * 60.0;
 
 	// Collect some values and reset the counters after a few seconds

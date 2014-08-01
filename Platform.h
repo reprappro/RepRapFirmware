@@ -173,7 +173,7 @@ const float defaultPidMax[HEATERS] = {255, 180, 180, 180, 180, 180};			// maximu
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
 #define COOLING_FAN_PIN X6 										//pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
 #define COOLING_FAN_RPM_PIN 36									//pin PC4
-#define COOLING_FAN_RPM_SAMPLE_TIME	4.0							// Time to wait before resetting the internal fan RPM stats
+#define COOLING_FAN_RPM_SAMPLE_TIME	2.0							// Time to wait before resetting the internal fan RPM stats
 #define HEAT_ON 0 								// 0 for inverted heater (eg Duet v0.6) 1 for not (e.g. Duet v0.4)
 
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed

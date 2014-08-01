@@ -20,6 +20,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * Reduced Z-probe height for automatic bed compensation from 8mm to 5mm
 
+* Added 'S' parameter to M106 to tweak maximum PWM value (NOTE: This is different from the old 'S' parameter, as this one only scales the final cooling PWM value)
+
 * Bug fix: Layer height for web interface is read from both start and end of a gcode file
 
 * Bug fix: Some extruder moves were not performed properly due to bad acceleration values
