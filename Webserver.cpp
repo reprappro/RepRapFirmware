@@ -487,6 +487,10 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 			interpreter = ftpInterpreter;
 			break;
 	}
+	if (interpreter->DebugEnabled())
+	{
+		debugPrintf("Webserver: ConnectionLost called with port %d\n", local_port);
+	}
 	interpreter->ConnectionLost(local_port);
 
 	// If our reading connection is lost, it will be no longer important which connection is read from first.
@@ -662,6 +666,12 @@ void ProtocolInterpreter::FinishUpload(const long file_length)
 		platform->GetMassStorage()->Delete("0:/", filenameBeingUploaded);
 	}
 	filenameBeingUploaded[0] = 0;
+}
+
+// This is overridden in class HttpInterpreter
+bool ProtocolInterpreter::DebugEnabled() const
+{
+	return reprap.Debug();
 }
 
 
@@ -1613,7 +1623,7 @@ Webserver::FtpInterpreter::FtpInterpreter(Platform *p, Webserver *ws)
 
 void Webserver::FtpInterpreter::ConnectionEstablished()
 {
-	if (reprap.Debug())
+	if (DebugEnabled())
 	{
 		platform->Message(DEBUG_MESSAGE, "Webserver: FTP connection established!\n");
 	}
@@ -1706,10 +1716,9 @@ bool Webserver::FtpInterpreter::CharFromClient(char c)
 		case '\n':
 			clientMessage[clientPointer++] = 0;
 
-			if (reprap.Debug())
+			if (DebugEnabled())
 			{
-				snprintf(scratchString, STRING_LENGTH, "FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
-				platform->Message(DEBUG_MESSAGE, scratchString);
+				debugPrintf("FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
 			}
 
 			if (clientPointer > 1) // only process a new line if we actually received data
@@ -1719,7 +1728,7 @@ bool Webserver::FtpInterpreter::CharFromClient(char c)
 				return true;
 			}
 
-			if (reprap.Debug())
+			if (DebugEnabled())
 			{
 				platform->Message(DEBUG_MESSAGE, "FtpInterpreter::ProcessLine call finished.");
 			}
@@ -1998,7 +2007,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			break;
 
 		case waitingForPasvPort:
-			if (!reprap.Debug() && platform->Time() - portOpenTime > pasvPortTimeout)
+			if (!DebugEnabled() && platform->Time() - portOpenTime > pasvPortTimeout)
 			{
 				SendReply(425, "Failed to establish connection.");
 

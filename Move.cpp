@@ -764,12 +764,12 @@ void Move::SetAxisCompensation(int8_t axis, float tangent)
 
 void Move::BarycentricCoordinates(int8_t p1, int8_t p2, int8_t p3, float x, float y, float& l1, float& l2, float& l3) const
 {
-	float y23 = yBedProbePoints[p2] - yBedProbePoints[p3];
-	float x3 = x - xBedProbePoints[p3];
-	float x32 = xBedProbePoints[p3] - xBedProbePoints[p2];
-	float y3 = y - yBedProbePoints[p3];
-	float x13 = xBedProbePoints[p1] - xBedProbePoints[p3];
-	float y13 = yBedProbePoints[p1] - yBedProbePoints[p3];
+	float y23 = baryYBedProbePoints[p2] - baryYBedProbePoints[p3];
+	float x3 = x - baryXBedProbePoints[p3];
+	float x32 = baryXBedProbePoints[p3] - baryXBedProbePoints[p2];
+	float y3 = y - baryYBedProbePoints[p3];
+	float x13 = baryXBedProbePoints[p1] - baryXBedProbePoints[p3];
+	float y13 = baryYBedProbePoints[p1] - baryYBedProbePoints[p3];
 	float iDet = 1.0 / (y23 * x13 + x32 * y13);
 	l1 = (y23 * x3 + x32 * y3) * iDet;
 	l2 = (-y13 * x3 + x13 * y3) * iDet;
@@ -797,7 +797,7 @@ float Move::TriangleZ(float x, float y) const
 		BarycentricCoordinates(i, j, 4, x, y, l1, l2, l3);
 		if(l1 > TRIANGLE_0 && l2 > TRIANGLE_0 && l3 > TRIANGLE_0)
 		{
-			return l1 * zBedProbePoints[i] + l2 * zBedProbePoints[j] + l3 * zBedProbePoints[4];
+			return l1 * baryZBedProbePoints[i] + l2 * baryZBedProbePoints[j] + l3 * baryZBedProbePoints[4];
 		}
 	}
 	platform->Message(HOST_MESSAGE, "Triangle interpolation: point outside all triangles!");
@@ -807,7 +807,6 @@ float Move::TriangleZ(float x, float y) const
 void Move::SetProbedBedEquation(char *reply)
 {
 	float x10, y10, z10;
-	float x20, y20, z20;
 
 	switch(NumberOfProbePoints())
 	{
@@ -816,6 +815,7 @@ void Move::SetProbedBedEquation(char *reply)
 		 * Transform to a plane
 		 */
 		float a, b, c, d;   // Implicit plane equation - what we need to do a proper job
+		float x20, y20, z20;
 
 		x10 = xBedProbePoints[1] - xBedProbePoints[0];
 		y10 = yBedProbePoints[1] - yBedProbePoints[0];
@@ -858,11 +858,15 @@ void Move::SetProbedBedEquation(char *reply)
 			x10 = xBedProbePoints[i] - xBedProbePoints[4];
 			y10 = yBedProbePoints[i] - yBedProbePoints[4];
 			z10 = zBedProbePoints[i] - zBedProbePoints[4];
-			xBedProbePoints[i] = xBedProbePoints[4] + 2.0 * x10;
-			yBedProbePoints[i] = yBedProbePoints[4] + 2.0 * y10;
-			zBedProbePoints[i] = zBedProbePoints[4] + 2.0 * z10;
+			baryXBedProbePoints[i] = xBedProbePoints[4] + 2.0 * x10;
+			baryYBedProbePoints[i] = yBedProbePoints[4] + 2.0 * y10;
+			baryZBedProbePoints[i] = zBedProbePoints[4] + 2.0 * z10;
 		}
+		baryXBedProbePoints[4] = xBedProbePoints[4];
+		baryYBedProbePoints[4] = yBedProbePoints[4];
+		baryZBedProbePoints[4] = zBedProbePoints[4];
 		identityBedTransform = false;
+		break;
 
 	default:
 		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");

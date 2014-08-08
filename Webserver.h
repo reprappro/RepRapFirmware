@@ -79,6 +79,8 @@ class ProtocolInterpreter
 	    void CancelUpload();
 		bool IsUploading() const { return uploadState != notUploading; }
 
+		virtual bool DebugEnabled() const;
+
 		virtual ~ProtocolInterpreter() { }					// to keep Eclipse happy
 
 	protected:
@@ -154,6 +156,8 @@ class Webserver
 
 			bool FlushUploadData();
 			void ReceivedGcodeReply();
+
+			virtual bool DebugEnabled() /*override*/ const { return webDebug; }
 			void SetDebug(bool b) { webDebug = b; }
 
 		private:
