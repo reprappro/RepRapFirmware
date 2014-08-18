@@ -870,25 +870,27 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, char* reply)
 // triangle or four in the corners), then sets the bed transformation to compensate
 // for the bed not quite being the plane Z = 0.
 
-bool GCodes::DoMultipleZProbe(char* reply)
+//bool GCodes::DoMultipleZProbe(char* reply)
+bool GCodes::SetBedEquationWithProbe()
 {
-	if(reprap.GetMove()->NumberOfXYProbePoints() < 3)
-	{
-		platform->Message(HOST_MESSAGE, "Bed probing: there needs to be 3 or more points set.\n");
-		return true;
-	}
-
-	if(DoSingleZProbeAtPoint())
-		probeCount++;
-	if(probeCount >= reprap.GetMove()->NumberOfXYProbePoints())
-	{
-		probeCount = 0;
-		zProbesSet = true;
-		reprap.GetMove()->SetZProbing(false);
-		reprap.GetMove()->SetProbedBedEquation(reply);
-		return true;
-	}
-	return false;
+	return DoFileCannedCycles(SET_BED_EQUATION);
+//	if(reprap.GetMove()->NumberOfXYProbePoints() < 3)
+//	{
+//		platform->Message(HOST_MESSAGE, "Bed probing: there needs to be 3 or more points set.\n");
+//		return true;
+//	}
+//
+//	if(DoSingleZProbeAtPoint())
+//		probeCount++;
+//	if(probeCount >= reprap.GetMove()->NumberOfXYProbePoints())
+//	{
+//		probeCount = 0;
+//		zProbesSet = true;
+//		reprap.GetMove()->SetZProbing(false);
+//		reprap.GetMove()->SetProbedBedEquation(reply);
+//		return true;
+//	}
+//	return false;
 }
 
 // This returns the (X, Y) points to probe the bed at probe point count.  When probing,
@@ -1291,7 +1293,7 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 	{
 		if(ipString[sp] == ':')
 		{
-			mac[ipp] = strtol(&ipString[spp], NULL, 0);
+			mac[ipp] = strtol(&ipString[spp], NULL, 16);
 			ipp++;
 			if(ipp > 5)
 			{
@@ -1305,7 +1307,7 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 		}else
 			sp++;
 	}
-	mac[ipp] = strtol(&ipString[spp], NULL, 0);
+	mac[ipp] = strtol(&ipString[spp], NULL, 16);
 	if(ipp == 5)
 	{
 		platform->SetMACAddress(mac);
@@ -2481,7 +2483,7 @@ bool GCodes::HandleGcode(int code, GCodeBuffer *gb)
 		}
 		else
 		{
-			result = DoMultipleZProbe(reply);
+			result = SetBedEquationWithProbe();
 		}
 		break;
 

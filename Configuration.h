@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.89"
-#define DATE "2014-07-14"
+#define VERSION "0.90"
+#define DATE "2014-08-18"
 #define LAST_AUTHOR "reprappro"
 
 // Other firmware that we might switch to be compatible with.
@@ -76,11 +76,12 @@ enum Compatibility
 #define MESSAGE_FILE "messages.txt"
 #define FOUR04_FILE "html404.htm"
 #define CONFIG_FILE "config.g"         // The file that sets the machine's parameters
-#define DEFAULT_FILE "default.g"       // If the config file isn't found
+//#define DEFAULT_FILE "default.g"       // If the config file isn't found
 #define HOME_X_G "homex.g"
 #define HOME_Y_G "homey.g"
 #define HOME_Z_G "homez.g"
 #define HOME_ALL_G "homeall.g"
+#define SET_BED_EQUATION "bed.g"
 
 #define WEB_DEBUG_TRUE 9
 #define WEB_DEBUG_FALSE 8

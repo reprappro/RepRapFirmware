@@ -191,15 +191,15 @@ void RepRap::Init()
 	  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
 	  platform->Message(HOST_MESSAGE, "...\n\n");
 	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
+	  // We inject an M98 into the serial input stream to run the start-up macro
+	  platform->GetLine()->InjectString(scratchString);
   } else
   {
-	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
-	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
-	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());
+	  platform->Message(HOST_MESSAGE, "config.g not found in the sys folder.  Did you copy ormerod1/2.g?\n");
+//	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
+//	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
+//	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());
   }
-  // We inject an M98 into the serial input stream to run the start-up macro
-
-  platform->GetLine()->InjectString(scratchString);
 
   bool runningTheFile = false;
   bool initialisingInProgress = true;

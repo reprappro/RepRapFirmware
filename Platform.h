@@ -81,7 +81,7 @@ Licence: GPL
 #define DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
 #define FORWARDS true // What to send to go...
 #define BACKWARDS (!FORWARDS) // ...in each direction
-#define DIRECTIONS {false, true, true, true, true, true, true, true}
+#define DIRECTIONS {FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS} // What each axis needs to make it go forwards - defaults
 #define ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
 #define ENABLE false // What to send to enable...
 #define DISABLE true // ...and disable a drive
@@ -471,7 +471,7 @@ class Platform
   const char* GetSysDir() const;  // Where the system files are
   const char* GetTempDir() const; // Where temporary files are
   const char* GetConfigFile() const; // Where the configuration is stored (in the system dir).
-  const char* GetDefaultFile() const; // Where the default configuration is stored (in the system dir).
+  //const char* GetDefaultFile() const; // Where the default configuration is stored (in the system dir).
   
   void Message(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
@@ -650,7 +650,7 @@ class Platform
   char* sysDir;
   char* tempDir;
   char* configFile;
-  char* defaultFile;
+ // char* defaultFile;
   
 // Network connection
 
@@ -731,10 +731,10 @@ inline const char* Platform::GetConfigFile() const
   return configFile;
 }
 
-inline const char* Platform::GetDefaultFile() const
-{
-  return defaultFile;
-}
+//inline const char* Platform::GetDefaultFile() const
+//{
+//  return defaultFile;
+//}
 
 
 

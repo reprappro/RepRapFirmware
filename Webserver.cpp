@@ -493,6 +493,11 @@ void Webserver::GetJsonResponse(const char* request)
     strncat(jsonResponse, ",\"hz\":", STRING_LENGTH);
     strncat(jsonResponse, (reprap.GetGCodes()->GetAxisIsHomed(2)) ? "1" : "0", STRING_LENGTH);
 
+    // Send the name
+    strncat(jsonResponse, ",\"reprap_name\":", STRING_LENGTH);
+    snprintf(scratchString, STRING_LENGTH, "\"%s\"", myName);
+    strncat(jsonResponse, scratchString, STRING_LENGTH);
+
     // Send the response sequence number
     strncat(jsonResponse, ",\"seq\":", STRING_LENGTH);
 	snprintf(scratchString, STRING_LENGTH, "%u", (unsigned int)seq);

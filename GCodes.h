@@ -103,7 +103,8 @@ class GCodes
     bool DoSingleZProbeAtPoint();										// Probe at a given point
     bool DoSingleZProbe();												// Probe where we are
     bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, char *reply);		// Probes at a given position - see the comment at the head of the function itself
-    bool DoMultipleZProbe(char* reply);									// Probes a series of points and sets the bed equation
+    //bool DoMultipleZProbe(char* reply);									// Probes a series of points and sets the bed equation
+    bool SetBedEquationWithProbe();											// Probes a series of points and sets the bed equation
     bool SetPrintZProbe(GCodeBuffer *gb, char *reply);					// Either return the probe value, or set its threshold
     void SetOrReportOffsets(char* reply, GCodeBuffer *gb);				// Deal with a G10
     bool SetPositions(GCodeBuffer *gb);									// Deal with a G92
