@@ -104,6 +104,7 @@ void Platform::Init()
   directionPins = DIRECTION_PINS;
   enablePins = ENABLE_PINS;
   disableDrives = DISABLE_DRIVES;
+  directions = DIRECTIONS;
   lowStopPins = LOW_STOP_PINS;
   highStopPins = HIGH_STOP_PINS;
   maxFeedrates = MAX_FEEDRATES;

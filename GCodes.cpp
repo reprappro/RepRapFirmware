@@ -794,7 +794,7 @@ bool GCodes::DoSingleZProbe()
 // then that value is used.  If it's less than SILLY_Z_VALUE the bed is
 // probed and that value is used.
 
-bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb)
+bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, char* reply)
 {
 	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
@@ -830,7 +830,7 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb)
 		if(gb->Seen('S'))
 		{
 			zProbesSet = true;
-			reprap.GetMove()->SetProbedBedEquation();
+			reprap.GetMove()->SetProbedBedEquation(reply);
 		}
 		return true;
 	} else
@@ -842,7 +842,7 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb)
 			if(gb->Seen('S'))
 			{
 				zProbesSet = true;
-				reprap.GetMove()->SetProbedBedEquation();
+				reprap.GetMove()->SetProbedBedEquation(reply);
 			}
 			return true;
 		}
@@ -855,7 +855,7 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb)
 // triangle or four in the corners), then sets the bed transformation to compensate
 // for the bed not quite being the plane Z = 0.
 
-bool GCodes::DoMultipleZProbe()
+bool GCodes::DoMultipleZProbe(char* reply)
 {
 	if(reprap.GetMove()->NumberOfXYProbePoints() < 3)
 	{
@@ -870,7 +870,7 @@ bool GCodes::DoMultipleZProbe()
 		probeCount = 0;
 		zProbesSet = true;
 		reprap.GetMove()->SetZProbing(false);
-		reprap.GetMove()->SetProbedBedEquation();
+		reprap.GetMove()->SetProbedBedEquation(reply);
 		return true;
 	}
 	return false;
@@ -1440,7 +1440,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
       break;
 
     case 30: // Z probe/manually set at a position and set that as point P
-    	result = SetSingleZProbeAtAPosition(gb);
+    	result = SetSingleZProbeAtAPosition(gb, reply);
     	break;
 
     case 31: // Return the probe value, or set probe variables
@@ -1457,7 +1457,7 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
 		}
 		else
 		{
-			result = DoMultipleZProbe();
+			result = DoMultipleZProbe(reply);
 		}
     	break;
 
@@ -2117,6 +2117,18 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
             	}
         	}
     	break;
+
+    case 569:
+    	if(gb->Seen('P'))
+    	{
+    		int8_t drive = gb->GetIValue();
+    		if(gb->Seen('S'))
+    			platform->SetDirectionValue(drive, gb->GetIValue());
+    		else
+    			snprintf(reply, STRING_LENGTH, "A %d sends drive %d forwards.", platform->GetDirectionValue(drive), drive);
+    	}
+    	break;
+
 
     case 906: // Set Motor currents
 
