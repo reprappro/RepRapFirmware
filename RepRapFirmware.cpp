@@ -192,8 +192,7 @@ void RepRap::Init()
   coldExtrude = false;
   active = true;		// must do this before we start the network, else the watchdog may time out
 
-  snprintf(scratchString, STRING_LENGTH, "%s Version %s dated %s\n", NAME, VERSION, DATE);
-  platform->Message(HOST_MESSAGE, scratchString);
+  platform->Message(HOST_MESSAGE, "%s Version %s dated %s\n", NAME, VERSION, DATE);
 
   FileStore *startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
 
@@ -203,18 +202,18 @@ void RepRap::Init()
 	  startup->Close();
 	  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
 	  platform->Message(HOST_MESSAGE, "...\n\n");
-	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
+	  scratchString.printf("M98 P%s\n", platform->GetConfigFile());
   }
   else
   {
 	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
 	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
-	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());
+	  scratchString.printf("M98 P%s\n", platform->GetDefaultFile());
   }
 
   // We inject an M98 into the serial input stream to run the start-up macro
 
-  platform->GetLine()->InjectString(scratchString);
+  platform->GetLine()->InjectString(scratchString.Pointer());
 
   bool runningTheFile = false;
   bool initialisingInProgress = true;
@@ -237,8 +236,7 @@ void RepRap::Init()
   platform->Message(HOST_MESSAGE, "\nStarting network...\n");
   network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
 
-  snprintf(scratchString, STRING_LENGTH, "\n%s is up and running.\n", NAME);
-  platform->Message(HOST_MESSAGE, scratchString);
+  platform->Message(HOST_MESSAGE, "\n%s is up and running.\n", NAME);
   fastLoop = FLT_MAX;
   slowLoop = 0.0;
   lastTime = platform->Time();
@@ -304,8 +302,7 @@ void RepRap::Spin()
 
 void RepRap::Timing()
 {
-	snprintf(scratchString, STRING_LENGTH, "Slowest main loop (seconds): %f; fastest: %f\n", slowLoop, fastLoop);
-	platform->AppendMessage(BOTH_MESSAGE, scratchString);
+	platform->AppendMessage(BOTH_MESSAGE, "Slowest main loop (seconds): %f; fastest: %f\n", slowLoop, fastLoop);
 	fastLoop = FLT_MAX;
 	slowLoop = 0.0;
 }
@@ -402,7 +399,7 @@ void RepRap::SelectTool(int toolNumber)
 	currentTool = NULL;
 }
 
-void RepRap::PrintTool(int toolNumber, char* reply)
+void RepRap::PrintTool(int toolNumber, StringRef& reply)
 {
 	for(Tool *tool = toolList; tool = tool->next; tool != NULL)
 	{
@@ -412,7 +409,7 @@ void RepRap::PrintTool(int toolNumber, char* reply)
 			return;
 		}
 	}
-	strcpy(reply, "Attempt to print details of non-existent tool.");
+	reply.copy("Attempt to print details of non-existent tool.");
 }
 
 void RepRap::StandbyTool(int toolNumber)
@@ -433,8 +430,7 @@ void RepRap::StandbyTool(int toolNumber)
 		tool = tool->Next();
 	}
 
-	snprintf(scratchString, STRING_LENGTH, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
-	platform->Message(HOST_MESSAGE, scratchString);
+	platform->Message(HOST_MESSAGE, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
 }
 
 Tool* RepRap::GetTool(int toolNumber)
@@ -464,8 +460,7 @@ void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float*
 		tool = tool->Next();
 	}
 
-	snprintf(scratchString, STRING_LENGTH, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
-	platform->Message(HOST_MESSAGE, scratchString);
+	platform->Message(HOST_MESSAGE, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
 }
 
 
@@ -499,36 +494,76 @@ void RepRap::Tick()
 
 
 //*************************************************************************************************
+// StringRef class member implementations
+
+size_t StringRef::strlen() const
+{
+	return strnlen(p, len - 1);
+}
+
+int StringRef::printf(const char *fmt, ...)
+{
+	va_list vargs;
+	va_start(vargs, fmt);
+	int ret = vsnprintf(p, len, fmt, vargs);
+	va_end(vargs);
+	return ret;
+}
+
+int StringRef::vprintf(const char *fmt, va_list vargs)
+{
+	return vsnprintf(p, len, fmt, vargs);
+}
+
+int StringRef::catf(const char *fmt, ...)
+{
+	size_t n = strlen();
+	if (n + 1 < len)		// if room for at least 1 more character and a null
+	{
+		va_list vargs;
+		va_start(vargs, fmt);
+		int ret = vsnprintf(p + n, len - n, fmt, vargs);
+		va_end(vargs);
+		return ret + n;
+	}
+	return 0;
+}
+
+// This is quicker than printf for printing constant strings
+size_t StringRef::copy(const char* src)
+{
+	size_t length = strnlen(src, len - 1);
+	memcpy(p, src, length);
+	p[length] = 0;
+	return length;
+}
+
+// This is quicker than catf for printing constant strings
+size_t StringRef::cat(const char* src)
+{
+	size_t length = strlen();
+	size_t toCopy = strnlen(src, len - length - 1);
+	memcpy(p + length, src, toCopy);
+	length += toCopy;
+	p[length] = 0;
+	return length;
+}
+
+//*************************************************************************************************
 
 // Utilities and storage not part of any class
 
-char scratchString[STRING_LENGTH];
+static char scratchStringBuffer[STRING_LENGTH];
+StringRef scratchString(scratchStringBuffer, ARRAY_SIZE(scratchStringBuffer));
 
 // For debug use
 void debugPrintf(const char* fmt, ...)
 {
-	va_list p;
-	va_start(p, fmt);
-	vsnprintf(scratchString, ARRAY_SIZE(scratchString), fmt, p);
-	va_end(p);
-	scratchString[ARRAY_UPB(scratchString)] = 0;
+	va_list vargs;
+	va_start(vargs, fmt);
+	scratchString.vprintf(fmt, vargs);
+	va_end(vargs);
 	reprap.GetPlatform()->Message(DEBUG_MESSAGE, scratchString);
-}
-
-// This behaves like snprintf but appends to an existing string
-// The second parameter is the length of the entire destination buffer, not the length remaining
-int sncatf(char *dst, size_t len, const char* fmt, ...)
-{
-	size_t n = strnlen(dst, len);
-	if (n + 1 < len)		// if room for at least 1 more character and a null
-	{
-		va_list p;
-		va_start(p, fmt);
-		int ret = vsnprintf(dst + n, len - n, fmt, p);
-		va_end(p);
-		return ret + n;
-	}
-	return 0;
 }
 
 // String testing
@@ -590,14 +625,3 @@ int StringContains(const char* string, const char* match)
 
   return -1;
 }
-
-
-
-
-
-
-
-
-
-
-

@@ -44,7 +44,7 @@ class RepRap
     void AllowColdExtrude();
     void DenyColdExtrude();
     bool ColdExtrude();
-    void PrintTool(int toolNumber, char* reply);
+    void PrintTool(int toolNumber, StringRef& reply);
     void FlagTemperatureFault(int8_t dudHeater);
     void ClearTemperatureFault(int8_t wasDudHeater);
     Platform* GetPlatform() const;

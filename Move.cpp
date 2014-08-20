@@ -804,7 +804,7 @@ float Move::TriangleZ(float x, float y) const
 	return 0.0;
 }
 
-void Move::SetProbedBedEquation(char *reply)
+void Move::SetProbedBedEquation(StringRef& reply)
 {
 	float x10, y10, z10;
 
@@ -872,10 +872,10 @@ void Move::SetProbedBedEquation(char *reply)
 		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
 	}
 
-	snprintf(reply, STRING_LENGTH, "Bed equation fits points");
+	reply.copy("Bed equation fits points");
 	for(int8_t point = 0; point < NumberOfProbePoints(); point++)
 	{
-		sncatf(reply, STRING_LENGTH, " [%.1f, %.1f, %.3f]", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
+		reply.catf(" [%.1f, %.1f, %.3f]", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
 	}
 }
 
@@ -1153,7 +1153,9 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 void DDA::Start()
 {
   for(int8_t drive = 0; drive < DRIVES; drive++)
+  {
     platform->SetDirection(drive, directions[drive]);
+  }
 
   platform->SetInterrupt(timeStep); // seconds
   active = true;
@@ -1168,7 +1170,6 @@ void DDA::Step()
 	  return;
 
   int drivesMoving = 0;
-//  uint8_t extrudersMoving = 0;
   
   for(size_t drive = 0; drive < DRIVES; drive++)
   {
@@ -1209,8 +1210,9 @@ void DDA::Step()
   
   if(active)
   {
-    timeStep = move->stepDistances[drivesMoving] / velocity;
-      
+	timeStep = distance/(totalSteps * velocity);	// dc42 use the average distance per step
+    //timeStep = move->stepDistances[drivesMoving] / velocity;
+
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?
   
@@ -1225,7 +1227,7 @@ void DDA::Step()
     else if(stepCount >= startDStep)
     {
       velocity -= acceleration*timeStep;
-      if(velocity < instantDv)
+      if (velocity < instantDv)
       {
     	  velocity = instantDv;
       }
@@ -1348,9 +1350,8 @@ long LookAhead::EndPointToMachine(int8_t drive, float coord)
 
 void LookAhead::PrintMove()
 {
-	snprintf(scratchString, STRING_LENGTH, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, u: %.3f, v: %.3f\n",
+	platform->Message(HOST_MESSAGE, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, u: %.3f, v: %.3f\n",
 			MachineToEndPoint(X_AXIS), MachineToEndPoint(Y_AXIS), MachineToEndPoint(Z_AXIS),
 			MinSpeed(), MaxSpeed(), Acceleration(), FeedRate(), Previous()->V(), V());
-	platform->Message(HOST_MESSAGE, scratchString);
 }
 

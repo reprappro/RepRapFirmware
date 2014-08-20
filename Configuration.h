@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.89d-zpl"
-#define DATE "2014-08-02"
+#define VERSION "0.89e-zpl"
+#define DATE "2014-08-20"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Other firmware that we might switch to be compatible with.

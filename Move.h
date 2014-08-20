@@ -69,17 +69,17 @@ protected:
 	LookAhead(Move* m, Platform* p, LookAhead* n);
 	void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
 			float maxSpeed, float acceleration, EndstopChecks ce);
-	LookAhead* Next();													// Next one in the ring
-	LookAhead* Previous();												// Previous one in the ring
+	LookAhead* Next() const;											// Next one in the ring
+	LookAhead* Previous() const;										// Previous one in the ring
 	const long* MachineCoordinates() const;								// Endpoints of a move in machine coordinates
 	float MachineToEndPoint(int8_t drive) const;						// Convert a move endpoint to real mm coordinates
 	static float MachineToEndPoint(int8_t drive, long coord);			// Convert any number to a real coordinate
 	static long EndPointToMachine(int8_t drive, float coord);			// Convert real mm to a machine coordinate
-	float FeedRate();													// How fast is the set speed for this move
-	float MinSpeed();													// What is the slowest that this move can be
-	float MaxSpeed();													// What is the fastest this move can be
-	float Acceleration();												// What is the acceleration available for this move
-	float V();															// The speed at the end of the move
+	float FeedRate() const;												// How fast is the set speed for this move
+	float MinSpeed() const;												// What is the slowest that this move can be
+	float MaxSpeed() const;												// What is the fastest this move can be
+	float Acceleration() const;											// What is the acceleration available for this move
+	float V() const;													// The speed at the end of the move
 	void SetV(float vv);												// Set the end speed
 	void SetFeedRate(float f);											// Set the desired feedrate
 	int8_t Processed() const;											// Where we are in the look-ahead prediction sequence
@@ -191,7 +191,7 @@ class Move
     bool AllProbeCoordinatesSet(int index) const;	// XY, and Z all set for this one?
     bool XYProbeCoordinatesSet(int index) const;	// Just XY set for this one?
     void SetZProbing(bool probing);				// Set the Z probe live
-    void SetProbedBedEquation(char *reply);		// When we have a full set of probed points, work out the bed's equation
+    void SetProbedBedEquation(StringRef& reply);	// When we have a full set of probed points, work out the bed's equation
     float SecondDegreeTransformZ(float x, float y) const; // Used for second degree bed equation
     float GetLastProbedZ() const;				// What was the Z when the probe last fired?
     void SetAxisCompensation(int8_t axis, float tangent); // Set an axis-pair compensation angle
@@ -259,7 +259,7 @@ class Move
     bool addNoMoreMoves;							// If true, allow no more moves to be added to the look-ahead
     bool active;									// Are we live and running?
     float currentFeedrate;							// Err... the current feed rate...
-    float liveCoordinates[DRIVES + 1];				// The last endpoint that the machine moved to
+    volatile float liveCoordinates[DRIVES + 1];		// The last endpoint that the machine moved to
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
     float normalisedDirectionVector[DRIVES];		// Used to hold a unit-length vector in the direction of motion
     float stepDistances[(1<<DRIVES)];				// The length of steps in different numbers of dimensions
@@ -282,12 +282,12 @@ class Move
 
 //********************************************************************************************************
 
-inline LookAhead* LookAhead::Next()
+inline LookAhead* LookAhead::Next() const
 {
   return next;
 }
 
-inline LookAhead* LookAhead::Previous()
+inline LookAhead* LookAhead::Previous() const
 {
   return previous;
 }
@@ -303,22 +303,22 @@ inline float LookAhead::MachineToEndPoint(int8_t drive) const
 	return ((float)(endPoint[drive]))/platform->DriveStepsPerUnit(drive);
 }
 
-inline float LookAhead::FeedRate()
+inline float LookAhead::FeedRate() const
 {
 	return requestedFeedrate;
 }
 
-inline float LookAhead::MinSpeed()
+inline float LookAhead::MinSpeed() const
 {
 	return minSpeed;
 }
 
-inline float LookAhead::MaxSpeed()
+inline float LookAhead::MaxSpeed() const
 {
 	return maxSpeed;
 }
 
-inline float LookAhead::Acceleration()
+inline float LookAhead::Acceleration() const
 {
 	return acceleration;
 }
@@ -328,7 +328,7 @@ inline void LookAhead::SetV(float vv)
   v = vv;
 }
 
-inline float LookAhead::V()
+inline float LookAhead::V() const
 {
   return v;
 }

@@ -25,6 +25,8 @@
 
 #include "RepRapFirmware.h"
 
+const float secondsToMinutes = 1.0/60.0;
+
 GCodes::GCodes(Platform* p, Webserver* w)
 {
 	active = false;
@@ -362,8 +364,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				gb->GetFloatArray(eMovement, eMoveCount);
 				if(tool->DriveCount() != eMoveCount)
 				{
-					snprintf(scratchString, STRING_LENGTH, "Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
-					platform->Message(HOST_MESSAGE, scratchString);
+					platform->Message(HOST_MESSAGE, "Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
 					return false;
 				}
 			}
@@ -680,7 +681,7 @@ bool GCodes::OffsetAxes(GCodeBuffer* gb)
 // Returns true if completed, false if needs to be called again.
 // 'reply' is only written if there is an error.
 // 'error' is false on entry, gets changed to true if there is an error.
-bool GCodes::DoHome(char* reply, bool& error)
+bool GCodes::DoHome(StringRef& reply, bool& error)
 //pre(reply.upb == STRING_LENGTH)
 {
 	if (homeX && homeY && homeZ)
@@ -720,7 +721,7 @@ bool GCodes::DoHome(char* reply, bool& error)
 		if (platform->MustHomeXYBeforeZ() && (!axisIsHomed[X_AXIS] || !axisIsHomed[Y_AXIS]))
 		{
 			// We can only home Z if X and Y have already been homed
-			strncpy(reply, "Must home X and Y before homing Z", STRING_LENGTH);
+			reply.copy("Must home X and Y before homing Z");
 			error = true;
 			homeZ = false;
 			return true;
@@ -858,7 +859,7 @@ bool GCodes::DoSingleZProbe()
 // then that value is used.  If it's less than SILLY_Z_VALUE the bed is
 // probed and that value is used.
 
-bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, char *reply)
+bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply)
 {
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
@@ -910,11 +911,11 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, char *reply)
 // triangle or four in the corners), then sets the bed transformation to compensate
 // for the bed not quite being the plane Z = 0.
 
-bool GCodes::DoMultipleZProbe(char *reply)
+bool GCodes::DoMultipleZProbe(StringRef& reply)
 {
 	if (reprap.GetMove()->NumberOfXYProbePoints() < 3)
 	{
-		strncpy(reply, "Bed probing: there needs to be 3 or more points set.\n", STRING_LENGTH);
+		reply.copy("Bed probing: there needs to be 3 or more points set.\n");
 		return true;
 	}
 
@@ -945,7 +946,7 @@ bool GCodes::GetProbeCoordinates(int count, float& x, float& y, float& z) const
 	return zProbesSet;
 }
 
-bool GCodes::SetPrintZProbe(GCodeBuffer* gb, char* reply)
+bool GCodes::SetPrintZProbe(GCodeBuffer* gb, StringRef& reply)
 {
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
@@ -985,13 +986,13 @@ bool GCodes::SetPrintZProbe(GCodeBuffer* gb, char* reply)
 		switch(platform->GetZProbeSecondaryValues(v1, v2))
 		{
 		case 1:
-			snprintf(reply, STRING_LENGTH, "%d (%d)", v0, v1);
+			reply.printf("%d (%d)", v0, v1);
 			break;
 		case 2:
-			snprintf(reply, STRING_LENGTH, "%d (%d, %d)", v0, v1, v2);
+			reply.printf("%d (%d, %d)", v0, v1, v2);
 			break;
 		default:
-			snprintf(reply, STRING_LENGTH, "%d", v0);
+			reply.printf("%d", v0);
 			break;
 		}
 	}
@@ -1009,12 +1010,12 @@ const char* GCodes::GetCurrentCoordinates() const
 	float liveCoordinates[DRIVES + 1];
 	reprap.GetMove()->LiveCoordinates(liveCoordinates);
 
-	snprintf(scratchString, STRING_LENGTH, "X:%f Y:%f Z:%f ", liveCoordinates[X_AXIS], liveCoordinates[Y_AXIS], liveCoordinates[Z_AXIS]);
+	scratchString.printf("X:%.2f Y:%.2f Z:%.2f ", liveCoordinates[X_AXIS], liveCoordinates[Y_AXIS], liveCoordinates[Z_AXIS]);
 	for(int i = AXES; i< DRIVES; i++)
 	{
-		sncatf(scratchString, STRING_LENGTH, "E%d:%f ", i-AXES, liveCoordinates[i]);
+		scratchString.catf("E%d:%.1f ", i-AXES, liveCoordinates[i]);
 	}
-	return scratchString;
+	return scratchString.Pointer();
 }
 
 bool GCodes::OpenFileToWrite(const char* directory, const char* fileName, GCodeBuffer *gb)
@@ -1100,8 +1101,8 @@ void GCodes::WriteGCodeToFile(GCodeBuffer *gb)
 		{
 			if (gb->Seen('P'))
 			{
-				snprintf(scratchString, STRING_LENGTH, "%s", gb->GetIValue());
-				HandleReply(false, gb == serialGCode, scratchString, 'G', 998, true);
+				scratchString.printf("%d", gb->GetIValue());
+				HandleReply(false, gb == serialGCode, scratchString.Pointer(), 'G', 998, true);
 				return;
 			}
 		}
@@ -1143,8 +1144,7 @@ void GCodes::DeleteFile(const char* fileName)
 {
 	if(!platform->GetMassStorage()->Delete(platform->GetGCodeDir(), fileName))
 	{
-		snprintf(scratchString, STRING_LENGTH, "Unsuccessful attempt to delete: %s\n", fileName);
-		platform->Message(BOTH_ERROR_MESSAGE, scratchString);
+		platform->Message(BOTH_ERROR_MESSAGE, "Unsuccessful attempt to delete: %s\n", fileName);
 	}
 }
 
@@ -1220,7 +1220,7 @@ bool GCodes::DoDwellTime(float dwell)
 // Set working and standby temperatures for
 // a tool.  I.e. handle a G10.
 
-void GCodes::SetOrReportOffsets(char *reply, GCodeBuffer *gb)
+void GCodes::SetOrReportOffsets(StringRef& reply, GCodeBuffer *gb)
 {
 	if(gb->Seen('P'))
 	{
@@ -1229,7 +1229,7 @@ void GCodes::SetOrReportOffsets(char *reply, GCodeBuffer *gb)
 		Tool* tool = reprap.GetTool(toolNumber);
 		if(tool == NULL)
 		{
-			snprintf(reply, STRING_LENGTH, "Attempt to set/report offsets and temperatures for non-existent tool: %d\n", toolNumber);
+			reply.printf("Attempt to set/report offsets and temperatures for non-existent tool: %d\n", toolNumber);
 			return;
 		}
 
@@ -1258,18 +1258,17 @@ void GCodes::SetOrReportOffsets(char *reply, GCodeBuffer *gb)
 			}
 			else
 			{
-				reply[0] = 0;
-				snprintf(reply, STRING_LENGTH, "Tool %d - Active/standby temperature(s):", toolNumber);
+				reply.printf("Tool %d - Active/standby temperature(s): ", toolNumber);
 				for(int8_t heater = 0; heater < hCount; heater++)
 				{
-					sncatf(reply, STRING_LENGTH, " %.1f/%.1f", active[heater], standby[heater]);
+					reply.catf("%.1f/%.1f ", active[heater], standby[heater]);
 				}
 			}
 		}
 	}
 }
 
-void GCodes::AddNewTool(GCodeBuffer *gb, char *reply)
+void GCodes::AddNewTool(GCodeBuffer *gb, StringRef& reply)
 {
 	if(!gb->Seen('P'))
 	{
@@ -1402,7 +1401,7 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 	{
 		if(ipString[sp] == ':')
 		{
-			mac[ipp] = strtol(&ipString[spp], NULL, 0);
+			mac[ipp] = strtoul(&ipString[spp], NULL, 16);
 			ipp++;
 			if(ipp > 5)
 			{
@@ -1419,7 +1418,7 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 			sp++;
 		}
 	}
-	mac[ipp] = strtol(&ipString[spp], NULL, 0);
+	mac[ipp] = strtoul(&ipString[spp], NULL, 16);
 	if(ipp == 5)
 	{
 		platform->SetMACAddress(mac);
@@ -1522,13 +1521,12 @@ void GCodes::HandleReply(bool error, bool fromLine, const char* reply, char gMOr
 
 	if (s != 0)
 	{
-		snprintf(scratchString, STRING_LENGTH, "Emulation of %s is not yet supported.\n", s);
-		platform->Message(HOST_MESSAGE, scratchString);
+		platform->Message(HOST_MESSAGE, "Emulation of %s is not yet supported.\n", s);
 	}
 }
 
 // Set PID parameters (M301 or M303 command). 'heater' is the default heater number to use.
-void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, char reply[STRING_LENGTH])
+void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, StringRef& reply)
 {
 	if (gb->Seen('H'))
 	{
@@ -1581,13 +1579,13 @@ void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, char reply[STRING_LEN
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Heater %d P:%.2f I:%.3f D:%.2f T:%.2f S:%.2f W:%.1f B:%.1f\n",
+			reply.printf("Heater %d P:%.2f I:%.3f D:%.2f T:%.2f S:%.2f W:%.1f B:%.1f\n",
 						heater, pp.kP, pp.kI * platform->HeatSampleTime(), pp.kD/platform->HeatSampleTime(), pp.kT, pp.kS, pp.pidMax, pp.fullBand);
 		}
 	}
 }
 
-void GCodes::SetHeaterParameters(GCodeBuffer *gb, char reply[STRING_LENGTH])
+void GCodes::SetHeaterParameters(GCodeBuffer *gb, StringRef& reply)
 {
 	if (gb->Seen('P'))
 	{
@@ -1646,7 +1644,7 @@ void GCodes::SetHeaterParameters(GCodeBuffer *gb, char reply[STRING_LENGTH])
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "T:%.1f B:%.1f R:%.1f L:%.1f H:%.1f\n",
+				reply.printf("T:%.1f B:%.1f R:%.1f L:%.1f H:%.1f\n",
 						r25, beta, pp.thermistorSeriesR, pp.adcLowOffset, pp.adcHighOffset);
 			}
 		}
@@ -1705,8 +1703,9 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 	bool result = true;
 	bool error = false;
 	bool resend = false;
-	char reply[STRING_LENGTH];
-	reply[0] = 0;
+	char replyBuffer[STRING_LENGTH];
+	StringRef reply(replyBuffer, ARRAY_SIZE(replyBuffer));
+	reply.Clear();
 
 	int code = gb->GetIValue();
 	switch (code)
@@ -1778,7 +1777,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		if (!(axisIsHomed[X_AXIS] && axisIsHomed[Y_AXIS]))
 		{
 			// We can only do bed levelling if X and Y have already been homed
-			strncpy(reply, "Must home X and Y before bed probing", STRING_LENGTH);
+			reply.copy("Must home X and Y before bed probing");
 			error = true;
 			result = true;
 		}
@@ -1806,11 +1805,11 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 
 	default:
 		error = true;
-		snprintf(reply, STRING_LENGTH, "invalid G Code: %s", gb->Buffer());
+		reply.printf("invalid G Code: %s", gb->Buffer());
 	}
 	if (result)
 	{
-		HandleReply(error, gb == serialGCode, reply, 'G', code, resend);
+		HandleReply(error, gb == serialGCode, reply.Pointer(), 'G', code, resend);
 	}
 	return result;
 }
@@ -1820,8 +1819,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	bool result = true;
 	bool error = false;
 	bool resend = false;
-	char reply[STRING_LENGTH];
-	reply[0] = 0;
+	char replyBuffer[STRING_LENGTH];
+	StringRef reply(replyBuffer, ARRAY_SIZE(replyBuffer));
+	reply.Clear();
 
 	int code = gb->GetIValue();
 	switch (code)
@@ -1859,12 +1859,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		bool encapsulate_list;
 		if (platform->Emulating() == me || platform->Emulating() == reprapFirmware)
 		{
-			strcpy(reply, "GCode files:\n");
+			reply.copy("GCode files:\n");
 			encapsulate_list = false;
 		}
 		else
 		{
-			strcpy(reply, "");
+			reply.Clear();
 			encapsulate_list = true;
 		}
 
@@ -1875,20 +1875,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			do {
 				if (encapsulate_list)
 				{
-					sncatf(reply, STRING_LENGTH -1, "%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
+					reply.catf("%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
 				}
 				else
 				{
-					sncatf(reply, STRING_LENGTH -1, "%s\n", file_info.fileName);
+					reply.catf("%s\n", file_info.fileName);
 				}
 			} while (platform->GetMassStorage()->FindNext(file_info));
 
 			// remove the last character
-			reply[strlen(reply) -1] = 0;
+			reply[reply.strlen() - 1] = 0;
 		}
 		else
 		{
-			strcat(reply, "NONE");
+			reply.cat("NONE");
 		}
 
 		break;
@@ -1900,7 +1900,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		QueueFileToPrint(gb->GetUnprecedentedString());
 		if (fileToPrint.IsLive() && platform->Emulating() == marlin)
 		{
-			snprintf(reply, STRING_LENGTH, "%s", "File opened\nFile selected\n");
+			reply.copy("File opened\nFile selected\n");
 		}
 		break;
 
@@ -1917,11 +1917,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 27: // Report print status - Deprecated
 		if (fileBeingPrinted.IsLive())
 		{
-			strncpy(reply, "SD printing.", STRING_LENGTH);
+			reply.copy("SD printing.");
 		}
 		else
 		{
-			strncpy(reply, "Not SD printing.", STRING_LENGTH);
+			reply.copy("Not SD printing.");
 		}
 		break;
 
@@ -1931,11 +1931,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			bool ok = OpenFileToWrite(platform->GetGCodeDir(), str, gb);
 			if (ok)
 			{
-				snprintf(reply, STRING_LENGTH, "Writing to file: %s", str);
+				reply.printf("Writing to file: %s", str);
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "Can't open file %s for writing.\n", str);
+				reply.printf("Can't open file %s for writing.\n", str);
 				error = true;
 			}
 		}
@@ -2004,8 +2004,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount != DRIVES-AXES)
 				{
-					snprintf(scratchString, STRING_LENGTH, "Setting steps/mm - wrong number of E drives: %s\n", gb->Buffer());
-					platform->Message(HOST_MESSAGE, scratchString);
+					platform->Message(HOST_MESSAGE, "Setting steps/mm - wrong number of E drives: %s\n", gb->Buffer());
 				}
 				else
 				{
@@ -2018,15 +2017,15 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Steps/mm: X: %.3f, Y: %.3f, Z: %.3f, E: ",
+				reply.printf("Steps/mm: X: %.3f, Y: %.3f, Z: %.3f, E: ",
 						platform->DriveStepsPerUnit(X_AXIS), platform->DriveStepsPerUnit(Y_AXIS),
 						platform->DriveStepsPerUnit(Z_AXIS));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					sncatf(reply, STRING_LENGTH, "%.3f", platform->DriveStepsPerUnit(drive));
+					reply.catf("%.3f", platform->DriveStepsPerUnit(drive));
 					if(drive < DRIVES-1)
 					{
-						sncatf(reply, STRING_LENGTH, ":");
+						reply.cat(":");
 					}
 				}
 			}
@@ -2068,15 +2067,15 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 105: // Deprecated...
-		strncpy(reply, "T:", STRING_LENGTH);
+		reply.copy("T:");
 		for(int8_t heater = 1; heater < HEATERS; heater++)
 		{
 			if(reprap.GetHeat()->GetStatus(heater) != Heat::HS_off)
 			{
-				sncatf(reply, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
+				reply.catf("%.1f ", reprap.GetHeat()->GetTemperature(heater));
 			}
 		}
-		sncatf(reply, STRING_LENGTH, "B: %.1f ", reprap.GetHeat()->GetTemperature(0));
+		reply.catf("B: %.1f ", reprap.GetHeat()->GetTemperature(HOT_BED));
 		break;
    
 	case 106: // Set/report fan values
@@ -2118,7 +2117,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if (!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Cooling inverted: %s, Maximum cooling value: %f",
+				reply.printf("Cooling inverted: %s, Maximum cooling value: %f",
 						coolingInverted ? "yes" : "no", maxCoolingValue);
 			}
 		}
@@ -2183,7 +2182,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			const char* str = GetCurrentCoordinates();
 			if (str != 0)
 			{
-				strncpy(reply, str, STRING_LENGTH);
+				reply.copy(str);
 			}
 			else
 			{
@@ -2193,8 +2192,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 115: // Print firmware version
-		snprintf(reply, STRING_LENGTH, "FIRMWARE_NAME:%s FIRMWARE_VERSION:%s ELECTRONICS:%s DATE:%s", NAME, VERSION,
-				ELECTRONICS, DATE);
+		reply.printf("FIRMWARE_NAME:%s FIRMWARE_VERSION:%s ELECTRONICS:%s DATE:%s",	NAME, VERSION, ELECTRONICS, DATE);
 		break;
 
 	case 116: // Wait for everything, especially set temperatures
@@ -2222,7 +2220,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
     case 119:
 		{
-			snprintf(reply, STRING_LENGTH, "Endstops - ");
+			reply.copy("Endstops - ");
 			char* es;
 			char comma = ',';
 			for(int8_t axis = 0; axis < AXES; axis++)
@@ -2247,7 +2245,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					comma = ' ';
 				}
 
-				sncatf(reply, STRING_LENGTH, "%c: %s%c ", axisLetters[axis], es, comma);
+				reply.catf("%c: %s%c ", axisLetters[axis], es, comma);
 			}
 		}
 		break;
@@ -2289,7 +2287,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Heat sample time is %.3f seconds.", platform->HeatSampleTime());
+			reply.printf("Heat sample time is %.3f seconds.", platform->HeatSampleTime());
 		}
 		break;
 
@@ -2345,7 +2343,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				if(gb->Seen(axisLetters[axis]))
 				{
-					platform->SetAcceleration(axis, gb->GetFValue()*distanceScale);
+					platform->SetAcceleration(axis, gb->GetFValue() * distanceScale);
 					seen = true;
 				}
 			}
@@ -2358,29 +2356,28 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount != DRIVES-AXES)
 				{
-					snprintf(scratchString, STRING_LENGTH, "Setting accelerations - wrong number of E drives: %s\n", gb->Buffer());
-					platform->Message(HOST_MESSAGE, scratchString);
+					platform->Message(HOST_MESSAGE, "Setting accelerations - wrong number of E drives: %s\n", gb->Buffer());
 				}
 				else
 				{
 					for(int8_t e = 0; e < eCount; e++)
 					{
-						platform->SetAcceleration(AXES + e, eVals[e]*distanceScale);
+						platform->SetAcceleration(AXES + e, eVals[e] * distanceScale);
 					}
 				}
 			}
 
 			if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Accelerations: X: %f, Y: %f, Z: %f, E: ",
+				reply.printf("Accelerations: X: %.1f, Y: %.1f, Z: %.1f, E: ",
 						platform->Acceleration(X_AXIS)/distanceScale, platform->Acceleration(Y_AXIS)/distanceScale,
 						platform->Acceleration(Z_AXIS)/distanceScale);
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					sncatf(reply, STRING_LENGTH, "%f", platform->Acceleration(drive)/distanceScale);
+					reply.catf("%.1f", platform->Acceleration(drive)/distanceScale);
 					if(drive < DRIVES-1)
 					{
-						sncatf(reply, STRING_LENGTH, ":");
+						reply.cat(":");
 					}
 				}
 			}
@@ -2394,7 +2391,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				if(gb->Seen(axisLetters[axis]))
 				{
-					platform->SetMaxFeedrate(axis, gb->GetFValue() * distanceScale * 0.016666667); // G Code feedrates are in mm/minute; we need mm/sec
+					platform->SetMaxFeedrate(axis, gb->GetFValue() * distanceScale * secondsToMinutes); // G Code feedrates are in mm/minute; we need mm/sec
 					seen = true;
 				}
 			}
@@ -2407,29 +2404,28 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount != DRIVES-AXES)
 				{
-					snprintf(scratchString, STRING_LENGTH, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
-					platform->Message(HOST_MESSAGE, scratchString);
+					platform->Message(HOST_MESSAGE, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
 				}
 				else
 				{
 					for(int8_t e = 0; e < eCount; e++)
 					{
-						platform->SetMaxFeedrate(AXES + e, eVals[e] * distanceScale * 0.016666667);
+						platform->SetMaxFeedrate(AXES + e, eVals[e] * distanceScale * secondsToMinutes);
 					}
 				}
 			}
 
 			if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Maximum feedrates: X: %f, Y: %f, Z: %f, E: ",
-						platform->MaxFeedrate(X_AXIS)/(distanceScale*0.016666667), platform->MaxFeedrate(Y_AXIS)/(distanceScale*0.016666667),
-						platform->MaxFeedrate(Z_AXIS)/(distanceScale*0.016666667));
+				reply.printf("Maximum feedrates: X: %.1f, Y: %.1f, Z: %.1f, E: ",
+						platform->MaxFeedrate(X_AXIS)/(distanceScale * secondsToMinutes), platform->MaxFeedrate(Y_AXIS)/(distanceScale * secondsToMinutes),
+						platform->MaxFeedrate(Z_AXIS)/(distanceScale * secondsToMinutes));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					sncatf(reply, STRING_LENGTH, "%f", platform->MaxFeedrate(drive) / (distanceScale * 0.016666667));
+					reply.catf("%.1f", platform->MaxFeedrate(drive) / (distanceScale * secondsToMinutes));
 					if(drive < DRIVES-1)
 					{
-						sncatf(reply, STRING_LENGTH, ":");
+						reply.cat(":");
 					}
 				}
 			}
@@ -2440,7 +2436,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		// This is superseded in this firmware by M codes for the separate types (e.g. M566).
 		break;
 
-    case 206:  // Offset axes - Depricated
+    case 206:  // Offset axes - Deprecated
     	result = OffsetAxes(gb);
     	break;
 
@@ -2467,7 +2463,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if (!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Axis limits - ");
+				reply.copy("Axis limits - ");
 				char comma = ',';
 				for(int8_t axis = 0; axis < AXES; axis++)
 				{
@@ -2475,7 +2471,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					{
 						comma = ' ';
 					}
-					sncatf(reply, STRING_LENGTH, "%c: %.1f min, %.1f max%c ", axisLetters[axis],
+					reply.catf("%c: %.1f min, %.1f max%c ", axisLetters[axis],
 							platform->AxisMinimum(axis), platform->AxisMaximum(axis), comma);
 				}
 			}
@@ -2489,7 +2485,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				if (gb->Seen(axisLetters[axis]))
 				{
-					float value = gb->GetFValue() * distanceScale * 0.016666667;
+					float value = gb->GetFValue() * distanceScale * secondsToMinutes;
 					platform->SetHomeFeedRate(axis, value);
 					seen = true;
 				}
@@ -2497,7 +2493,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Homing feedrates (mm/min) - ");
+				reply.copy("Homing feedrates (mm/min) - ");
 				char comma = ',';
 				for(int8_t axis = 0; axis < AXES; axis++)
 				{
@@ -2506,7 +2502,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						comma = ' ';
 					}
 
-					sncatf(reply, STRING_LENGTH, "%c: %.1f%c ", axisLetters[axis],
+					reply.catf("%c: %.1f%c ", axisLetters[axis],
 							platform->HomeFeedRate(axis) * 60.0 / distanceScale, comma);
 				}
 			}
@@ -2525,7 +2521,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Speed factor override: %.1f%%\n", speedFactor * (60.0 * 100.0));
+			reply.printf("Speed factor override: %.1f%%\n", speedFactor * (60.0 * 100.0));
 		}
 		break;
 
@@ -2551,8 +2547,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "Extrusion factor override for drive %d: %.1f%%\n", drive, extrusionFactors[drive] * 100.0);
-
+				reply.printf("Extrusion factor override for drive %d: %.1f%%\n", drive, extrusionFactors[drive] * 100.0);
 			}
 		}
 		break;
@@ -2575,7 +2570,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Cold extrudes are %s, use M302 P[1/0] to allow or deny them",
+			reply.printf("Cold extrudes are %s, use M302 P[1/0] to allow or deny them",
 					reprap.ColdExtrude() ? "enabled" : "disabled");
 		}
 		break;
@@ -2603,7 +2598,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		else
 		{
 			const byte* mac = platform->MACAddress();
-			snprintf(reply, STRING_LENGTH, "MAC: %x:%x:%x:%x:%x:%x ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+			reply.printf("MAC: %x:%x:%x:%x:%x:%x ", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 		}
 		break;
 
@@ -2614,7 +2609,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "RepRap name: %s ", reprap.GetWebserver()->GetName());
+			reply.printf("RepRap name: %s ", reprap.GetWebserver()->GetName());
 		}
 		break;
 
@@ -2633,7 +2628,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		else
 		{
 			const byte *ip = platform->IPAddress();
-			snprintf(reply, STRING_LENGTH, "IP address: %d.%d.%d.%d\n ", ip[0], ip[1], ip[2], ip[3]);
+			reply.printf("IP address: %d.%d.%d.%d\n ", ip[0], ip[1], ip[2], ip[3]);
 		}
 		break;
 
@@ -2645,7 +2640,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		else
 		{
 			const byte *nm = platform->NetMask();
-			snprintf(reply, STRING_LENGTH, "Net mask: %d.%d.%d.%d\n ", nm[0], nm[1], nm[2], nm[3]);
+			reply.printf("Net mask: %d.%d.%d.%d\n ", nm[0], nm[1], nm[2], nm[3]);
 		}
 		break;
 
@@ -2657,7 +2652,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		else
 		{
 			const byte *gw = platform->GateWay();
-			snprintf(reply, STRING_LENGTH, "Gateway: %d.%d.%d.%d\n ", gw[0], gw[1], gw[2], gw[3]);
+			reply.printf("Gateway: %d.%d.%d.%d\n ", gw[0], gw[1], gw[2], gw[3]);
 		}
 		break;
 
@@ -2668,32 +2663,32 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Emulating ");
+			reply.copy("Emulating ");
 			switch(platform->Emulating())
 			{
 				case me:
 				case reprapFirmware:
-					sncatf(reply, STRING_LENGTH, "RepRap Firmware (i.e. in native mode)");
+					reply.cat("RepRap Firmware (i.e. in native mode)");
 					break;
 
 				case marlin:
-					sncatf(reply, STRING_LENGTH, "Marlin");
+					reply.cat("Marlin");
 					break;
 
 				case teacup:
-					sncatf(reply, STRING_LENGTH, "Teacup");
+					reply.cat("Teacup");
 					break;
 
 				case sprinter:
-					sncatf(reply, STRING_LENGTH, "Sprinter");
+					reply.cat("Sprinter");
 					break;
 
 				case repetier:
-					sncatf(reply, STRING_LENGTH, "Repetier");
+					reply.cat("Repetier");
 					break;
 
 				default:
-					sncatf(reply, STRING_LENGTH, "Unknown: (%d)", platform->Emulating());
+					reply.catf("Unknown: (%d)", platform->Emulating());
 			}
 		}
 		break;
@@ -2712,7 +2707,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Axis compensations - XY: %.5f, YZ: %.5f, ZX: %.5f ",
+			reply.printf("Axis compensations - XY: %.5f, YZ: %.5f, ZX: %.5f ",
 					reprap.GetMove()->AxisCompensation(X_AXIS),
 					reprap.GetMove()->AxisCompensation(Y_AXIS),
 					reprap.GetMove()->AxisCompensation(Z_AXIS));
@@ -2737,7 +2732,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Probe point %d - [%.1f, %.1f]", point,
+				reply.printf("Probe point %d - [%.1f, %.1f]", point,
 						reprap.GetMove()->XBedProbePoint(point),
 						reprap.GetMove()->YBedProbePoint(point));
 			}
@@ -2770,12 +2765,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "Z Probe type is %d and it is used for these axes:", platform->GetZProbeType());
+				reply.printf("Z Probe type is %d and it is used for these axes:", platform->GetZProbeType());
 				for(int axis=0; axis<AXES; axis++)
 				{
 					if (zProbeAxes[axis])
 					{
-						sncatf(reply, STRING_LENGTH, " %c", axisLetters[axis]);
+						reply.catf(" %c", axisLetters[axis]);
 					}
 				}
 			}
@@ -2788,11 +2783,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			bool ok = OpenFileToWrite(platform->GetSysDir(), str, gb);
 			if (ok)
 			{
-				snprintf(reply, STRING_LENGTH, "Writing to file: %s", str);
+				reply.printf( "Writing to file: %s", str);
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "Can't open file %s for writing.\n", str);
+				reply.printf("Can't open file %s for writing.\n", str);
 				error = true;
 			}
 		}
@@ -2804,11 +2799,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			bool ok = OpenFileToWrite(platform->GetWebDir(), str, gb);
 			if (ok)
 			{
-				snprintf(reply, STRING_LENGTH, "Writing to file: %s", str);
+				reply.printf("Writing to file: %s", str);
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "Can't open file %s for writing.\n", str);
+				reply.printf("Can't open file %s for writing.\n", str);
 				error = true;
 			}
 		}
@@ -2829,7 +2824,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				if(gb->Seen(axisLetters[axis]))
 				{
-					platform->SetInstantDv(axis, gb->GetFValue() * distanceScale * 0.016666667); // G Code feedrates are in mm/minute; we need mm/sec
+					platform->SetInstantDv(axis, gb->GetFValue() * distanceScale * secondsToMinutes); // G Code feedrates are in mm/minute; we need mm/sec
 					seen = true;
 				}
 			}
@@ -2842,27 +2837,27 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount != DRIVES-AXES)
 				{
-					snprintf(reply, STRING_LENGTH, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
+					reply.printf("Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
 				}
 				else
 				{
 					for(int8_t e = 0; e < eCount; e++)
 					{
-						platform->SetInstantDv(AXES + e, eVals[e] * distanceScale * 0.016666667);
+						platform->SetInstantDv(AXES + e, eVals[e] * distanceScale * secondsToMinutes);
 					}
 				}
 			}
 			else if(!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Minimum feedrates: X: %f, Y: %f, Z: %f, E: ",
-						platform->InstantDv(X_AXIS)/(distanceScale*0.016666667), platform->InstantDv(Y_AXIS)/(distanceScale*0.016666667),
-						platform->InstantDv(Z_AXIS)/(distanceScale*0.016666667));
+				reply.printf("Minimum feedrates: X: %.1f, Y: %.1f, Z: %.1f, E: ",
+						platform->InstantDv(X_AXIS)/(distanceScale * secondsToMinutes), platform->InstantDv(Y_AXIS)/(distanceScale * secondsToMinutes),
+						platform->InstantDv(Z_AXIS)/(distanceScale * secondsToMinutes));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					sncatf(reply, STRING_LENGTH, "%f", platform->InstantDv(drive) / (distanceScale * 0.016666667));
+					reply.catf("%.1f", platform->InstantDv(drive) / (distanceScale * secondsToMinutes));
 					if(drive < DRIVES-1)
 					{
-						sncatf(reply, STRING_LENGTH, ":");
+						reply.cat(":");
 					}
 				}
 			}
@@ -2883,7 +2878,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					gb->GetFloatArray(eVals, eCount);
 					if(eCount != tool->DriveCount())
 					{
-						snprintf(reply, STRING_LENGTH, "Setting mix ratios - wrong number of E drives: %s\n", gb->Buffer());
+						reply.printf("Setting mix ratios - wrong number of E drives: %s\n", gb->Buffer());
 					}
 					else
 					{
@@ -2892,11 +2887,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				}
 				else
 				{
-					snprintf(reply, STRING_LENGTH, "Tool %d mix ratios: ", tNumber);
+					reply.printf("Tool %d mix ratios: ", tNumber);
 					char sep = ':';
 					for(int8_t drive = 0; drive < tool->DriveCount(); drive++)
 					{
-						sncatf(reply, STRING_LENGTH, "%.3f%c", tool->GetMix()[drive], sep);
+						reply.catf("%.3f%c", tool->GetMix()[drive], sep);
 						if(drive >= tool->DriveCount() - 2)
 						{
 							sep = ' ';
@@ -2929,7 +2924,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			snprintf(reply, STRING_LENGTH, "Time allowed to get to temperature: %.1f seconds.", platform->TimeToHot());
+			reply.printf("Time allowed to get to temperature: %.1f seconds.", platform->TimeToHot());
 		}
 		break;
 
@@ -2952,7 +2947,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount != DRIVES-AXES)
 				{
-					snprintf(reply, STRING_LENGTH, "Setting motor currents - wrong number of E drives: %s\n", gb->Buffer());
+					reply.printf("Setting motor currents - wrong number of E drives: %s\n", gb->Buffer());
 				}
 				else
 				{
@@ -2964,15 +2959,15 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			else if (!seen)
 			{
-				snprintf(reply, STRING_LENGTH, "Axis currents (mA) - X:%.1f, Y:%.1f, Z:%.1f, E:",
+				reply.printf("Axis currents (mA) - X:%.1f, Y:%.1f, Z:%.1f, E:",
 						platform->MotorCurrent(X_AXIS), platform->MotorCurrent(Y_AXIS),
 						platform->MotorCurrent(Z_AXIS));
 				for(int8_t drive = AXES; drive < DRIVES; drive++)
 				{
-					sncatf(reply, STRING_LENGTH, "%.1f", platform->MotorCurrent(drive));
+					reply.catf("%.1f", platform->MotorCurrent(drive));
 					if(drive < DRIVES-1)
 					{
-						sncatf(reply, STRING_LENGTH, ":");
+						reply.cat(":");
 					}
 				}
 			}
@@ -2982,7 +2977,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 998:
 		if (gb->Seen('P'))
 		{
-			snprintf(reply, STRING_LENGTH, "%s", gb->GetIValue());
+			reply.printf("%d", gb->GetIValue());
 			resend = true;
 		}
 		break;
@@ -3015,7 +3010,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			else
 			{
-				snprintf(reply, STRING_LENGTH, "A %d sends drive %d forwards.", platform->GetDirectionValue(drive), drive);
+				reply.printf("A %d sends drive %d forwards.", platform->GetDirectionValue(drive), drive);
 			}
 		}
 		break;
@@ -3030,12 +3025,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 	default:
 		error = true;
-		snprintf(reply, STRING_LENGTH, "invalid M Code: %s", gb->Buffer());
+		reply.printf("invalid M Code: %s", gb->Buffer());
 	}
 
 	if (result)
 	{
-		HandleReply(error, gb == serialGCode, reply, 'M', code, resend);
+		HandleReply(error, gb == serialGCode, reply.Pointer(), 'M', code, resend);
 	}
 	return result;
 }
@@ -3071,8 +3066,8 @@ bool GCodes::ChangeTool(int newToolNumber)
 		case 0: // Pre-release sequence for the old tool (if any)
 			if(oldTool != NULL)
 			{
-				snprintf(scratchString, STRING_LENGTH, "tfree%d.g", oldTool->Number());
-				if(DoFileCannedCycles(scratchString))
+				scratchString.printf("tfree%d.g", oldTool->Number());
+				if(DoFileCannedCycles(scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -3094,8 +3089,8 @@ bool GCodes::ChangeTool(int newToolNumber)
 		case 2: // Run the pre-tool-change canned cycle for the new tool (if any)
 			if(newTool != NULL)
 			{
-				snprintf(scratchString, STRING_LENGTH, "tpre%d.g", newToolNumber);
-				if(DoFileCannedCycles(scratchString))
+				scratchString.printf("tpre%d.g", newToolNumber);
+				if(DoFileCannedCycles(scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -3114,8 +3109,8 @@ bool GCodes::ChangeTool(int newToolNumber)
 		case 4: // Run the post-tool-change canned cycle for the new tool (if any)
 			if(newTool != NULL)
 			{
-				snprintf(scratchString, STRING_LENGTH, "tpost%d.g", newToolNumber);
-				if(DoFileCannedCycles(scratchString))
+				scratchString.printf("tpost%d.g", newToolNumber);
+				if(DoFileCannedCycles(scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -3335,8 +3330,7 @@ const void GCodeBuffer::GetFloatArray(float a[], int& returnedLength)
 	{
 		if(length >= returnedLength) // Array limit has been set in here
 		{
-			snprintf(scratchString, STRING_LENGTH, "GCodes: Attempt to read a GCode float array that is too long: %s\n", gcodeBuffer);
-			platform->Message(HOST_MESSAGE, scratchString);
+			platform->Message(HOST_MESSAGE, "GCodes: Attempt to read a GCode float array that is too long: %s\n", gcodeBuffer);
 			readPointer = -1;
 			returnedLength = 0;
 			return;
@@ -3389,8 +3383,7 @@ const void GCodeBuffer::GetLongArray(long l[], int& returnedLength)
 	{
 		if(length >= returnedLength) // Array limit has been set in here
 		{
-			snprintf(scratchString, STRING_LENGTH, "GCodes: Attempt to read a GCode long array that is too long: %s\n", gcodeBuffer);
-			platform->Message(HOST_MESSAGE, scratchString);
+			platform->Message(HOST_MESSAGE, "GCodes: Attempt to read a GCode long array that is too long: %s\n", gcodeBuffer);
 			readPointer = -1;
 			returnedLength = 0;
 			return;

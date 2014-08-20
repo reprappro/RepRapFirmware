@@ -371,6 +371,7 @@ public:
 	float FractionRead();							// How far in we are
 	void Duplicate();								// Create a second reference to this file
 	bool Flush();									// Write remaining buffer data
+	static float GetAndClearLongestWriteTime();		// Return the longest time it took to write a block to a file, in milliseconds
 
 friend class Platform;
 
@@ -389,12 +390,15 @@ private:
 
 	bool ReadBuffer();
 	bool WriteBuffer();
+	bool InternalWriteBlock(const char *s, unsigned int len);
 
 	FIL file;
 	Platform* platform;
 	bool writing;
 	unsigned int lastBufferEntry;
 	unsigned int openCount;
+
+	static uint32_t longestWriteTime;
 };
 
 
@@ -584,10 +588,12 @@ public:
   const char* GetConfigFile() const; // Where the configuration is stored (in the system dir).
   const char* GetDefaultFile() const; // Where the default configuration is stored (in the system dir).
   
-  void Message(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
+  void Message(char type, const char* message, ...);        // Send a message.  Messages may simply flash an LED, or,
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
-  void AppendMessage(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
+  void Message(char type, const StringRef& message) { return Message(type, message.Pointer()); }
+  void AppendMessage(char type, const char* message, ...);        // Send a message.  Messages may simply flash an LED, or,
                               // say, display the messages on an LCD. This may also transmit the messages to the host.
+  void AppendMessage(char type, const StringRef& message) { return AppendMessage(type, message.Pointer()); }
   void PushMessageIndent();
   void PopMessageIndent();
   
@@ -711,7 +717,7 @@ private:
   int8_t directionPins[DRIVES];
   int8_t enablePins[DRIVES];
   bool disableDrives[DRIVES];
-  bool driveEnabled[DRIVES];
+  volatile bool driveEnabled[DRIVES];
   bool directions[DRIVES];
   int8_t lowStopPins[DRIVES];
   int8_t highStopPins[DRIVES];

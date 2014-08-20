@@ -798,45 +798,35 @@ void Platform::Diagnostics()
 	const char *ramstart = (char *) 0x20070000;
 	const struct mallinfo mi = mallinfo();
 	AppendMessage(BOTH_MESSAGE, "Memory usage:\n\n");
-	snprintf(scratchString, STRING_LENGTH, "Program static ram used: %d\n", &_end - ramstart);
-	AppendMessage(BOTH_MESSAGE, scratchString);
-	snprintf(scratchString, STRING_LENGTH, "Dynamic ram used: %d\n", mi.uordblks);
-	AppendMessage(BOTH_MESSAGE, scratchString);
-	snprintf(scratchString, STRING_LENGTH, "Recycled dynamic ram: %d\n", mi.fordblks);
-	AppendMessage(BOTH_MESSAGE, scratchString);
+	AppendMessage(BOTH_MESSAGE, "Program static ram used: %d\n", &_end - ramstart);
+	AppendMessage(BOTH_MESSAGE, "Dynamic ram used: %d\n", mi.uordblks);
+	AppendMessage(BOTH_MESSAGE, "Recycled dynamic ram: %d\n", mi.fordblks);
 	size_t currentStack, maxStack, neverUsed;
 	GetStackUsage(&currentStack, &maxStack, &neverUsed);
-	snprintf(scratchString, STRING_LENGTH, "Current stack ram used: %d\n", currentStack);
-	AppendMessage(BOTH_MESSAGE, scratchString);
-	snprintf(scratchString, STRING_LENGTH, "Maximum stack ram used: %d\n", maxStack);
-	AppendMessage(BOTH_MESSAGE, scratchString);
-	snprintf(scratchString, STRING_LENGTH, "Never used ram: %d\n", neverUsed);
-	AppendMessage(BOTH_MESSAGE, scratchString);
+	AppendMessage(BOTH_MESSAGE, "Current stack ram used: %d\n", currentStack);
+	AppendMessage(BOTH_MESSAGE, "Maximum stack ram used: %d\n", maxStack);
+	AppendMessage(BOTH_MESSAGE, "Never used ram: %d\n", neverUsed);
 
 	// Show the up time and reason for the last reset
 	const uint32_t now = (uint32_t)Time();		// get up time in seconds
 	const char* resetReasons[8] = { "power up", "backup", "watchdog", "software", "external", "?", "?", "?" };
-	snprintf(scratchString, STRING_LENGTH, "Last reset %02d:%02d:%02d ago, cause: %s\n",
+	AppendMessage(BOTH_MESSAGE, "Last reset %02d:%02d:%02d ago, cause: %s\n",
 			(unsigned int)(now/3600), (unsigned int)((now % 3600)/60), (unsigned int)(now % 60),
 			resetReasons[(REG_RSTC_SR & RSTC_SR_RSTTYP_Msk) >> RSTC_SR_RSTTYP_Pos]);
-	AppendMessage(BOTH_MESSAGE, scratchString);
 
 	// Show the error code stored at the last software reset
-	snprintf(scratchString, STRING_LENGTH, "Last software reset code & available RAM: 0x%04x, %u\n", nvData.resetReason, nvData.neverUsedRam);
-	AppendMessage(BOTH_MESSAGE, scratchString);
+	AppendMessage(BOTH_MESSAGE, "Last software reset code & available RAM: 0x%04x, %u\n", nvData.resetReason, nvData.neverUsedRam);
 
 	// Show the current error codes
-	snprintf(scratchString, STRING_LENGTH, "Error status: %u\n", errorCodeBits);
-	AppendMessage(BOTH_MESSAGE, scratchString);
+	AppendMessage(BOTH_MESSAGE, "Error status: %u\n", errorCodeBits);
 
 	// Show the current probe position heights
-	strncpy(scratchString, "Bed probe heights:", STRING_LENGTH);
+	AppendMessage(BOTH_MESSAGE, "Bed probe heights:");
 	for (size_t i = 0; i < NUMBER_OF_PROBE_POINTS; ++i)
 	{
-		sncatf(scratchString, STRING_LENGTH, " %.3f", reprap.GetMove()->ZBedProbePoint(i));
+		AppendMessage(BOTH_MESSAGE, " %.3f", reprap.GetMove()->ZBedProbePoint(i));
 	}
-	sncatf(scratchString, STRING_LENGTH, "\n");
-	AppendMessage(BOTH_MESSAGE, scratchString);
+	AppendMessage(BOTH_MESSAGE, "\n");
 
 	// Show the number of free entries in the file table
 	unsigned int numFreeFiles = 0;
@@ -847,8 +837,11 @@ void Platform::Diagnostics()
 			++numFreeFiles;
 		}
 	}
-	snprintf(scratchString, STRING_LENGTH, "Free file entries: %u\n", numFreeFiles);
-	AppendMessage(BOTH_MESSAGE, scratchString);
+	AppendMessage(BOTH_MESSAGE, "Free file entries: %u\n", numFreeFiles);
+
+	// Show the longest write time
+	AppendMessage(BOTH_MESSAGE, "Longest block write time: %.1fms\n", FileStore::GetAndClearLongestWriteTime());
+
 	reprap.Timing();
 
 #if LWIP_STATS
@@ -899,8 +892,7 @@ void Platform::ClassReport(char* className, float &lastTime)
 	if (Time() - lastTime < LONG_TIME)
 		return;
 	lastTime = Time();
-	snprintf(scratchString, STRING_LENGTH, "Class %s spinning.\n", className);
-	Message(HOST_MESSAGE, scratchString);
+	Message(HOST_MESSAGE, "Class %s spinning.\n", className);
 }
 
 //===========================================================================
@@ -1051,16 +1043,21 @@ void Platform::Step(byte drive)
 	if(!driveEnabled[drive] && enablePins[drive] >= 0)
 	{
 		if(drive == Z_AXIS || drive==E0_DRIVE || drive==E2_DRIVE) //ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
+		{
 			digitalWriteNonDue(enablePins[drive], ENABLE);
+		}
 		else
+		{
 			digitalWrite(enablePins[drive], ENABLE);
+		}
 		driveEnabled[drive] = true;
 	}
 	if(drive == E0_DRIVE || drive == E3_DRIVE) //STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
 	{
 		digitalWriteNonDue(stepPins[drive], 0);
 		digitalWriteNonDue(stepPins[drive], 1);
-	} else
+	}
+	else
 	{
 		digitalWrite(stepPins[drive], 0);
 		digitalWrite(stepPins[drive], 1);
@@ -1200,8 +1197,13 @@ MassStorage* Platform::GetMassStorage()
 	return massStorage;
 }
 
-void Platform::Message(char type, const char* message)
+void Platform::Message(char type, const char* message, ...)
 {
+	va_list vargs;
+	va_start(vargs, message);
+	scratchString.vprintf(message, vargs);
+	va_end(vargs);
+
 	switch(type)
 	{
 	case FLASH_LED:
@@ -1224,17 +1226,17 @@ void Platform::Message(char type, const char* message)
 				line->Write(' ', type == DEBUG_MESSAGE);
 			}
 		}
-		line->Write(message, type == DEBUG_MESSAGE);
+		line->Write(scratchString.Pointer(), type == DEBUG_MESSAGE);
 		break;
 
 	case WEB_MESSAGE:
 		// Message that is to be sent to the web
-		reprap.GetWebserver()->MessageStringToWebInterface(message, false);
+		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), false);
 		break;
 
 	case WEB_ERROR_MESSAGE:
 		// Message that is to be sent to the web - flags an error
-		reprap.GetWebserver()->MessageStringToWebInterface(message, true);
+		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), true);
 		break;
 
 	case BOTH_MESSAGE:
@@ -1246,8 +1248,8 @@ void Platform::Message(char type, const char* message)
 				line->Write(' ');
 			}
 		}
-		line->Write(message);
-		reprap.GetWebserver()->MessageStringToWebInterface(message, false);
+		line->Write(scratchString.Pointer());
+		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), false);
 		break;
 
 	case BOTH_ERROR_MESSAGE:
@@ -1262,14 +1264,19 @@ void Platform::Message(char type, const char* message)
 				line->Write(' ');
 			}
 		}
-		line->Write(message);
-		reprap.GetWebserver()->MessageStringToWebInterface(message, true);
+		line->Write(scratchString.Pointer());
+		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), true);
 		break;
 	}
 }
 
-void Platform::AppendMessage(char type, const char* message)
+void Platform::AppendMessage(char type, const char* message, ...)
 {
+	va_list vargs;
+	va_start(vargs, message);
+	scratchString.vprintf(message, vargs);
+	va_end(vargs);
+
 	switch(type)
 	{
 	case FLASH_LED:
@@ -1293,17 +1300,17 @@ void Platform::AppendMessage(char type, const char* message)
 				line->Write(' ', type == DEBUG_MESSAGE);
 			}
 		}
-		line->Write(message, type == DEBUG_MESSAGE);
+		line->Write(scratchString.Pointer(), type == DEBUG_MESSAGE);
 		break;
 
 	case WEB_MESSAGE:
 		// Message that is to be sent to the web
-		reprap.GetWebserver()->AppendReplyToWebInterface(message, false);
+		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), false);
 		break;
 
 	case WEB_ERROR_MESSAGE:
 		// Message that is to be sent to the web - flags an error
-		reprap.GetWebserver()->AppendReplyToWebInterface(message, true);
+		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), true);
 		break;
 
 	case BOTH_MESSAGE:
@@ -1315,8 +1322,8 @@ void Platform::AppendMessage(char type, const char* message)
 				line->Write(' ');
 			}
 		}
-		line->Write(message);
-		reprap.GetWebserver()->AppendReplyToWebInterface(message, false);
+		line->Write(scratchString.Pointer());
+		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), false);
 		break;
 
 	case BOTH_ERROR_MESSAGE:
@@ -1331,8 +1338,8 @@ void Platform::AppendMessage(char type, const char* message)
 				line->Write(' ');
 			}
 		}
-		line->Write(message);
-		reprap.GetWebserver()->AppendReplyToWebInterface(message, true);
+		line->Write(scratchString.Pointer());
+		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), true);
 		break;
 	}
 }
@@ -1525,7 +1532,7 @@ bool MassStorage::FindNext(FileInfo &file_info)
 	file_info.year = (entry.fdate >> 9) + 1980;
 	if (file_info.fileName[0] == 0)
 	{
-		strncpy(file_info.fileName, entry.fname, ARRAY_UPB(file_info.fileName));
+		strncpy(file_info.fileName, entry.fname, ARRAY_SIZE(file_info.fileName));
 	}
 
 	return true;
@@ -1631,41 +1638,16 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 	writing = write;
 	lastBufferEntry = FILE_BUF_LEN - 1;
 	bytesRead = 0;
-	FRESULT openReturn;
 
-	if (writing)
+	FRESULT openReturn = f_open(&file, location, (writing) ?  FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
+	if (openReturn != FR_OK)
 	{
-		openReturn = f_open(&file, location, FA_CREATE_ALWAYS | FA_WRITE);
-		if (openReturn != FR_OK)
-		{
-			char errString[10];		// don't use scratch_string for this because that may be holding the original filename
-			platform->Message(HOST_MESSAGE, "Can't open ");
-			platform->Message(HOST_MESSAGE, location);
-			platform->Message(HOST_MESSAGE, " to write to, error code ");
-			snprintf(errString, ARRAY_SIZE(errString), "%d", openReturn);
-			platform->Message(HOST_MESSAGE, errString);
-			platform->Message(HOST_MESSAGE, "\n");
-			return false;
-		}
-		bufferPointer = 0;
-	}
-	else
-	{
-		openReturn = f_open(&file, location, FA_OPEN_EXISTING | FA_READ);
-		if (openReturn != FR_OK)
-		{
-			char errString[10];		// don't use scratch_string for this because that may be holding the original filename
-			platform->Message(HOST_MESSAGE, "Can't open ");
-			platform->Message(HOST_MESSAGE, location);
-			platform->Message(HOST_MESSAGE, " to read from, error code ");
-			snprintf(errString, ARRAY_SIZE(errString), "%d", openReturn);
-			platform->Message(HOST_MESSAGE, errString);
-			platform->Message(HOST_MESSAGE, "\n");
-			return false;
-		}
-		bufferPointer = FILE_BUF_LEN;
+		platform->Message(BOTH_MESSAGE, "Can't open %s to %s, error code %d\n",
+				location, (writing) ? "write" : "read", openReturn);
+		return false;
 	}
 
+	bufferPointer = (writing) ? 0 : FILE_BUF_LEN;
 	inUse = true;
 	openCount = 1;
 	return true;
@@ -1828,8 +1810,8 @@ bool FileStore::WriteBuffer()
 {
 	if (bufferPointer != 0)
 	{
-		FRESULT writeStatus = f_write(&file, buf, bufferPointer, &lastBufferEntry);
-		if ((writeStatus != FR_OK) || (lastBufferEntry != bufferPointer))
+		bool ok = InternalWriteBlock((const char*)buf, bufferPointer);
+		if (!ok)
 		{
 			platform->Message(HOST_MESSAGE, "Error writing file.  Disc may be full.\n");
 			return false;
@@ -1885,16 +1867,26 @@ bool FileStore::Write(const char *s, unsigned int len)
 	{
 		return false;
 	}
-
-	unsigned int bytesWritten;
-	FRESULT writeStatus = f_write(&file, s, len, &bytesWritten);
-	if ((writeStatus != FR_OK) || (bytesWritten != len))
-	{
-		platform->Message(HOST_MESSAGE, "Error writing file.  Disc may be full.\n");
-		return false;
-	}
-	return true;
+	return InternalWriteBlock(s, len);;
 }
+
+bool FileStore::InternalWriteBlock(const char *s, unsigned int len)
+{
+ 	unsigned int bytesWritten;
+	uint32_t time = micros();
+ 	FRESULT writeStatus = f_write(&file, s, len, &bytesWritten);
+	time = micros() - time;
+	if (time > longestWriteTime)
+	{
+		longestWriteTime = time;
+	}
+ 	if ((writeStatus != FR_OK) || (bytesWritten != len))
+ 	{
+ 		platform->Message(HOST_MESSAGE, "Error writing file. Disc may be full.\n");
+ 		return false;
+ 	}
+ 	return true;
+ }
 
 bool FileStore::Flush()
 {
@@ -1909,6 +1901,15 @@ bool FileStore::Flush()
 	}
 	return f_sync(&file) == FR_OK;
 }
+
+float FileStore::GetAndClearLongestWriteTime()
+{
+	float ret = (float)longestWriteTime/1000.0;
+	longestWriteTime = 0;
+	return ret;
+}
+
+uint32_t FileStore::longestWriteTime = 0;
 
 
 //***************************************************************************************************
