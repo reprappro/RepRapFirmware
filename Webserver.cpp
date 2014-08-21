@@ -433,8 +433,9 @@ void Webserver::GetJsonResponse(const char* request)
   
   if(StringStartsWith(request, "poll"))
   {
+	float fractionPrinted = reprap.GetGCodes()->FractionOfFilePrinted();
     strncpy(jsonResponse, "{\"poll\":[", STRING_LENGTH);
-    if(reprap.GetGCodes()->PrintingAFile())
+    if(fractionPrinted >= 0.0)
     	strncat(jsonResponse, "\"P\",", STRING_LENGTH); // Printing
     else
     	strncat(jsonResponse, "\"I\",", STRING_LENGTH); // Idle
@@ -492,6 +493,11 @@ void Webserver::GetJsonResponse(const char* request)
     strncat(jsonResponse, (reprap.GetGCodes()->GetAxisIsHomed(1)) ? "1" : "0", STRING_LENGTH);
     strncat(jsonResponse, ",\"hz\":", STRING_LENGTH);
     strncat(jsonResponse, (reprap.GetGCodes()->GetAxisIsHomed(2)) ? "1" : "0", STRING_LENGTH);
+
+    // Send the fraction printed
+    strncat(jsonResponse, ",\"fraction_printed\":", STRING_LENGTH);
+    snprintf(scratchString, STRING_LENGTH, "%.4f", max(0.0, fractionPrinted));
+    strncat(jsonResponse, scratchString, STRING_LENGTH);
 
     // Send the name
     strncat(jsonResponse, ",\"reprap_name\":", STRING_LENGTH);

@@ -33,7 +33,7 @@ GCodes::GCodes(Platform* p, Webserver* w)
   webGCode = new GCodeBuffer(platform, "web: ");
   fileGCode = new GCodeBuffer(platform, "file: ");
   serialGCode = new GCodeBuffer(platform, "serial: ");
-  cannedCycleGCode = new GCodeBuffer(platform, "macro: ");
+  fileMacroGCode = new GCodeBuffer(platform, "macro: ");
 }
 
 void GCodes::Exit()
@@ -47,11 +47,11 @@ void GCodes::Init()
   webGCode->Init();
   fileGCode->Init();
   serialGCode->Init();
-  cannedCycleGCode->Init();
+  fileMacroGCode->Init();
   webGCode->SetFinished(true);
   fileGCode->SetFinished(true);
   serialGCode->SetFinished(true);
-  cannedCycleGCode->SetFinished(true);
+  fileMacroGCode->SetFinished(true);
   moveAvailable = false;
   drivesRelative = true;
   axesRelative = false;
@@ -64,7 +64,8 @@ void GCodes::Init()
   fileToPrint = NULL;
   fileBeingWritten = NULL;
   configFile = NULL;
-  doingCannedCycleFile = false;
+  doingFileMacro = false;
+  fractionOfFilePrinted = -1.0;
   eofString = EOF_STRING;
   eofStringCounter = 0;
   eofStringLength = strlen(eofString);
@@ -454,17 +455,18 @@ bool GCodes::ReadMove(float m[], bool& ce)
 }
 
 
-bool GCodes::DoFileCannedCycles(const char* fileName)
+bool GCodes::DoFileMacro(const char* fileName)
 {
 	// Have we started the file?
 
-	if(!doingCannedCycleFile)
+	if(!doingFileMacro)
 	{
 		// No
 
 		if(!Push())
 			return false;
-
+		if(fileBeingPrinted != NULL)
+			fractionOfFilePrinted = fileBeingPrinted->FractionRead();
 		fileBeingPrinted = platform->GetFileStore(platform->GetSysDir(), fileName, false);
 		if(fileBeingPrinted == NULL)
 		{
@@ -474,8 +476,8 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 				platform->Message(HOST_MESSAGE, "Cannot pop the stack.\n");
 			return true;
 		}
-		doingCannedCycleFile = true;
-		cannedCycleGCode->Init();
+		doingFileMacro = true;
+		fileMacroGCode->Init();
 		return false;
 	}
 
@@ -487,34 +489,35 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 
 		if(!Pop())
 			return false;
-		doingCannedCycleFile = false;
-		cannedCycleGCode->Init();
+		fractionOfFilePrinted = -1.0;
+		doingFileMacro = false;
+		fileMacroGCode->Init();
 		return true;
 	}
 
 	// No - Do more of the file
 
-	if(!cannedCycleGCode->Finished())
+	if(!fileMacroGCode->Finished())
 	{
-		cannedCycleGCode->SetFinished(ActOnCode(cannedCycleGCode));
+		fileMacroGCode->SetFinished(ActOnCode(fileMacroGCode));
 	    return false;
 	}
 
-	DoFilePrint(cannedCycleGCode);
+	DoFilePrint(fileMacroGCode);
 
 	return false;
 }
 
 bool GCodes::FileCannedCyclesReturn()
 {
-	if(!doingCannedCycleFile)
+	if(!doingFileMacro)
 		return true;
 
 	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
 
-	doingCannedCycleFile = false;
-	cannedCycleGCode->Init();
+	doingFileMacro = false;
+	fileMacroGCode->Init();
 
 	if(fileBeingPrinted != NULL)
 		fileBeingPrinted->Close();
@@ -641,7 +644,7 @@ bool GCodes::DoHome(char* reply, bool& error)
 {
 	if(homeX && homeY && homeZ)
 	{
-		if(DoFileCannedCycles(HOME_ALL_G))
+		if(DoFileMacro(HOME_ALL_G))
 		{
 			homeAxisMoveCount = 0;
 			homeX = false;
@@ -655,7 +658,7 @@ bool GCodes::DoHome(char* reply, bool& error)
 
 	if(homeX)
 	{
-		if(DoFileCannedCycles(HOME_X_G))
+		if(DoFileMacro(HOME_X_G))
 		{
 			homeAxisMoveCount = 0;
 			homeX = false;
@@ -668,7 +671,7 @@ bool GCodes::DoHome(char* reply, bool& error)
 
 	if(homeY)
 	{
-		if(DoFileCannedCycles(HOME_Y_G))
+		if(DoFileMacro(HOME_Y_G))
 		{
 			homeAxisMoveCount = 0;
 			homeY = false;
@@ -690,7 +693,7 @@ bool GCodes::DoHome(char* reply, bool& error)
 			homeZ = false;
 			return true;
 		}
-		if(DoFileCannedCycles(HOME_Z_G))
+		if(DoFileMacro(HOME_Z_G))
 		{
 			homeAxisMoveCount = 0;
 			homeZ = false;
@@ -873,7 +876,7 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, char* reply)
 //bool GCodes::DoMultipleZProbe(char* reply)
 bool GCodes::SetBedEquationWithProbe()
 {
-	return DoFileCannedCycles(SET_BED_EQUATION);
+	return DoFileMacro(SET_BED_EQUATION);
 //	if(reprap.GetMove()->NumberOfXYProbePoints() < 3)
 //	{
 //		platform->Message(HOST_MESSAGE, "Bed probing: there needs to be 3 or more points set.\n");
@@ -1538,7 +1541,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		break;
 
 	case 27: // Report print status - Deprecated
-		if(this->PrintingAFile())
+		if(FractionOfFilePrinted() >= 0.0)
 			strncpy(reply, "SD printing.", STRING_LENGTH);
 		else
 			strncpy(reply, "Not SD printing.", STRING_LENGTH);
@@ -1628,7 +1631,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 	case 98:
 		if(gb->Seen('P'))
-			result = DoFileCannedCycles(gb->GetString());
+			result = DoFileMacro(gb->GetString());
 		break;
 
 	case 99:
@@ -2524,7 +2527,7 @@ bool GCodes::ChangeTool(int newToolNumber)
     	if(oldTool != NULL)
     	{
     		snprintf(scratchString, STRING_LENGTH, "tfree%d.g", oldTool->Number());
-    		if(DoFileCannedCycles(scratchString))
+    		if(DoFileMacro(scratchString))
     			toolChangeSequence++;
     	} else
     		toolChangeSequence++;
@@ -2540,7 +2543,7 @@ bool GCodes::ChangeTool(int newToolNumber)
     	if(newTool != NULL)
     	{
     		snprintf(scratchString, STRING_LENGTH, "tpre%d.g", newToolNumber);
-    		if(DoFileCannedCycles(scratchString))
+    		if(DoFileMacro(scratchString))
     			toolChangeSequence++;
     	} else
     		toolChangeSequence++;
@@ -2555,7 +2558,7 @@ bool GCodes::ChangeTool(int newToolNumber)
     	if(newTool != NULL)
     	{
     		snprintf(scratchString, STRING_LENGTH, "tpost%d.g", newToolNumber);
-    		if(DoFileCannedCycles(scratchString))
+    		if(DoFileMacro(scratchString))
     			toolChangeSequence++;
     	} else
     		toolChangeSequence++;

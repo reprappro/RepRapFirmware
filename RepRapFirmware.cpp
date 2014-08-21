@@ -206,11 +206,11 @@ void RepRap::Init()
   while(initialisingInProgress)
   {
 	  Spin();
-	  if(gCodes->PrintingAFile())
+	  if(gCodes->FractionOfFilePrinted() >= 0.0)
 		  runningTheFile = true;
 	  if(runningTheFile)
 	  {
-		  if(!gCodes->PrintingAFile())
+		  if(gCodes->FractionOfFilePrinted() < 0.0)
 			  initialisingInProgress = false;
 	  }
   }

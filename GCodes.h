@@ -81,7 +81,7 @@ class GCodes
     void DeleteFile(const char* fileName);								// Does what it says
     bool GetProbeCoordinates(int count, float& x, float& y, float& z);	// Get pre-recorded probe coordinates
     char* GetCurrentCoordinates();										// Get where we are as a string
-    bool PrintingAFile() const;											// Are we in the middle of printing a file?
+    float FractionOfFilePrinted() const;								// Are we in the middle of printing a file? -ve means no, value is fraction printed
     void Diagnostics();													// Send helpful information out
     bool HaveIncomingData() const;										// Is there something that we have to do?
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
@@ -91,7 +91,7 @@ class GCodes
     void DoFilePrint(GCodeBuffer* gb);									// Get G Codes from a file and print them
     bool AllMovesAreFinishedAndMoveBufferIsLoaded();					// Wait for move queue to exhaust and the current position is loaded
     bool DoCannedCycleMove(bool ce);									// Do a move from an internally programmed canned cycle
-    bool DoFileCannedCycles(const char* fileName);						// Run a GCode macro in a file
+    bool DoFileMacro(const char* fileName);						// Run a GCode macro in a file
     bool FileCannedCyclesReturn();										// End a macro
     bool ActOnCode(GCodeBuffer* gb);									// Do a G, M or T Code
     bool HandleGcode(int code, GCodeBuffer* gb);						// Do a G Code
@@ -138,7 +138,7 @@ class GCodes
     GCodeBuffer* webGCode;						// The sources...
     GCodeBuffer* fileGCode;						// ...
     GCodeBuffer* serialGCode;					// ...
-    GCodeBuffer* cannedCycleGCode;				// ... of G Codes
+    GCodeBuffer* fileMacroGCode;				// ... of G Codes
     bool moveAvailable;							// Have we seen a move G Code and set it up?
     float moveBuffer[DRIVES+1]; 				// Move coordinates; last is feed rate
     bool checkEndStops;							// Should we check them on the next move?
@@ -160,7 +160,8 @@ class GCodes
     FileStore* fileToPrint;						// A file to print in the future, or one that has been paused
     FileStore* fileBeingWritten;				// A file to write G Codes (or sometimes HTML) in
     FileStore* configFile;						// A file containing a macro
-    bool doingCannedCycleFile;					// Are we executing a macro file?
+    float fractionOfFilePrinted;				// Only used to record the main file when a macro is being printed
+    bool doingFileMacro;						// Are we executing a macro file?
     char* eofString;							// What's at the end of an HTML file?
     uint8_t eofStringCounter;					// Check the...
     uint8_t eofStringLength;					// ... EoF string as we read.
@@ -213,9 +214,13 @@ inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 	writingFileDirectory = wfd;
 }
 
-inline bool GCodes::PrintingAFile() const
+inline float GCodes::FractionOfFilePrinted() const
 {
-  return fileBeingPrinted != NULL;
+  if(fileBeingPrinted == NULL)
+	  	 return -1.0;
+  if(fractionOfFilePrinted < 0.0)
+	  return fileBeingPrinted->FractionRead();
+  return fractionOfFilePrinted;
 }
 
 inline bool GCodes::HaveIncomingData() const
@@ -241,7 +246,7 @@ inline int8_t GCodes::Heater(int8_t head) const
 
 inline bool GCodes::RunConfigurationGCodes()
 {
-	return !DoFileCannedCycles(platform->GetConfigFile());
+	return !DoFileMacro(platform->GetConfigFile());
 }
 
 //inline int8_t GCodes::GetSelectedHead()
