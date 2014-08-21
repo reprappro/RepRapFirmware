@@ -432,7 +432,7 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     // out by LookAhead.
     
     float u, v;
-    ddaRingAddPointer->Init(lookAhead, u, v, true);
+    ddaRingAddPointer->Init(lookAhead, u, v, false);
     ddaRingAddPointer = ddaRingAddPointer->Next();
     ReleaseDDARingLock();
     return true;
@@ -1124,7 +1124,7 @@ void DDA::Step()
       counter[drive] -= totalSteps;
       
       drivesMoving |= 1<<drive;
-        
+
       // Hit anything?
   
       if(checkEndStops)
@@ -1140,7 +1140,7 @@ void DDA::Step()
           move->HitHighStop(drive, myLookAheadEntry, this);
           active = false;
         }
-      }        
+      }
     }
   }
   
@@ -1148,19 +1148,36 @@ void DDA::Step()
   
   if(active) 
   {
-      timeStep = move->stepDistances[drivesMoving]/velocity;
+	  timeStep = distance/(totalSteps * velocity);
+      //timeStep = move->stepDistances[drivesMoving]/velocity;
       
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?
-  
-    if(stepCount < stopAStep)
-      velocity += acceleration*timeStep;
-    if(stepCount >= startDStep)
-      velocity -= acceleration*timeStep;
+	//  char s[50];
+	  if(stepCount < stopAStep)
+	  {
+		  velocity += acceleration*timeStep;
+		  if (velocity > myLookAheadEntry->FeedRate())
+		  {
+			  velocity = myLookAheadEntry->FeedRate();
+		  }
+		  //snprintf(s, 50, "V: %.4f, D: %.4f\n", velocity, move->stepDistances[drivesMoving]);
+		 // platform->Message(HOST_MESSAGE, s);
+	  }
+	  if(stepCount >= startDStep)
+	  {
+		  velocity -= acceleration*timeStep;
+		  if (velocity < instantDv)
+		  {
+			  velocity = instantDv;
+		  }
+		 // snprintf(s, 50, "V: %.4f, D: %.4f\n", velocity, move->stepDistances[drivesMoving]);
+		  //platform->Message(HOST_MESSAGE, s);
+	  }
     
     // Euler is only approximate.
     
-    if(velocity < instantDv)
+    if(velocity < 0.0) //instantDv)
       velocity = instantDv;
       
     stepCount++;
@@ -1280,7 +1297,7 @@ long LookAhead::EndPointToMachine(int8_t drive, float coord)
 
 void LookAhead::PrintMove()
 {
-	snprintf(scratchString, STRING_LENGTH, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, u: %.3f, v: %.3f\n",
+	snprintf(scratchString, STRING_LENGTH, "\nX,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, u: %.3f, v: %.3f\n",
 			MachineToEndPoint(X_AXIS), MachineToEndPoint(Y_AXIS), MachineToEndPoint(Z_AXIS),
 			MinSpeed(), MaxSpeed(), Acceleration(), FeedRate(), Previous()->V(), V()
 	);
