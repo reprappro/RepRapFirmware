@@ -121,7 +121,8 @@ Licence: GPL
 #define STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
 #define DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
 #define FORWARDS true // What to send to go...
-#define BACKWARDS false // ...in each direction
+#define BACKWARDS (!FORWARDS) // ...in each direction
+#define DIRECTIONS {FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS} // What each axis needs to make it go forwards - defaults
 #define ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
 #define ENABLE false // What to send to enable...
 #define DISABLE true // ...and disable a drive
@@ -545,6 +546,8 @@ class Platform
   
   void EmergencyStop();
   void SetDirection(byte drive, bool direction);
+  void SetDirectionValue(byte drive, bool dVal);
+  bool GetDirectionValue(byte drive);
   void Step(byte drive);
   void Disable(byte drive); // There is no drive enable; drives get enabled automatically the first time they are used.
   void SetMotorCurrent(byte drive, float current);
@@ -623,6 +626,7 @@ class Platform
   int8_t enablePins[DRIVES];
   bool disableDrives[DRIVES];
   bool driveEnabled[DRIVES];
+  bool directions[DRIVES];
   int8_t lowStopPins[DRIVES];
   int8_t highStopPins[DRIVES];
   float maxFeedrates[DRIVES];  
@@ -857,11 +861,29 @@ inline void Platform::SetDirection(byte drive, bool direction)
 {
 	if(directionPins[drive] < 0)
 		return;
+
+ 	bool d;
+ 	if(direction == FORWARDS)
+ 		d = directions[drive];
+ 	else
+ 		d = !directions[drive];
+
 	if(drive == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
-		digitalWriteNonDue(directionPins[drive], direction);
+		digitalWriteNonDue(directionPins[drive], d);
 	else
-		digitalWrite(directionPins[drive], direction);
+		digitalWrite(directionPins[drive], d);
 }
+
+inline void Platform::SetDirectionValue(byte drive, bool dVal)
+{
+ 	directions[drive] = dVal;
+}
+
+inline bool Platform::GetDirectionValue(byte drive)
+{
+ 	return directions[drive];
+}
+
 
 inline void Platform::Disable(byte drive)
 {
