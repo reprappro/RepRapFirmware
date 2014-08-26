@@ -415,7 +415,7 @@ void Move::SetStepHypotenuse()
 
 void Move::PrintMove(LookAhead* lookAhead)
 {
-	snprintf(scratchString, STRING_LENGTH, "X,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, v: %.3f\n",
+	snprintf(scratchString, STRING_LENGTH, "\nX,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, v: %.3f\n",
 			lookAhead->MachineToEndPoint(X_AXIS), lookAhead->MachineToEndPoint(Y_AXIS), lookAhead->MachineToEndPoint(Z_AXIS),
 			lookAhead->MinSpeed(), lookAhead->MaxSpeed(), lookAhead->Acceleration(), lookAhead->FeedRate(), lookAhead->V()
 	);
@@ -1068,23 +1068,45 @@ void DDA::Step()
   
   if(active) 
   {
- //   if(drivesMoving)
-      timeStep = move->stepDistances[drivesMoving]/velocity;
- //   else
- //     timeStep = move->extruderStepDistances[extrudersMoving]/velocity;
+
+      //timeStep = move->stepDistances[drivesMoving]/velocity;
+	  timeStep = distance/(totalSteps * velocity);
       
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?
   
-    if(stepCount < stopAStep)
-      velocity += acceleration*timeStep;
-    if(stepCount >= startDStep)
-      velocity -= acceleration*timeStep;
+//    if(stepCount < stopAStep)
+//      velocity += acceleration*timeStep;
+//    if(stepCount >= startDStep)
+//      velocity -= acceleration*timeStep;
+
+	  // char s[50];
+	  if(stepCount < stopAStep)
+	  {
+		  velocity += acceleration*timeStep;
+		  if (velocity > myLookAheadEntry->FeedRate())
+		  {
+			  velocity = myLookAheadEntry->FeedRate();
+		  }
+		  //snprintf(s, 50, "V: %.4f, D: %.4f\n", velocity, move->stepDistances[drivesMoving]);
+		  // platform->Message(HOST_MESSAGE, s);
+	  }
+	  if(stepCount >= startDStep)
+	  {
+		  velocity -= acceleration*timeStep;
+		  if (velocity < instantDv)
+		  {
+			  velocity = instantDv;
+		  }
+		  // snprintf(s, 50, "V: %.4f, D: %.4f\n", velocity, move->stepDistances[drivesMoving]);
+		  //platform->Message(HOST_MESSAGE, s);
+	  }
+
     
     // Euler is only approximate.
     
-    if(velocity < instantDv)
-      velocity = instantDv;
+//    if(velocity < instantDv)
+//      velocity = instantDv;
       
     stepCount++;
     active = stepCount < totalSteps;
