@@ -323,7 +323,8 @@ void Webserver::ProcessGcode(const char* gc)
 		fileInfoDetected = GetFileInfo(platform->GetGCodeDir(), &gc[4], currentFileInfo);
 		printStartTime = platform->Time();
 		strncpy(fileBeingPrinted, &gc[4], ARRAY_SIZE(fileBeingPrinted));
-		reprap.GetGCodes()->QueueFileToPrint(&gc[4]);
+		fileBeingPrinted[ARRAY_UPB(fileBeingPrinted)] = 0;
+		reprap.GetGCodes()->QueueFileToPrint(fileBeingPrinted);
 	}
 	else if (StringStartsWith(gc, "M112") && !isdigit(gc[4]))	// emergency stop
 	{
@@ -1069,7 +1070,7 @@ void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t 
 		response.cat("]");
 
 		// Send the speed and extruder override factors
-		response.catf(",\"sfactor\":%.2f,\"efactor:\":", gc->GetSpeedFactor() * 100.0);
+		response.catf(",\"sfactor\":%.2f,\"efactor\":", gc->GetSpeedFactor() * 100.0);
 		const float *extrusionFactors = gc->GetExtrusionFactors();
 		for (unsigned int i = 0; i < reprap.GetExtrudersInUse(); ++i)
 		{
@@ -2468,7 +2469,10 @@ bool Webserver::GetFileInfo(const char *directory, const char *fileName, GcodeFi
 			const size_t readSize = 512;					// read 512 bytes at a time (1K doesn't seem to work when we read from the end)
 			const size_t overlap = 100;
 			char buf[readSize + overlap + 1];				// need the +1 so we can add a null terminator
+
 			bool foundLayerHeight = false;
+			unsigned int filamentsFound = 0, nFilaments;
+			float filaments[DRIVES - AXES];
 
 			// Get slic3r settings by reading from the start of the file. We only read the first 1K or so, everything we are looking for should be there.
 			{
@@ -2477,7 +2481,16 @@ bool Webserver::GetFileInfo(const char *directory, const char *fileName, GcodeFi
 				if (nbytes == (int)sizeToRead)
 				{
 					buf[sizeToRead] = 0;
-
+					// Search for filament usage (Cura puts it at the beginning of a G-code file)
+					nFilaments = FindFilamentUsed(buf, sizeToRead, filaments, DRIVES - AXES);
+					if (nFilaments != 0 && nFilaments >= filamentsFound)
+					{
+						filamentsFound = min<unsigned int>(nFilaments, info.numFilaments);
+						for (unsigned int i = 0; i < filamentsFound; ++i)
+						{
+							info.filamentNeeded[i] = filaments[i];
+						}
+					}
 					// Look for layer height
 					const char* layerHeightString = "; layer_height ";
 					foundLayerHeight = FindLayerHeight(buf, sizeToRead, info.layerHeight);
@@ -2511,6 +2524,7 @@ bool Webserver::GetFileInfo(const char *directory, const char *fileName, GcodeFi
 			}
 
 			// Now get the object height and filament used by reading the end of the file
+			bool searchForFilaments = (filamentsFound == 0);
 			{
 				size_t sizeToRead;
 				if (info.fileSize <= readSize + overlap)
@@ -2527,7 +2541,6 @@ bool Webserver::GetFileInfo(const char *directory, const char *fileName, GcodeFi
 				}
 				unsigned long seekPos = info.fileSize - sizeToRead;	// read on a 512b boundary
 				size_t sizeToScan = sizeToRead;
-				unsigned int filamentsFound = 0;
 				for (;;)
 				{
 					if (!f->Seek(seekPos))
@@ -2540,14 +2553,16 @@ bool Webserver::GetFileInfo(const char *directory, const char *fileName, GcodeFi
 						break;									// read failed so give up
 					}
 					// Search for filament used
-					float filaments[DRIVES - AXES];
-					unsigned int nFilaments = FindFilamentUsed(buf, sizeToScan, filaments, DRIVES - AXES);
-					if (nFilaments != 0 && nFilaments >= filamentsFound)
+					if (searchForFilaments)
 					{
-						filamentsFound = min<unsigned int>(nFilaments, info.numFilaments);
-						for (unsigned int i = 0; i < filamentsFound; ++i)
+						nFilaments = FindFilamentUsed(buf, sizeToScan, filaments, DRIVES - AXES);
+						if (nFilaments != 0 && nFilaments >= filamentsFound)
 						{
-							info.filamentNeeded[i] = filaments[i];
+							filamentsFound = min<unsigned int>(nFilaments, info.numFilaments);
+							for (unsigned int i = 0; i < filamentsFound; ++i)
+							{
+								info.filamentNeeded[i] = filaments[i];
+							}
 						}
 					}
 					// Search for layer height

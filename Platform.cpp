@@ -536,23 +536,27 @@ void Platform::Exit()
 
 Compatibility Platform::Emulating() const
 {
-	if(compatibility == reprapFirmware)
+	if (nvData.compatibility == reprapFirmware)
 		return me;
-	return compatibility;
+	return nvData.compatibility;
 }
 
 void Platform::SetEmulating(Compatibility c)
 {
-	if(c != me && c != reprapFirmware && c != marlin)
+	if (c != me && c != reprapFirmware && c != marlin)
 	{
 		Message(HOST_MESSAGE, "Attempt to emulate unsupported firmware.\n");
 		return;
 	}
-	if(c == reprapFirmware)
+	if (c == reprapFirmware)
 	{
 		c = me;
 	}
-	compatibility = c;
+	if (c != nvData.compatibility)
+	{
+		nvData.compatibility = c;
+		WriteNvData();
+	}
 }
 
 void Platform::UpdateNetworkAddress(byte dst[4], const byte src[4])
@@ -1639,7 +1643,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 	lastBufferEntry = FILE_BUF_LEN - 1;
 	bytesRead = 0;
 
-	FRESULT openReturn = f_open(&file, location, (writing) ?  FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
+	FRESULT openReturn = f_open(&file, location, (writing) ? FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
 	if (openReturn != FR_OK)
 	{
 		platform->Message(BOTH_MESSAGE, "Can't open %s to %s, error code %d\n",

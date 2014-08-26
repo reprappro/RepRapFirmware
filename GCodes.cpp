@@ -1580,7 +1580,7 @@ void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, StringRef& reply)
 		else
 		{
 			reply.printf("Heater %d P:%.2f I:%.3f D:%.2f T:%.2f S:%.2f W:%.1f B:%.1f\n",
-						heater, pp.kP, pp.kI * platform->HeatSampleTime(), pp.kD/platform->HeatSampleTime(), pp.kT, pp.kS, pp.pidMax, pp.fullBand);
+					heater, pp.kP, pp.kI, pp.kD, pp.kT, pp.kS, pp.pidMax, pp.fullBand);
 		}
 	}
 }
@@ -1856,42 +1856,46 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 20:  // Deprecated...
-		bool encapsulate_list;
-		if (platform->Emulating() == me || platform->Emulating() == reprapFirmware)
 		{
-			reply.copy("GCode files:\n");
-			encapsulate_list = false;
-		}
-		else
-		{
-			reply.Clear();
-			encapsulate_list = true;
-		}
+			// To mimic the behaviour of the official RepRapPro firmware:
+			// If we are emulating RepRap then we print "GCode files:\n" at the start, otherwise we don't.
+			// If we are emulating Marlin and the code came via the serial/USB interface, then we don't put quotes around the names and we separate them with newline;
+			// otherwise we put quotes around them and separate them with comma.
+			if (platform->Emulating() == me || platform->Emulating() == reprapFirmware)
+			{
+				reply.copy("GCode files:\n");
+			}
+			else
+			{
+				reply.Clear();
+			}
 
-		FileInfo file_info;
-		if (platform->GetMassStorage()->FindFirst(platform->GetGCodeDir(), file_info))
-		{
-			// iterate through all entries and append each file name
-			do {
-				if (encapsulate_list)
-				{
-					reply.catf("%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
-				}
-				else
-				{
-					reply.catf("%s\n", file_info.fileName);
-				}
-			} while (platform->GetMassStorage()->FindNext(file_info));
+			bool encapsulate_list = (gb != serialGCode || platform->Emulating() != marlin);
+			FileInfo file_info;
+			if (platform->GetMassStorage()->FindFirst(platform->GetGCodeDir(), file_info))
+			{
+				// iterate through all entries and append each file name
+				do {
+					if (encapsulate_list)
+					{
+						reply.catf("%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
+					}
+					else
+					{
+						reply.catf("%s\n", file_info.fileName);
+					}
+				} while (platform->GetMassStorage()->FindNext(file_info));
 
-			// remove the last character
-			reply[reply.strlen() - 1] = 0;
-		}
-		else
-		{
-			reply.cat("NONE");
-		}
+				// remove the last separator
+				reply[reply.strlen() - 1] = 0;
+			}
+			else
+			{
+				reply.cat("NONE");
+			}
 
-		break;
+			break;
+		}
 
 	case 21: // Initialise SD - ignore
 		break;
@@ -2028,10 +2032,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						reply.cat(":");
 					}
 				}
-			}
-			else
-			{
-				reprap.GetMove()->SetStepHypotenuse();
 			}
 		}
 		break;
