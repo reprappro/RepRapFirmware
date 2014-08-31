@@ -128,7 +128,7 @@ const unsigned int numZProbeReadingsAveraged = 8;	// we average this number of r
 // HEATERS - The bed is assumed to be the at index 0
 
 #define TEMP_SENSE_PINS {5, 4, 0, 7, 8, 9} // Analogue pin numbers
-#define HEAT_ON_PINS {6, X5, X7, 7, 8, 9} //pin D38 is PWM capable but not an Arduino PWM pin - //FIXME TEST if E1 PWM works as D38
+#define HEAT_ON_PINS {6, X5, X7, 7, 8, 9} //pin D38 is PWM capable but not an Arduino PWM pin
 // Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
 // Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
 const float defaultThermistorBetas[HEATERS] = {3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0}; // Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
@@ -223,6 +223,7 @@ const int atxPowerPin = 12;						// Arduino Due pin number that controls the ATX
 const uint16_t lineInBufsize = 256;				// use a power of 2 for good performance
 const uint16_t lineOutBufSize = 2048;			// ideally this should be large enough to hold the results of an M503 command,
 												// but could be reduced if we ever need the memory
+const size_t messageStringLength = 1024;		// max length of a message chunk sent via Message or AppendMessage
 
 /****************************************************************************************************/
 
@@ -548,12 +549,12 @@ public:
                // it has just been restarted; it can do this by executing an actual restart if you like, but beware the 
                // loop of death...
   void Spin(); // This gets called in the main loop and should do any housekeeping needed
-  void Exit(); // Shut down tidily.  Calling Init after calling this should reset to the beginning
+  void Exit(); // Shut down tidily. Calling Init after calling this should reset to the beginning
   Compatibility Emulating() const;
   void SetEmulating(Compatibility c);
   void Diagnostics();
   void DiagnosticTest(int d);
-  void ClassReport(char* className, float &lastTime);  // Called on return to check everything's live.
+  void ClassReport(const char* className, float &lastTime);  // Called on return to check everything's live.
   void RecordError(ErrorCode ec) { errorCodeBits |= ec; }
   void SoftwareReset(uint16_t reason);
   void SetAtxPower(bool on);
@@ -581,19 +582,19 @@ public:
   
   MassStorage* GetMassStorage();
   FileStore* GetFileStore(const char* directory, const char* fileName, bool write);
-  const char* GetWebDir() const; // Where the htm etc files are
-  const char* GetGCodeDir() const; // Where the gcodes are
-  const char* GetSysDir() const;  // Where the system files are
-  const char* GetTempDir() const; // Where temporary files are
-  const char* GetConfigFile() const; // Where the configuration is stored (in the system dir).
-  const char* GetDefaultFile() const; // Where the default configuration is stored (in the system dir).
+  const char* GetWebDir() const;		// Where the htm etc files are
+  const char* GetGCodeDir() const;		// Where the gcodes are
+  const char* GetSysDir() const;		// Where the system files are
+  const char* GetTempDir() const;		// Where temporary files are
+  const char* GetConfigFile() const;	// Where the configuration is stored (in the system dir).
+  const char* GetDefaultFile() const;	// Where the default configuration is stored (in the system dir).
   
-  void Message(char type, const char* message, ...);        // Send a message.  Messages may simply flash an LED, or,
-                            // say, display the messages on an LCD. This may also transmit the messages to the host.
-  void Message(char type, const StringRef& message) { return Message(type, message.Pointer()); }
-  void AppendMessage(char type, const char* message, ...);        // Send a message.  Messages may simply flash an LED, or,
-                              // say, display the messages on an LCD. This may also transmit the messages to the host.
-  void AppendMessage(char type, const StringRef& message) { return AppendMessage(type, message.Pointer()); }
+  void Message(char type, const char* message, ...);		// Send a message.  Messages may simply flash an LED, or,
+  	  	  	  	  	  	  	  	  	  // say, display the messages on an LCD. This may also transmit the messages to the host.
+  void Message(char type, const StringRef& message);
+  void AppendMessage(char type, const char* message, ...);	// Send a message.  Messages may simply flash an LED, or,
+  	  	  	  	  	  	  	  	  	  // say, display the messages on an LCD. This may also transmit the messages to the host.
+  void AppendMessage(char type, const StringRef& message);
   void PushMessageIndent();
   void PopMessageIndent();
   
@@ -651,7 +652,7 @@ public:
   // Heat and temperature
   
   float GetTemperature(size_t heater) const; // Result is in degrees Celsius
-  void SetHeater(size_t heater, const float& power); // power is a fraction in [0,1]
+  void SetHeater(size_t heater, float power); // power is a fraction in [0,1]
   float HeatSampleTime() const;
   void SetHeatSampleTime(float st);
   void CoolingFan(float speed);
@@ -795,6 +796,9 @@ private:
   static uint16_t GetAdcReading(adc_channel_num_t chan);
   static void StartAdcConversion(adc_channel_num_t chan);
   static adc_channel_num_t PinToAdcChannel(int pin);
+
+  char messageStringBuffer[messageStringLength];
+  StringRef messageString;
 };
 
 // Small class to hold an open file and data relating to it.

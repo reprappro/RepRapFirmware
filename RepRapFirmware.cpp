@@ -430,7 +430,7 @@ void RepRap::StandbyTool(int toolNumber)
 		tool = tool->Next();
 	}
 
-	platform->Message(HOST_MESSAGE, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
+	platform->Message(BOTH_MESSAGE, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
 }
 
 Tool* RepRap::GetTool(int toolNumber)
@@ -460,7 +460,7 @@ void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float*
 		tool = tool->Next();
 	}
 
-	platform->Message(HOST_MESSAGE, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
+	platform->Message(BOTH_MESSAGE, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
 }
 
 
@@ -553,7 +553,7 @@ size_t StringRef::cat(const char* src)
 
 // Utilities and storage not part of any class
 
-static char scratchStringBuffer[STRING_LENGTH];
+static char scratchStringBuffer[255];		// this is now used only for short messages and file names
 StringRef scratchString(scratchStringBuffer, ARRAY_SIZE(scratchStringBuffer));
 
 // For debug use

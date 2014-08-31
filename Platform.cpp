@@ -28,7 +28,10 @@ extern "C" char *sbrk(int i);
 
 const uint8_t memPattern = 0xA5;
 
-static volatile unsigned int fanRpmCounter = 0;
+static uint32_t fanInterruptCount = 0;				// accessed only in ISR, so no need to declare it volatile
+const uint32_t fanMaxInterruptCount = 32;			// number of fan interrupts that we average over
+static volatile uint32_t fanLastResetTime = 0;		// time (microseconds) at which we last reset the interrupt count, accessed inside and outside ISR
+static volatile uint32_t fanInterval = 0;			// written by ISR, read outside the ISR
 
 // Arduino initialise and loop functions
 // Put nothing in these other than calls to the RepRap equivalents
@@ -94,7 +97,8 @@ bool PidParameters::operator==(const PidParameters& other) const
 // Platform class
 
 Platform::Platform() :
-		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0)
+		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
+		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer))
 {
 	line = new Line();
 
@@ -112,8 +116,8 @@ Platform::Platform() :
 
 void Platform::Init()
 {
-	digitalWrite(atxPowerPin, LOW);		// ensure ATX power is off by default
-	pinMode(atxPowerPin, OUTPUT);
+	digitalWriteNonDue(atxPowerPin, LOW);		// ensure ATX power is off by default
+	pinModeNonDue(atxPowerPin, OUTPUT);
 
 	DueFlashStorage::init();
 	// We really want to use static_assert here, but the ancient version of gcc used by Arduino doesn't support it
@@ -232,33 +236,19 @@ void Platform::Init()
 	gcodeDir = GCODE_DIR;
 	tempDir = TEMP_DIR;
 
-  /*
-  	FIXME Nasty having to specify individually if a pin is arduino or not.
-    requires a unified variant file. If implemented this would be much better
-	to allow for different hardware in the future
-  */
 	for (size_t i = 0; i < DRIVES; i++)
 	{
 		if (stepPins[i] >= 0)
 		{
-		  if(i == E0_DRIVE || i == E3_DRIVE) // STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
-				pinModeNonDue(stepPins[i], OUTPUT);
-			else
-				pinMode(stepPins[i], OUTPUT);
+			pinModeNonDue(stepPins[i], OUTPUT);
 		}
 		if (directionPins[i] >= 0)
 		{
-		  if(i == E0_DRIVE) // DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
-				pinModeNonDue(directionPins[i], OUTPUT);
-			else
-				pinMode(directionPins[i], OUTPUT);
+			pinModeNonDue(directionPins[i], OUTPUT);
 		}
 		if (enablePins[i] >= 0)
 		{
-		  if(i == Z_AXIS || i == E0_DRIVE || i == E2_DRIVE) // ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
-				pinModeNonDue(enablePins[i], OUTPUT);
-			else
-				pinMode(enablePins[i], OUTPUT);
+			pinModeNonDue(enablePins[i], OUTPUT);
 		}
 		Disable(i);
 		driveEnabled[i] = false;
@@ -267,13 +257,11 @@ void Platform::Init()
 	{
 		if (lowStopPins[i] >= 0)
 		{
-			pinMode(lowStopPins[i], INPUT);
-			digitalWrite(lowStopPins[i], HIGH); // Turn on pullup
+			pinModeNonDue(lowStopPins[i], INPUT_PULLUP);
 		}
 		if (highStopPins[i] >= 0)
 		{
-			pinMode(highStopPins[i], INPUT);
-			digitalWrite(highStopPins[i], HIGH); // Turn on pullup
+			pinModeNonDue(highStopPins[i], INPUT_PULLUP);
 		}
 	}
 
@@ -281,16 +269,8 @@ void Platform::Init()
 	{
 		if (heatOnPins[i] >= 0)
 		{
-			if(i == E0_HEATER || i == E1_HEATER) // HEAT_ON_PINS {6, X5, X7, 7, 8, 9}
-			{
-				digitalWriteNonDue(heatOnPins[i], HIGH);	// turn the heater off
-				pinModeNonDue(heatOnPins[i], OUTPUT);
-			}
-			else
-			{
-				digitalWrite(heatOnPins[i], HIGH);			// turn the heater off
-				pinMode(heatOnPins[i], OUTPUT);
-			}
+			digitalWriteNonDue(heatOnPins[i], HIGH);	// turn the heater off
+			pinModeNonDue(heatOnPins[i], OUTPUT);
 		}
 		analogReadResolution(12);
 		thermistorFilters[i].Init(analogRead(tempSensePins[i]));
@@ -306,14 +286,12 @@ void Platform::Init()
 
 	if (coolingFanPin >= 0)
 	{
-	  //pinModeNonDue(coolingFanPin, OUTPUT); //not required as analogwrite does this automatically
-	  analogWriteNonDue(coolingFanPin, 255); //inverse logic for Duet v0.6 this turns it off
+		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? 255 : 0, true);
 	}
 
 	if (coolingFanRpmPin >= 0)
 	{
-		pinMode(coolingFanRpmPin, INPUT);
-		digitalWrite(coolingFanRpmPin, HIGH); // Turn on pullup
+		pinModeNonDue(coolingFanRpmPin, INPUT_PULLUP, 1500);
 	}
 
 	InitialiseInterrupts();
@@ -341,14 +319,14 @@ void Platform::InitZProbe()
 
 	if (nvData.zProbeType == 1 || nvData.zProbeType == 2)
 	{
-		pinMode(zProbeModulationPin, OUTPUT);
-		digitalWrite(zProbeModulationPin, HIGH);	// enable the IR LED
+		pinModeNonDue(zProbeModulationPin, OUTPUT);
+		digitalWriteNonDue(zProbeModulationPin, HIGH);	// enable the IR LED
 		SetZProbing(false);
 	}
 	else if (nvData.zProbeType == 3)
 	{
-		pinMode(zProbeModulationPin, OUTPUT);
-		digitalWrite(zProbeModulationPin, LOW);		// enable the alternate sensor
+		pinModeNonDue(zProbeModulationPin, OUTPUT);
+		digitalWriteNonDue(zProbeModulationPin, LOW);		// enable the alternate sensor
 		SetZProbing(false);
 	}
 }
@@ -650,7 +628,14 @@ void TC4_Handler()
 
 void FanInterrupt()
 {
-	fanRpmCounter++;
+	++fanInterruptCount;
+	if (fanInterruptCount == fanMaxInterruptCount)
+	{
+		uint32_t now = micros();
+		fanInterval = now - fanLastResetTime;
+		fanLastResetTime = now;
+		fanInterruptCount = 0;
+	}
 }
 
 void Platform::InitialiseInterrupts()
@@ -740,7 +725,7 @@ void Platform::Tick()
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
 		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
 		{
-			digitalWrite(Z_PROBE_MOD_PIN, LOW);					// turn off the IR emitter
+			digitalWriteNonDue(Z_PROBE_MOD_PIN, LOW);					// turn off the IR emitter
 		}
 		++tickState;
 		break;
@@ -753,7 +738,7 @@ void Platform::Tick()
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
 		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
 		{
-			digitalWrite(Z_PROBE_MOD_PIN, HIGH);				// turn on the IR emitter
+			digitalWriteNonDue(Z_PROBE_MOD_PIN, HIGH);				// turn on the IR emitter
 		}
 		tickState = 1;
 		break;
@@ -889,7 +874,7 @@ void Platform::GetStackUsage(size_t* currentStack, size_t* maxStack, size_t* nev
 	if (neverUsed) { *neverUsed = stack_lwm - heapend; }
 }
 
-void Platform::ClassReport(char* className, float &lastTime)
+void Platform::ClassReport(const char* className, float &lastTime)
 {
 	if (!reprap.Debug())
 		return;
@@ -964,24 +949,13 @@ const PidParameters& Platform::GetPidParameters(size_t heater)
 
 // power is a fraction in [0,1]
 
-void Platform::SetHeater(size_t heater, const float& power)
+void Platform::SetHeater(size_t heater, float power)
 {
 	if (heatOnPins[heater] < 0)
 		return;
 
 	byte p = (byte) (255.0 * min<float>(1.0, max<float>(0.0, power)));
-	if (HEAT_ON == 0)
-	{
-		p = 255 - p;
-		if(heater == E0_HEATER || heater == E1_HEATER) //HEAT_ON_PINS {6, X5, X7, 7, 8, 9}
-  		{
-			analogWriteNonDue(heatOnPins[heater], p);
-		}
-		else
-		{
-			analogWrite(heatOnPins[heater], p);
-		}
-	 }
+	analogWriteNonDue(heatOnPins[heater], (HEAT_ON == 0) ? 255 - p : p);
 }
 
 EndStopHit Platform::Stopped(int8_t drive)
@@ -1002,12 +976,12 @@ EndStopHit Platform::Stopped(int8_t drive)
 
 	if (lowStopPins[drive] >= 0)
 	{
-		if (digitalRead(lowStopPins[drive]) == ENDSTOP_HIT)
+		if (digitalReadNonDue(lowStopPins[drive]) == ENDSTOP_HIT)
 			return lowHit;
 	}
 	if (highStopPins[drive] >= 0)
 	{
-		if (digitalRead(highStopPins[drive]) == ENDSTOP_HIT)
+		if (digitalReadNonDue(highStopPins[drive]) == ENDSTOP_HIT)
 			return highHit;
 	}
 	return noStop;
@@ -1019,24 +993,14 @@ void Platform::SetDirection(byte drive, bool direction)
 		return;
 
 	bool d = (direction == FORWARDS) ? directions[drive] : !directions[drive];
-	if(drive == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
-	{
-		digitalWriteNonDue(directionPins[drive], d);
-	}
-	else
-	{
-		digitalWrite(directionPins[drive], d);
-	}
+	digitalWriteNonDue(directionPins[drive], d);
 }
 
 void Platform::Disable(byte drive)
 {
 	if(enablePins[drive] < 0)
 		  return;
-	if(drive == Z_AXIS || drive==E0_DRIVE || drive==E2_DRIVE) //ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
-		digitalWriteNonDue(enablePins[drive], DISABLE);
-	else
-		digitalWrite(enablePins[drive], DISABLE);
+	digitalWriteNonDue(enablePins[drive], DISABLE);
 	driveEnabled[drive] = false;
 }
 
@@ -1046,26 +1010,11 @@ void Platform::Step(byte drive)
 		return;
 	if(!driveEnabled[drive] && enablePins[drive] >= 0)
 	{
-		if(drive == Z_AXIS || drive==E0_DRIVE || drive==E2_DRIVE) //ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
-		{
-			digitalWriteNonDue(enablePins[drive], ENABLE);
-		}
-		else
-		{
-			digitalWrite(enablePins[drive], ENABLE);
-		}
+		digitalWriteNonDue(enablePins[drive], ENABLE);
 		driveEnabled[drive] = true;
 	}
-	if(drive == E0_DRIVE || drive == E3_DRIVE) //STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
-	{
-		digitalWriteNonDue(stepPins[drive], 0);
-		digitalWriteNonDue(stepPins[drive], 1);
-	}
-	else
-	{
-		digitalWrite(stepPins[drive], 0);
-		digitalWrite(stepPins[drive], 1);
-	}
+	digitalWriteNonDue(stepPins[drive], 0);
+	digitalWriteNonDue(stepPins[drive], 1);
 }
 
 // current is in mA
@@ -1127,7 +1076,7 @@ void Platform::CoolingFan(float speed)
 		}
 
 		// The cooling fan output pin gets inverted if HEAT_ON == 0
-		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? (255 - p) : p);
+		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? (255 - p) : p, true);
 	}
 }
 
@@ -1135,21 +1084,13 @@ void Platform::CoolingFan(float speed)
 
 float Platform::GetFanRPM()
 {
-	float now = Time();
-	float diff = now - lastRpmResetTime;
-
-	// Intel's 4-pin PWM fan specifications say we get two pulses per revolution.
-	// That means we get 2 ISR calls per pulse and 4 increments per revolution.
-	float result = fanRpmCounter / (4.0 * diff) * 60.0;
-
-	// Collect some values and reset the counters after a few seconds
-	if (diff > COOLING_FAN_RPM_SAMPLE_TIME)
-	{
-		fanRpmCounter = 0;
-		lastRpmResetTime = now;
-	}
-
-	return result;
+	// The ISR sets fanInterval to the number of microseconds it took to get fanMaxInterruptCount interrupts.
+	// We get 2 tacho pulses per revolution, hence 2 interrupts per revolution.
+	// However, if the fan stops then we get no interrupts and fanInterval stops getting updated.
+	// We must recognise this and return zero.
+	return (fanInterval != 0 && micros() - fanLastResetTime < 3000000U)		// if we have a reading and it is less than 3 second old
+			? (float)((30000000U * fanMaxInterruptCount)/fanInterval)		// then calculate RPM assuming 2 interrupts per rev
+			: 0.0;															// else assume fan is off or tacho not connected
 }
 
 // Interrupts
@@ -1205,9 +1146,13 @@ void Platform::Message(char type, const char* message, ...)
 {
 	va_list vargs;
 	va_start(vargs, message);
-	scratchString.vprintf(message, vargs);
+	messageString.vprintf(message, vargs);
 	va_end(vargs);
+	Message(type, messageString);
+}
 
+void Platform::Message(char type, const StringRef& message)
+{
 	switch(type)
 	{
 	case FLASH_LED:
@@ -1230,17 +1175,17 @@ void Platform::Message(char type, const char* message, ...)
 				line->Write(' ', type == DEBUG_MESSAGE);
 			}
 		}
-		line->Write(scratchString.Pointer(), type == DEBUG_MESSAGE);
+		line->Write(message.Pointer(), type == DEBUG_MESSAGE);
 		break;
 
 	case WEB_MESSAGE:
 		// Message that is to be sent to the web
-		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), false);
+		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), false);
 		break;
 
 	case WEB_ERROR_MESSAGE:
 		// Message that is to be sent to the web - flags an error
-		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), true);
+		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), true);
 		break;
 
 	case BOTH_MESSAGE:
@@ -1252,8 +1197,8 @@ void Platform::Message(char type, const char* message, ...)
 				line->Write(' ');
 			}
 		}
-		line->Write(scratchString.Pointer());
-		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), false);
+		line->Write(message.Pointer());
+		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), false);
 		break;
 
 	case BOTH_ERROR_MESSAGE:
@@ -1268,8 +1213,8 @@ void Platform::Message(char type, const char* message, ...)
 				line->Write(' ');
 			}
 		}
-		line->Write(scratchString.Pointer());
-		reprap.GetWebserver()->MessageStringToWebInterface(scratchString.Pointer(), true);
+		line->Write(message.Pointer());
+		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), true);
 		break;
 	}
 }
@@ -1278,9 +1223,13 @@ void Platform::AppendMessage(char type, const char* message, ...)
 {
 	va_list vargs;
 	va_start(vargs, message);
-	scratchString.vprintf(message, vargs);
+	messageString.vprintf(message, vargs);
 	va_end(vargs);
+	AppendMessage(type, messageString);
+}
 
+void Platform::AppendMessage(char type, const StringRef& message)
+{
 	switch(type)
 	{
 	case FLASH_LED:
@@ -1304,17 +1253,17 @@ void Platform::AppendMessage(char type, const char* message, ...)
 				line->Write(' ', type == DEBUG_MESSAGE);
 			}
 		}
-		line->Write(scratchString.Pointer(), type == DEBUG_MESSAGE);
+		line->Write(message.Pointer(), type == DEBUG_MESSAGE);
 		break;
 
 	case WEB_MESSAGE:
 		// Message that is to be sent to the web
-		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), false);
+		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), false);
 		break;
 
 	case WEB_ERROR_MESSAGE:
 		// Message that is to be sent to the web - flags an error
-		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), true);
+		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), true);
 		break;
 
 	case BOTH_MESSAGE:
@@ -1326,8 +1275,8 @@ void Platform::AppendMessage(char type, const char* message, ...)
 				line->Write(' ');
 			}
 		}
-		line->Write(scratchString.Pointer());
-		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), false);
+		line->Write(message.Pointer());
+		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), false);
 		break;
 
 	case BOTH_ERROR_MESSAGE:
@@ -1342,16 +1291,15 @@ void Platform::AppendMessage(char type, const char* message, ...)
 				line->Write(' ');
 			}
 		}
-		line->Write(scratchString.Pointer());
-		reprap.GetWebserver()->AppendReplyToWebInterface(scratchString.Pointer(), true);
+		line->Write(message.Pointer());
+		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), true);
 		break;
 	}
 }
 
-
 void Platform::SetAtxPower(bool on)
 {
-	digitalWrite(atxPowerPin, (on) ? HIGH : LOW);
+	digitalWriteNonDue(atxPowerPin, (on) ? HIGH : LOW);
 }
 
 
@@ -1403,10 +1351,7 @@ void MassStorage::Init()
 	int mounted = f_mount(0, &fileSystem);
 	if (mounted != FR_OK)
 	{
-		platform->Message(HOST_MESSAGE, "Can't mount filesystem 0: code ");
-		snprintf(scratchString, STRING_LENGTH, "%d", mounted);
-		platform->Message(HOST_MESSAGE, scratchString);
-		platform->Message(HOST_MESSAGE, "\n");
+		platform->Message(HOST_MESSAGE, "Can't mount filesystem 0: code %d\n", mounted);
 	}
 }
 
@@ -1559,9 +1504,7 @@ bool MassStorage::Delete(const char* directory, const char* fileName)
 								: fileName;
 	if (f_unlink(location) != FR_OK)
 	{
-		platform->Message(HOST_MESSAGE, "Can't delete file ");
-		platform->Message(HOST_MESSAGE, location);
-		platform->Message(HOST_MESSAGE, "\n");
+		platform->Message(BOTH_MESSAGE, "Can't delete file %s\n", location);
 		return false;
 	}
 	return true;
@@ -1573,9 +1516,7 @@ bool MassStorage::MakeDirectory(const char *parentDir, const char *dirName)
 	const char* location = platform->GetMassStorage()->CombineName(parentDir, dirName);
 	if (f_mkdir(location) != FR_OK)
 	{
-		platform->Message(HOST_MESSAGE, "Can't create directory ");
-		platform->Message(HOST_MESSAGE, location);
-		platform->Message(HOST_MESSAGE, "\n");
+		platform->Message(BOTH_MESSAGE, "Can't create directory %s\n", location);
 		return false;
 	}
 	return true;
@@ -1585,9 +1526,7 @@ bool MassStorage::MakeDirectory(const char *directory)
 {
 	if (f_mkdir(directory) != FR_OK)
 	{
-		platform->Message(HOST_MESSAGE, "Can't create directory ");
-		platform->Message(HOST_MESSAGE, directory);
-		platform->Message(HOST_MESSAGE, "\n");
+		platform->Message(HOST_MESSAGE, "Can't create directory %s\n", directory);
 		return false;
 	}
 	return true;
@@ -1598,11 +1537,7 @@ bool MassStorage::Rename(const char *oldFilename, const char *newFilename)
 {
 	if (f_rename(oldFilename, newFilename) != FR_OK)
 	{
-		platform->Message(HOST_MESSAGE, "Can't rename file or directory ");
-		platform->Message(HOST_MESSAGE, oldFilename);
-		platform->Message(HOST_MESSAGE, " to ");
-		platform->Message(HOST_MESSAGE, newFilename);
-		platform->Message(HOST_MESSAGE, "\n");
+		platform->Message(BOTH_MESSAGE, "Can't rename file or directory %s to %s\n", oldFilename, newFilename);
 		return false;
 	}
 	return true;
@@ -1646,8 +1581,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 	FRESULT openReturn = f_open(&file, location, (writing) ? FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
 	if (openReturn != FR_OK)
 	{
-		platform->Message(BOTH_MESSAGE, "Can't open %s to %s, error code %d\n",
-				location, (writing) ? "write" : "read", openReturn);
+		platform->Message(BOTH_MESSAGE, "Can't open %s to %s, error code %d\n", location, (writing) ? "write" : "read", openReturn);
 		return false;
 	}
 
@@ -1661,7 +1595,7 @@ void FileStore::Duplicate()
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to dup a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to dup a non-open file.\n");
 		return;
 	}
 	++openCount;
@@ -1671,7 +1605,7 @@ bool FileStore::Close()
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to close a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to close a non-open file.\n");
 		return false;
 	}
 	--openCount;
@@ -1695,7 +1629,7 @@ bool FileStore::Seek(unsigned long pos)
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to seek on a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to seek on a non-open file.\n");
 		return false;
 	}
 	if (writing)
@@ -1716,7 +1650,7 @@ unsigned long FileStore::Length()
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to size non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to size non-open file.\n");
 		return 0;
 	}
 	return file.fsize;
@@ -1752,7 +1686,7 @@ bool FileStore::ReadBuffer()
 	FRESULT readStatus = f_read(&file, buf, FILE_BUF_LEN, &lastBufferEntry);	// Read a chunk of file
 	if (readStatus)
 	{
-		platform->Message(HOST_MESSAGE, "Error reading file.\n");
+		platform->Message(BOTH_MESSAGE, "Error reading file.\n");
 		return false;
 	}
 	bufferPointer = 0;
@@ -1764,7 +1698,7 @@ bool FileStore::Read(char& b)
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to read from a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to read from a non-open file.\n");
 		return false;
 	}
 
@@ -1795,7 +1729,7 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to read from a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to read from a non-open file.\n");
 		return -1;
 	}
 	bufferPointer = FILE_BUF_LEN;	// invalidate the buffer
@@ -1803,7 +1737,7 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytes_read);
 	if (readStatus)
 	{
-		platform->Message(HOST_MESSAGE, "Error reading file.\n");
+		platform->Message(BOTH_MESSAGE, "Error reading file.\n");
 		return -1;
 	}
 	bytesRead += bytes_read;
@@ -1817,7 +1751,7 @@ bool FileStore::WriteBuffer()
 		bool ok = InternalWriteBlock((const char*)buf, bufferPointer);
 		if (!ok)
 		{
-			platform->Message(HOST_MESSAGE, "Error writing file.  Disc may be full.\n");
+			platform->Message(BOTH_MESSAGE, "Error writing file. Disc may be full.\n");
 			return false;
 		}
 		bufferPointer = 0;
@@ -1829,7 +1763,7 @@ bool FileStore::Write(char b)
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to write byte to a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to write byte to a non-open file.\n");
 		return false;
 	}
 	buf[bufferPointer] = b;
@@ -1845,7 +1779,7 @@ bool FileStore::Write(const char* b)
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to write string to a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to write string to a non-open file.\n");
 		return false;
 	}
 	int i = 0;
@@ -1864,7 +1798,7 @@ bool FileStore::Write(const char *s, unsigned int len)
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to write block to a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to write block to a non-open file.\n");
 		return false;
 	}
 	if (!WriteBuffer())
@@ -1886,7 +1820,7 @@ bool FileStore::InternalWriteBlock(const char *s, unsigned int len)
 	}
  	if ((writeStatus != FR_OK) || (bytesWritten != len))
  	{
- 		platform->Message(HOST_MESSAGE, "Error writing file. Disc may be full.\n");
+ 		platform->Message(BOTH_MESSAGE, "Error writing file. Disc may be full.\n");
  		return false;
  	}
  	return true;
@@ -1896,7 +1830,7 @@ bool FileStore::Flush()
 {
 	if (!inUse)
 	{
-		platform->Message(HOST_MESSAGE, "Attempt to flush a non-open file.\n");
+		platform->Message(BOTH_MESSAGE, "Attempt to flush a non-open file.\n");
 		return false;
 	}
 	if (!WriteBuffer())

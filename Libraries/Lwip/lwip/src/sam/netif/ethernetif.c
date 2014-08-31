@@ -66,8 +66,6 @@
 #include <string.h>
 #include "conf_eth.h"
 
-#include "SamNonDuePin.h"
-
 //void my_ethernetif_input(void * pvParameters);
 //#include "gpio.h"
 
