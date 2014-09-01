@@ -478,7 +478,7 @@ void Move::DoLookAhead()
     n1 = lookAheadRingGetPointer;
     n0 = n1->Previous();
     n2 = n1->Next();
-    while(n2 != lookAheadRingAddPointer)
+    do
     {
       if(!(n1->Processed() & complete))
       {
@@ -496,12 +496,12 @@ void Move::DoLookAhead()
       n0 = n1;
       n1 = n2;
       n2 = n2->Next();
-    }
+    } while(n2 != lookAheadRingAddPointer);
     
     // Now run down
     
     do
-    { 
+    {
       if(!(n1->Processed() & complete))
       {
         if(n1->Processed() & vCosineSet)
@@ -511,14 +511,13 @@ void Move::DoLookAhead()
           if(lookAheadDDA->Init(n1, u, v) & change)
           {
             n0->SetV(u);
-            n1->SetV(v); 
+            n1->SetV(v);
           }
           n1->SetProcessed(complete);
         }
       }
-      n2 = n1;
       n1 = n0;
-      n0 = n0->Previous();      
+      n0 = n0->Previous();
     } while(n0 != lookAheadRingGetPointer);
     n0->SetProcessed(complete);
   }
@@ -914,7 +913,7 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 
 	feedRate = myLookAheadEntry->FeedRate();
 
-	float d = 0.5*(feedRate*feedRate - u*u)/acceleration; // d = (v1^2 - v0^2)/2a
+	float d = 0.5*(fabs(feedRate*feedRate - u*u))/acceleration; // d = (v1^2 - v0^2)/2a
 	stopAStep = (long)roundf((d*totalSteps)/distance);
 
 	// At which DDA step should we start decelerating?
@@ -965,34 +964,6 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 
 		stopAStep = (long)((dCross*totalSteps)/distance);
 		startDStep = stopAStep + 1;
-	}
-	else if(totalSteps > 5 && stopAStep <= 1)
-	{
-		result = change;
-		u = myLookAheadEntry->FeedRate();
-
-		if (startDStep >= totalSteps - 1)
-		{
-			// If we try to get to speed in a single step, the error from the
-			// Euler integration can create silly speeds.
-
-			// Note by zpl: This may not be needed in dc42's fork, because all speeds are checked
-			// after the integration has been done, but I left this in just in case.
-
-			stopAStep = 0;
-			startDStep = totalSteps;
-			v = u;
-		}
-		else
-		{
-			// Sometimes we get silly acceleration values, because (feedRate*feedRate - u*u) can become less than zero.
-
-			stopAStep = fabs(stopAStep);
-			if (stopAStep <= 1 || stopAStep >= startDStep)
-			{
-				stopAStep = startDStep - 1;
-			}
-		}
 	}
 
 	return result;
