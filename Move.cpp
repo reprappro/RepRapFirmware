@@ -462,7 +462,6 @@ void Move::DoLookAhead()
   
   LookAhead* n0;
   LookAhead* n1;
-  LookAhead* n2;
   
   // If there are a reasonable number of moves in there (LOOK_AHEAD), or if we are
   // doing single moves with no other move immediately following on, run up and down
@@ -477,12 +476,11 @@ void Move::DoLookAhead()
     
     n1 = lookAheadRingGetPointer;
     n0 = n1->Previous();
-    n2 = n1->Next();
-    do
+    while (n1 != lookAheadRingAddPointer)
     {
-      if(!(n1->Processed() & complete))
+      if(!(n0->Processed() & complete))
       {
-        if(n1->Processed() & vCosineSet)
+        if(n0->Processed() & vCosineSet)
         {
           float u = n0->V();
           float v = n1->V();
@@ -494,9 +492,8 @@ void Move::DoLookAhead()
         }
       }
       n0 = n1;
-      n1 = n2;
-      n2 = n2->Next();
-    } while(n2 != lookAheadRingAddPointer);
+      n1 = n1->Next();
+    }
     
     // Now run down
     
@@ -518,7 +515,7 @@ void Move::DoLookAhead()
       }
       n1 = n0;
       n0 = n0->Previous();
-    } while(n0 != lookAheadRingGetPointer);
+    } while (n0 != lookAheadRingGetPointer);
     n0->SetProcessed(complete);
   }
 
@@ -527,35 +524,32 @@ void Move::DoLookAhead()
   
   if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
   {
-    n1 = lookAheadRingGetPointer;
-    n0 = n1->Previous();
-    n2 = n1->Next();
-    while(n2 != lookAheadRingAddPointer)
+    n0 = lookAheadRingGetPointer;
+    n1 = n0->Next();
+    while(n1 != lookAheadRingAddPointer)
     {
-      if(n1->Processed() == unprocessed)
+      if(n0->Processed() == unprocessed)
       {
-        //float c = fmin(n1->FeedRate(), n2->FeedRate());
-    	float c = n1->V();
-        float m = fmin(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
-        c = c*n1->Cosine();
+        float c = n0->V();
+        float m = fmin(n0->MinSpeed(), n1->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
+        c = c*n0->Cosine();
         if(c < m)
         {
         	c = m;
         }
-        n1->SetV(c);
-        n1->SetProcessed(vCosineSet);
+        n0->SetV(c);
+        n0->SetProcessed(vCosineSet);
       } 
       n0 = n1;
-      n1 = n2;
-      n2 = n2->Next();
+      n1 = n1->Next();
     }
 
     // If we are just doing one isolated move, set its end velocity to an appropriate minimum speed.
 
     if(addNoMoreMoves || !gCodes->HaveIncomingData())
     {
-    	n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
-    	n1->SetProcessed(complete);
+      n0->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
+      n0->SetProcessed(complete);
     }
   }
 }
