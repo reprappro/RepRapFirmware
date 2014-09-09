@@ -99,7 +99,7 @@ Licence: GPL
 #define Z_PROBE_AD_VALUE (400) // Default for the Z probe - should be overwritten by experiment
 #define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
-#define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_MOD_PIN (X25)					// Digital pin number to turn the IR LED on (high) or off (low)
 #define MAX_FEEDRATES {100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0} // mm/sec
 #define ACCELERATIONS {500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0} // mm/sec^2
 #define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0}
@@ -114,7 +114,7 @@ Licence: GPL
 
 // AXES
 
-#define AXIS_LENGTHS {220, 200, 200} 			// mm
+#define AXIS_LENGTHS {230, 200, 200} 			// mm
 #define HOME_FEEDRATES {50.0, 50.0, 1.0} 		// mm/sec
 #define HEAD_OFFSETS {0.0, 0.0, 0.0}			// mm
 
@@ -939,7 +939,7 @@ inline void Platform::PollZHeight()
 	{
 		zModOnThisTime = !zModOnThisTime;
 		// Reverse the modulation, ready for next time
-		digitalWrite(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
+		digitalWriteNonDue(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
 	} else
 		zModOnThisTime = true; // Defensive...
 }
