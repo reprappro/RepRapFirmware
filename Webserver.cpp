@@ -255,7 +255,7 @@ void Webserver::Exit()
 {
 	httpInterpreter->CancelUpload();
 
-	platform->Message(HOST_MESSAGE, "Webserver class exited.\n");
+	platform->Message(BOTH_MESSAGE, "Webserver class exited.\n");
 	webserverActive = false;
 }
 
@@ -358,10 +358,6 @@ void Webserver::ProcessGcode(const char* gc)
 			httpInterpreter->ReceivedGcodeReply();
 			telnetInterpreter->HandleGcodeReply(gcodeReply.Pointer());
 		}
-	}
-	else if (StringStartsWith(gc, "M25") && !isDigit(gc[3]))	// pause SD card print
-	{
-		reprap.GetGCodes()->PauseSDPrint();
 	}
 	else
 	{
@@ -1559,8 +1555,7 @@ bool Webserver::HttpInterpreter::ProcessMessage()
     	platform->Message(HOST_MESSAGE, "HTTP request:");
     	for (unsigned int i = 0; i < numCommandWords; ++i)
     	{
-    		platform->AppendMessage(HOST_MESSAGE, " ");
-    		platform->AppendMessage(HOST_MESSAGE, commandWords[i]);
+    		platform->AppendMessage(HOST_MESSAGE, " %s", commandWords[i]);
     	}
     	platform->AppendMessage(HOST_MESSAGE, "\n");
     }

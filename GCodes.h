@@ -38,8 +38,11 @@ class GCodeBuffer
 {
   public:
     GCodeBuffer(Platform* p, const char* id);
+    //const char *Identity() const { return identity; }
     void Init(); 										// Set it up
     bool Put(char c);									// Add a character to the end
+    bool Put(const char *str, size_t len);				// Add an entire string
+    bool IsEmpty() const;								// Does this buffer contain any code?
     bool Seen(char c);									// Is a character present?
     float GetFValue();									// Get a float after a key letter
     int GetIValue();									// Get an integer after a key letter
@@ -53,6 +56,7 @@ class GCodeBuffer
     void SetFinished(bool f);							// Set the G Code executed (or not)
     void Pause();
     void CancelPause();
+    void Resume();
     const char* WritingFileDirectory() const;			// If we are writing the G Code to a file, where that file is
     void SetWritingFileDirectory(const char* wfd);		// Set the directory for the file to write the GCode in
     int GetToolNumberAdjust() const { return toolNumberAdjust; }
@@ -71,6 +75,38 @@ class GCodeBuffer
     State state;										// Idle, executing or paused
     const char* writingFileDirectory;					// If the G Code is going into a file, where that is
     int toolNumberAdjust;
+};
+
+//****************************************************************************************************
+
+// The item class for the internal code queue
+
+// We don't want ordinary commands to be executed too early, so we must buffer non-moving commands
+// and execute them in-time in GCodes::Spin while regular moves are fed into the look-ahead queue.
+
+class CodeQueue
+{
+	public:
+
+		CodeQueue(const char *cmd, unsigned int executeAtMove);
+		~CodeQueue();
+		void SetNext(CodeQueue *n);
+		CodeQueue *Next() const;
+
+		unsigned int ExecuteAtMove() const;
+		const char *GetCommand() const;
+		size_t GetCommandLength() const;
+
+		void Execute();
+		bool IsExecuting() const;
+
+	private:
+
+		char *command;
+		size_t commandLength;
+		unsigned int moveToExecute;
+		CodeQueue *next;
+		bool executing;
 };
 
 //****************************************************************************************************
@@ -98,9 +134,11 @@ class GCodes
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
     void SetAxisIsHomed(uint8_t axis) { axisIsHomed[axis] = true; }		// Tell us that the axis is now homes
     float GetExtruderPosition(uint8_t extruder) const;					// Get the amount of filament extruded
-    void PauseSDPrint();												// Pause the current print from SD card
     float GetSpeedFactor() const { return speedFactor * 60.0; }			// Return the current speed factor
     const float *GetExtrusionFactors() const { return extrusionFactors; } // Return the current extrusion factors
+    void MoveQueued();													// Called by the Move class to announce a new move
+    bool CanMove() const;												// Check if a new DDA can be started (called by ISR)
+    void MoveCompleted();												// Called by the DDA class to indicate that a move has been completed (called by ISR)
     
   private:
   
@@ -109,10 +147,12 @@ class GCodes
     bool DoCannedCycleMove(EndstopChecks ce);							// Do a move from an internally programmed canned cycle
     bool DoFileCannedCycles(const char* fileName);						// Run a GCode macro in a file
     bool FileCannedCyclesReturn();										// End a macro
-    bool ActOnCode(GCodeBuffer* gb);									// Do a G, M or T Code
+    bool CanQueueCode(GCodeBuffer *gb) const;							// Can we queue this code for delayed execution?
+    bool ActOnCode(GCodeBuffer* gb, bool executeImmediately = false);	// Do a G, M or T Code
     bool HandleGcode(GCodeBuffer* gb);									// Do a G code
     bool HandleMcode(GCodeBuffer* gb);									// Do an M code
     bool HandleTcode(GCodeBuffer* gb);									// Do a T code
+    void CancelPrint();													// Cancel the current print
     int SetUpMove(GCodeBuffer* gb);										// Pass a move on to the Move module
     bool DoDwell(GCodeBuffer *gb);										// Wait for a bit
     bool DoDwellTime(float dwell);										// Really wait for a bit
@@ -129,7 +169,7 @@ class GCodes
     bool NoHome() const;												// Are we homing and not finished?
     bool Push();														// Push feedrate etc on the stack
     bool Pop();															// Pop feedrate etc
-    bool DisableDrives();												// Turn the motors off
+    void DisableDrives();												// Turn the motors off
     void SetEthernetAddress(GCodeBuffer *gb, int mCode);				// Does what it says
     void SetMACAddress(GCodeBuffer *gb);								// Deals with an M540
     void HandleReply(bool error, bool fromLine, const char* reply, 		// If the GCode is from the serial interface, reply to it
@@ -156,7 +196,8 @@ class GCodes
     GCodeBuffer* webGCode;						// The sources...
     GCodeBuffer* fileGCode;						// ...
     GCodeBuffer* serialGCode;					// ...
-    GCodeBuffer* cannedCycleGCode;				// ... of G Codes
+    GCodeBuffer* cannedCycleGCode;				// ...
+    GCodeBuffer* queuedGCode;					// ... of G Codes
     bool moveAvailable;							// Have we seen a move G Code and set it up?
     float moveBuffer[DRIVES+1]; 				// Move coordinates; last is feed rate
     EndstopChecks endStopsToCheck;				// Which end stops we check them on the next move
@@ -182,6 +223,7 @@ class GCodes
     char* eofString;							// What's at the end of an HTML file?
     uint8_t eofStringCounter;					// Check the...
     uint8_t eofStringLength;					// ... EoF string as we read.
+    bool homing;								// Are we homing any axes?
     bool homeX;									// True to home the X axis this move
     bool homeY;									// True to home the Y axis this move
     bool homeZ;									// True to home the Z axis this move
@@ -198,6 +240,9 @@ class GCodes
     float speedFactorChange;					// factor by which we changed the speed factor since the last move
     float extrusionFactors[DRIVES - AXES];		// extrusion factors (normally 1.0)
     int8_t toolChangeSequence;					// Steps through the tool change procedure
+    CodeQueue *internalCodeQueue;				// Linked list of all the queued codes
+    unsigned int totalMoves;					// Total number of moves that have been fed into the look-ahead
+    volatile unsigned int movesCompleted;		// Number of moves that have been completed (changed by ISR)
 };
 
 //*****************************************************************************************************
@@ -241,6 +286,14 @@ inline void GCodeBuffer::CancelPause()
 	}
 }
 
+inline void GCodeBuffer::Resume()
+{
+	if (state == paused)
+	{
+		state = executing;
+	}
+}
+
 inline const char* GCodeBuffer::WritingFileDirectory() const
 {
 	return writingFileDirectory;
@@ -253,7 +306,9 @@ inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 
 inline bool GCodes::PrintingAFile() const
 {
-	return fileBeingPrinted.IsLive();
+	// FIXME: End G-codes are likely to be queued up, so it's probably better
+	// to keep the file open somehow until all codes are finished
+	return fileBeingPrinted.IsLive() || internalCodeQueue != NULL;
 }
 
 inline bool GCodes::HaveIncomingData() const

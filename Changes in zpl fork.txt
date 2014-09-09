@@ -12,6 +12,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * Cold extrudes: M302 can allow or deny them with the "P" parameter, it reports the status if no arguments are specified
 
+* Discrimination between cold extrudes and cold retracts for filament changing (minimum retraction temperature is 90°C)
+
 * Z-probing: M558 can be used to specify the axes for which the Z probe will be used (e.g. M558 P1 X0 Y0 Z1 for Z-probing only)
 
 * File information for files being printed are displayed on page reload (except for layer stats)
@@ -22,7 +24,17 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * Added interrupt to pin 25 (Duet) / pin 10 (Duex4) on the expansion header for 4-pin PWM tacho line (can be viewed with my web interface fork)
 
-* My firmware binaries are built with -O3 optimization enabled
+* Firmware binaries are built with -O3 optimization enabled
+
+* Information can be read from both Slic3r and Cura G-code files for the web interface
+
+* Calling G28 and M1 resets homed axes
+
+* M0 does NOT disable any drives. IMHO, M1 is absolutely sufficient for this purpose.
+
+* All non-moving codes are queued to ensure they're executed in-time
+
+* When prints are paused, all the moves will stop as soon as the current move is complete
 
 * Bug fix: Layer height and filament usage for web interface are read from both start and end of a gcode file
 

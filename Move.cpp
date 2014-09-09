@@ -128,112 +128,135 @@ void Move::Init()
 
   lastTime = platform->Time();
   longWait = lastTime;
+
+  state = running;
   active = true;  
 }
 
 void Move::Exit()
 {
-  platform->Message(HOST_MESSAGE, "Move class exited.\n");
+  platform->Message(BOTH_MESSAGE, "Move class exited.\n");
   active = false;
 }
 
 void Move::Spin()
 {
-  if(!active)
-    return;
-    
-  // Do some look-ahead work, if there's any to do
-    
-  DoLookAhead();
-  
-  // If there's space in the DDA ring, and there are completed
-  // moves in the look-ahead ring, transfer them.
- 
-  if(!DDARingFull())
-  {
-     LookAhead* nextFromLookAhead = LookAheadRingGet();
-     if(nextFromLookAhead != NULL)
-     {
-       if(!DDARingAdd(nextFromLookAhead))
-       {
-         platform->Message(HOST_MESSAGE, "Can't add to non-full DDA ring!\n"); // Should never happen...
-       }
-     }
-  }
-  
-  // If we either don't want to, or can't, add to the look-ahead ring, go home.
-  
-  if(addNoMoreMoves || LookAheadRingFull())
-  {
-	  platform->ClassReport("Move", longWait);
-	  return;
-  }
- 
-  // If there's a G Code move available, add it to the look-ahead
-  // ring for processing.
+	if (!active)
+		return;
 
-  EndstopChecks endStopsToCheck;
-  if(gCodes->ReadMove(nextMove, endStopsToCheck))
-  {
-	Transform(nextMove);
+	// Do some look-ahead work, if there's any to do
 
-    currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
+	DoLookAhead();
 
-    bool noMove = true;
-    for(int8_t drive = 0; drive < DRIVES; drive++)
-    {
-    	nextMachineEndPoints[drive] = LookAhead::EndPointToMachine(drive, nextMove[drive]);
-    	if(drive < AXES)
-    	{
-    		if(nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
-    		{
-    		    noMove = false;
-    		}
-    		normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
-    	} else
-    	{
-    		if(nextMachineEndPoints[drive] != 0)
-    		{
-    		    noMove = false;
-    		}
-    		normalisedDirectionVector[drive] = nextMove[drive];
-    	}
-    }
+	// If there's space in the DDA ring, and there are completed
+	// moves in the look-ahead ring, transfer them.
 
-    // Throw it away if there's no real movement.
-    
-    if(noMove)
-    {
-       platform->ClassReport("Move", longWait);
-       return;
-    }
-    
-    // Compute the direction of motion, moved to the positive hyperquadrant
+	if (!DDARingFull())
+	{
+		LookAhead* nextFromLookAhead = LookAheadRingGet();
+		if (nextFromLookAhead != NULL)
+		{
+			if (!DDARingAdd(nextFromLookAhead))
+			{
+				platform->Message(HOST_MESSAGE, "Can't add to non-full DDA ring!\n"); // Should never happen...
+			}
+		}
+	}
 
-    Absolute(normalisedDirectionVector, DRIVES);
-    if(Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
-    {
-        platform->Message(HOST_MESSAGE, "\nAttempt to normalise zero-length move.\n");  // Should never get here - noMove above
-        platform->ClassReport("Move", longWait);
-        return;
-    }
-    
-    // Real move - record its feedrate with it, not here.
+	// If we either don't want to, or can't, add to the look-ahead ring, go home.
 
-    currentFeedrate = -1.0;
+	if ((addNoMoreMoves && state != cancelled) || LookAheadRingFull())
+	{
+		platform->ClassReport("Move", longWait);
+		return;
+	}
 
-    // Set the feedrate maximum and minimum, and the acceleration
+	// If there's a G Code move available, add it to the look-ahead
+	// ring for processing.
 
-    float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
-    float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
-    float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
+	EndstopChecks endStopsToCheck;
+	if (gCodes->ReadMove(nextMove, endStopsToCheck))
+	{
+		Transform(nextMove);
 
-    if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
-    {
-      platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
-    }
-  }
-  platform->ClassReport("Move", longWait);
+		currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
+
+		bool noMove = true;
+		for(int8_t drive = 0; drive < DRIVES; drive++)
+		{
+			nextMachineEndPoints[drive] = LookAhead::EndPointToMachine(drive, nextMove[drive]);
+			if (drive < AXES)
+			{
+				if (nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
+				{
+					noMove = false;
+				}
+				normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
+			}
+			else
+			{
+				if (nextMachineEndPoints[drive] != 0)
+				{
+					noMove = false;
+				}
+				normalisedDirectionVector[drive] = nextMove[drive];
+			}
+		}
+
+		// Throw it away if there's no real movement.
+
+		if (noMove)
+		{
+			platform->ClassReport("Move", longWait);
+			return;
+		}
+
+		// Compute the direction of motion, moved to the positive hyperquadrant
+
+		Absolute(normalisedDirectionVector, DRIVES);
+		if (Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
+		{
+			platform->Message(HOST_MESSAGE, "\nAttempt to normalise zero-length move.\n");  // Should never get here - noMove above
+			platform->ClassReport("Move", longWait);
+			return;
+		}
+
+		// Real move - record its feedrate with it, not here.
+
+		currentFeedrate = -1.0;
+
+		// Set the feedrate maximum and minimum, and the acceleration
+
+		float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
+		float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
+		float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
+
+		if (LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
+		{
+			if (state != cancelled)
+			{
+				// Tell GCodes class we're about to perform a new move
+				reprap.GetGCodes()->MoveQueued();
+			}
+		}
+		else
+		{
+			platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+		}
+	}
+	else if (state == cancelled && LookAheadRingEmpty() && DDARingEmpty())
+	{
+		// Make sure the last look-ahead entry points to the same coordinates we're at right now
+		for(uint8_t i=0; i<=DRIVES; i++)
+		{
+			lastMove->endPoint[i] = LookAhead::EndPointToMachine(i, liveCoordinates[i]);
+		}
+		lookAheadRingAddPointer->SetProcessed(released);
+
+		// We've skipped all incoming moves, so reset our state again
+		state = running;
+	}
+	platform->ClassReport("Move", longWait);
 }
 
 
@@ -327,7 +350,26 @@ void Move::SetFeedrate(float feedRate)
 
 void Move::Diagnostics() 
 {
-  platform->AppendMessage(BOTH_MESSAGE, "Move Diagnostics:\n");
+	platform->AppendMessage(BOTH_MESSAGE, "Move Diagnostics:\n");
+	platform->AppendMessage(BOTH_MESSAGE, "State: ");
+	switch (state)
+	{
+		case running:
+			platform->AppendMessage(BOTH_MESSAGE, "running\n");
+			break;
+
+		case paused:
+			platform->AppendMessage(BOTH_MESSAGE, "paused\n");
+			break;
+
+		case cancelled:
+			platform->AppendMessage(BOTH_MESSAGE, "cancelled\n");
+			break;
+
+		default:
+			platform->AppendMessage(BOTH_MESSAGE, "unknown\n");
+			break;
+	}
 
 /*  if(active)
     platform->Message(HOST_MESSAGE, " active\n");
@@ -366,31 +408,37 @@ void Move::Diagnostics()
 
 bool Move::GetCurrentMachinePosition(float m[])
 {
-  if(LookAheadRingFull())
-    return false;
-    
-  for(int8_t i = 0; i < DRIVES; i++)
-  {
-    if(i < AXES)
-    {
-      m[i] = lastMove->MachineToEndPoint(i);
-    }
-    else
-    {
-      m[i] = 0.0; //FIXME This resets extruders to 0.0, even the inactive ones (is this behaviour desired?)
-      //m[i] = lastMove->MachineToEndPoint(i); //FIXME TEST alternative that does not reset extruders to 0
-    }
-  }
-  if(currentFeedrate >= 0.0)
-  {
-    m[DRIVES] = currentFeedrate;
-  }
-  else
-  {
-    m[DRIVES] = lastMove->FeedRate();
-  }
-  currentFeedrate = -1.0;
-  return true;
+	// If moves are still running, use the last look-ahead entry to retrieve the current position
+	if (state == running)
+	{
+		if(LookAheadRingFull())
+			return false;
+
+		for(int8_t i = 0; i < DRIVES; i++)
+		{
+			m[i] = lastMove->MachineToEndPoint(i);
+		}
+		if(currentFeedrate >= 0.0)
+		{
+			m[DRIVES] = currentFeedrate;
+		}
+		else
+		{
+			m[DRIVES] = lastMove->FeedRate();
+		}
+		currentFeedrate = -1.0;
+		return true;
+	}
+	// If our state is either paused or cancelled, return liveCoordinates instead
+	else if (NoLiveMovement())
+	{
+		for(int8_t drive = 0; drive <= DRIVES; drive++)
+		{
+			m[drive] = liveCoordinates[drive];
+		}
+		return true;
+	}
+	return false;
 }
 
 // Return the transformed machine coordinates
@@ -417,7 +465,7 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     }
     if(ddaRingAddPointer->Active())  // Should never happen...
     {
-      platform->Message(HOST_MESSAGE, "Attempt to alter an active ring buffer entry!\n");
+      platform->Message(BOTH_ERROR_MESSAGE, "Attempt to alter an active ring buffer entry!\n");
       ReleaseDDARingLock();
       return false;
     }
@@ -558,33 +606,55 @@ void Move::DoLookAhead()
 
 void Move::Interrupt()
 {
-  // Have we got a live DDA?
-  
-  if(dda == NULL)
-  {
-    // No - see if a new one is available.
-    
-    dda = DDARingGet();    
-    if(dda != NULL)
-    {
-      dda->Start();  // Yes - got it.  So fire it up.
-    }
-    return;   
-  }
-  
-  // We have a DDA.  Has it finished?
-  
-  if(dda->Active())
-  {
-    // No - it's still live.  Step it and return.
-    
-    dda->Step();
-    return;
-  }
-  
-  // Yes - it's finished.  Throw it away so the code above will then find a new one.
-  
-  dda = NULL;
+	// Have we cancelled all pending moves?
+
+	if (state == cancelled && dda == NULL)
+	{
+		dda = DDARingGet();
+		if (dda != NULL)
+		{
+			dda->Release();
+			dda = NULL;
+		}
+		return;
+	}
+
+	// Have we got a live DDA?
+
+	if(dda == NULL)
+	{
+		// If the print is either paused or we're waiting for another code to
+		// complete, check for a new DDA next time this ISR is called.
+
+		if (state == paused || !reprap.GetGCodes()->CanMove())
+		{
+			return;
+		}
+
+		// No - see if a new one is available.
+
+		dda = DDARingGet();
+		if(dda != NULL)
+		{
+			dda->Start(); // Yes - got it.  So fire it up if the print is still running.
+		}
+		return;
+	}
+
+	// We have a DDA.  Has it finished?
+
+	if(dda->Active())
+	{
+		// No - it's still live.  Step it and return.
+
+		dda->Step();
+		return;
+	}
+
+	// Yes - it's finished.  Throw it away so the code above will then find a new one.
+
+	dda->Release();
+	dda = NULL;
 }
 
 // Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
@@ -595,7 +665,7 @@ bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, 
       return false;
     if(!(lookAheadRingAddPointer->Processed() & released)) // Should never happen...
     {
-      platform->Message(HOST_MESSAGE, "Attempt to alter a non-released lookahead ring entry!\n");
+      platform->Message(BOTH_ERROR_MESSAGE, "Attempt to alter a non-released lookahead ring entry!\n");
       return false;
     }
     lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ce);
@@ -644,7 +714,7 @@ void Move::BedTransform(float xyzPoint[]) const
 		break;
 
 	default:
-		platform->Message(HOST_MESSAGE, "BedTransform: wrong number of sample points.");
+		platform->Message(BOTH_ERROR_MESSAGE, "BedTransform: wrong number of sample points.");
 	}
 }
 
@@ -673,7 +743,7 @@ void Move::InverseBedTransform(float xyzPoint[]) const
 		break;
 
 	default:
-		platform->Message(HOST_MESSAGE, "InverseBedTransform: wrong number of sample points.");
+		platform->Message(BOTH_ERROR_MESSAGE, "InverseBedTransform: wrong number of sample points.");
 	}
 }
 
@@ -721,7 +791,7 @@ void Move::SetAxisCompensation(int8_t axis, float tangent)
 		tanXZ = tangent;
 		break;
 	default:
-		platform->Message(HOST_MESSAGE, "SetAxisCompensation: dud axis.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "SetAxisCompensation: dud axis.\n");
 	}
 }
 
@@ -763,7 +833,7 @@ float Move::TriangleZ(float x, float y) const
 			return l1 * baryZBedProbePoints[i] + l2 * baryZBedProbePoints[j] + l3 * baryZBedProbePoints[4];
 		}
 	}
-	platform->Message(HOST_MESSAGE, "Triangle interpolation: point outside all triangles!");
+	platform->Message(BOTH_ERROR_MESSAGE, "Triangle interpolation: point outside all triangles!");
 	return 0.0;
 }
 
@@ -832,7 +902,7 @@ void Move::SetProbedBedEquation(StringRef& reply)
 		break;
 
 	default:
-		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
 	}
 
 	reply.copy("Bed equation fits points");
@@ -1019,7 +1089,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   {
 	if(reprap.Debug())
 	{
-		platform->Message(HOST_MESSAGE, "DDA.Init(): Null movement.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "DDA.Init(): Null movement.\n");
 	}
     myLookAheadEntry->Release();
     return result;
@@ -1059,7 +1129,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
     velocity = instantDv;
     if(reprap.Debug())
     {
-    	platform->Message(HOST_MESSAGE, "DDA.Init(): Zero or negative initial velocity!\n");
+    	platform->Message(BOTH_ERROR_MESSAGE, "DDA.Init(): Zero or negative initial velocity!\n");
     }
   }
   
@@ -1180,12 +1250,23 @@ void DDA::Step()
   {
 	for(int8_t drive = 0; drive < DRIVES; drive++)
 	{
-		move->liveCoordinates[drive] = myLookAheadEntry->MachineToEndPoint(drive); // Don't use SetLiveCoordinates because that applies the transform
+	  move->liveCoordinates[drive] = myLookAheadEntry->MachineToEndPoint(drive); // Don't use SetLiveCoordinates because that applies the transform
 	}
 	move->liveCoordinates[DRIVES] = myLookAheadEntry->FeedRate();
+
+	// If this is the last move after the print has been cancelled, don't tell GCodes about any completed move
+	if (move->state != Move::cancelled)
+	{
+	  reprap.GetGCodes()->MoveCompleted();
+	}
+  }
+}
+
+// Called when the DDA is complete
+void DDA::Release()
+{
     myLookAheadEntry->Release();
     platform->SetInterrupt(STANDBY_INTERRUPT_RATE);
-  }
 }
 
 //***************************************************************************************************

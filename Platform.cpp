@@ -508,7 +508,7 @@ float Platform::Time()
 
 void Platform::Exit()
 {
-	Message(HOST_MESSAGE, "Platform class exited.\n");
+	Message(BOTH_MESSAGE, "Platform class exited.\n");
 	active = false;
 }
 
@@ -523,7 +523,7 @@ void Platform::SetEmulating(Compatibility c)
 {
 	if (c != me && c != reprapFirmware && c != marlin)
 	{
-		Message(HOST_MESSAGE, "Attempt to emulate unsupported firmware.\n");
+		Message(BOTH_ERROR_MESSAGE, "Attempt to emulate unsupported firmware.\n");
 		return;
 	}
 	if (c == reprapFirmware)
@@ -786,7 +786,7 @@ void Platform::Diagnostics()
 	// Print memory stats and error codes to USB and copy them to the current webserver reply
 	const char *ramstart = (char *) 0x20070000;
 	const struct mallinfo mi = mallinfo();
-	AppendMessage(BOTH_MESSAGE, "Memory usage:\n\n");
+	AppendMessage(BOTH_MESSAGE, "Memory usage:\n");
 	AppendMessage(BOTH_MESSAGE, "Program static ram used: %d\n", &_end - ramstart);
 	AppendMessage(BOTH_MESSAGE, "Dynamic ram used: %d\n", mi.uordblks);
 	AppendMessage(BOTH_MESSAGE, "Recycled dynamic ram: %d\n", mi.fordblks);
@@ -1100,7 +1100,7 @@ void Platform::SetInterrupt(float s) // Seconds
 	if (s <= 0.0)
 	{
 		//NVIC_DisableIRQ(TC3_IRQn);
-		Message(HOST_MESSAGE, "Negative interrupt!\n");
+		Message(BOTH_ERROR_MESSAGE, "Negative interrupt!\n");
 		s = STANDBY_INTERRUPT_RATE;
 	}
 	uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
@@ -1369,7 +1369,7 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 			out++;
 			if (out >= STRING_LENGTH)
 			{
-				platform->Message(HOST_MESSAGE, "CombineName() buffer overflow.");
+				platform->Message(BOTH_ERROR_MESSAGE, "CombineName() buffer overflow.");
 				out = 0;
 			}
 		}
@@ -1389,7 +1389,7 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 		out++;
 		if (out >= STRING_LENGTH)
 		{
-			platform->Message(HOST_MESSAGE, "CombineName() buffer overflow.");
+			platform->Message(BOTH_ERROR_MESSAGE, "CombineName() buffer overflow.");
 			out = 0;
 		}
 	}
@@ -1504,7 +1504,7 @@ bool MassStorage::Delete(const char* directory, const char* fileName)
 								: fileName;
 	if (f_unlink(location) != FR_OK)
 	{
-		platform->Message(BOTH_MESSAGE, "Can't delete file %s\n", location);
+		platform->Message(BOTH_ERROR_MESSAGE, "Can't delete file %s\n", location);
 		return false;
 	}
 	return true;
@@ -1516,7 +1516,7 @@ bool MassStorage::MakeDirectory(const char *parentDir, const char *dirName)
 	const char* location = platform->GetMassStorage()->CombineName(parentDir, dirName);
 	if (f_mkdir(location) != FR_OK)
 	{
-		platform->Message(BOTH_MESSAGE, "Can't create directory %s\n", location);
+		platform->Message(BOTH_ERROR_MESSAGE, "Can't create directory %s\n", location);
 		return false;
 	}
 	return true;
@@ -1526,7 +1526,7 @@ bool MassStorage::MakeDirectory(const char *directory)
 {
 	if (f_mkdir(directory) != FR_OK)
 	{
-		platform->Message(HOST_MESSAGE, "Can't create directory %s\n", directory);
+		platform->Message(BOTH_ERROR_MESSAGE, "Can't create directory %s\n", directory);
 		return false;
 	}
 	return true;
@@ -1537,7 +1537,7 @@ bool MassStorage::Rename(const char *oldFilename, const char *newFilename)
 {
 	if (f_rename(oldFilename, newFilename) != FR_OK)
 	{
-		platform->Message(BOTH_MESSAGE, "Can't rename file or directory %s to %s\n", oldFilename, newFilename);
+		platform->Message(BOTH_ERROR_MESSAGE, "Can't rename file or directory %s to %s\n", oldFilename, newFilename);
 		return false;
 	}
 	return true;
@@ -1581,7 +1581,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 	FRESULT openReturn = f_open(&file, location, (writing) ? FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
 	if (openReturn != FR_OK)
 	{
-		platform->Message(BOTH_MESSAGE, "Can't open %s to %s, error code %d\n", location, (writing) ? "write" : "read", openReturn);
+		platform->Message(BOTH_ERROR_MESSAGE, "Can't open %s to %s, error code %d\n", location, (writing) ? "write" : "read", openReturn);
 		return false;
 	}
 
@@ -1595,7 +1595,7 @@ void FileStore::Duplicate()
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to dup a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to dup a non-open file.\n");
 		return;
 	}
 	++openCount;
@@ -1605,7 +1605,7 @@ bool FileStore::Close()
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to close a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to close a non-open file.\n");
 		return false;
 	}
 	--openCount;
@@ -1629,7 +1629,7 @@ bool FileStore::Seek(unsigned long pos)
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to seek on a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to seek on a non-open file.\n");
 		return false;
 	}
 	if (writing)
@@ -1650,7 +1650,7 @@ unsigned long FileStore::Length()
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to size non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to size non-open file.\n");
 		return 0;
 	}
 	return file.fsize;
@@ -1686,7 +1686,7 @@ bool FileStore::ReadBuffer()
 	FRESULT readStatus = f_read(&file, buf, FILE_BUF_LEN, &lastBufferEntry);	// Read a chunk of file
 	if (readStatus)
 	{
-		platform->Message(BOTH_MESSAGE, "Error reading file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Error reading file.\n");
 		return false;
 	}
 	bufferPointer = 0;
@@ -1698,7 +1698,7 @@ bool FileStore::Read(char& b)
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to read from a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to read from a non-open file.\n");
 		return false;
 	}
 
@@ -1729,7 +1729,7 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to read from a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to read from a non-open file.\n");
 		return -1;
 	}
 	bufferPointer = FILE_BUF_LEN;	// invalidate the buffer
@@ -1737,7 +1737,7 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytes_read);
 	if (readStatus)
 	{
-		platform->Message(BOTH_MESSAGE, "Error reading file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Error reading file.\n");
 		return -1;
 	}
 	bytesRead += bytes_read;
@@ -1751,7 +1751,7 @@ bool FileStore::WriteBuffer()
 		bool ok = InternalWriteBlock((const char*)buf, bufferPointer);
 		if (!ok)
 		{
-			platform->Message(BOTH_MESSAGE, "Error writing file. Disc may be full.\n");
+			platform->Message(BOTH_ERROR_MESSAGE, "Cannot write to file. Disc may be full.\n");
 			return false;
 		}
 		bufferPointer = 0;
@@ -1763,7 +1763,7 @@ bool FileStore::Write(char b)
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to write byte to a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to write byte to a non-open file.\n");
 		return false;
 	}
 	buf[bufferPointer] = b;
@@ -1779,7 +1779,7 @@ bool FileStore::Write(const char* b)
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to write string to a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to write string to a non-open file.\n");
 		return false;
 	}
 	int i = 0;
@@ -1798,7 +1798,7 @@ bool FileStore::Write(const char *s, unsigned int len)
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to write block to a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to write block to a non-open file.\n");
 		return false;
 	}
 	if (!WriteBuffer())
@@ -1820,7 +1820,7 @@ bool FileStore::InternalWriteBlock(const char *s, unsigned int len)
 	}
  	if ((writeStatus != FR_OK) || (bytesWritten != len))
  	{
- 		platform->Message(BOTH_MESSAGE, "Error writing file. Disc may be full.\n");
+ 		platform->Message(BOTH_ERROR_MESSAGE, "Cannot write to file. Disc may be full.\n");
  		return false;
  	}
  	return true;
@@ -1830,7 +1830,7 @@ bool FileStore::Flush()
 {
 	if (!inUse)
 	{
-		platform->Message(BOTH_MESSAGE, "Attempt to flush a non-open file.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to flush a non-open file.\n");
 		return false;
 	}
 	if (!WriteBuffer())

@@ -34,7 +34,7 @@ public:
 	void GetOffset(float& xx, float& yy, float& zz) const;
 	int DriveCount() const;
 	int Drive(int driveNumber) const;
-	bool ToolCanDrive() const;
+	bool ToolCanDrive(bool extrude) const;
 	int HeaterCount() const;
 	int Heater(int heaterNumber) const;
 	int Number() const;
@@ -65,7 +65,7 @@ private:
 
 	void SetTemperatureFault(int8_t dudHeater);
 	void ResetTemperatureFault(int8_t wasDudHeater);
-	bool AllHeatersAtHighTemperature() const;
+	bool AllHeatersAtHighTemperature(bool forExtrusion) const;
 	int myNumber;
 	int* drives;
 	float* mix;

@@ -196,18 +196,16 @@ void RepRap::Init()
 
   FileStore *startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
 
-  platform->Message(HOST_MESSAGE, "\n\nExecuting ");
+  platform->AppendMessage(HOST_MESSAGE, "\n\nExecuting ");
   if(startup != NULL)
   {
 	  startup->Close();
-	  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
-	  platform->Message(HOST_MESSAGE, "...\n\n");
+	  platform->AppendMessage(HOST_MESSAGE, "%s...\n\n", platform->GetConfigFile());
 	  scratchString.printf("M98 P%s\n", platform->GetConfigFile());
   }
   else
   {
-	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
-	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
+	  platform->AppendMessage(HOST_MESSAGE, "%s (no configuration file found)...\n\n", platform->GetDefaultFile());
 	  scratchString.printf("M98 P%s\n", platform->GetDefaultFile());
   }
 
@@ -233,10 +231,10 @@ void RepRap::Init()
 	  }
   }
 
-  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
+  platform->AppendMessage(HOST_MESSAGE, "\nStarting network...\n");
   network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
 
-  platform->Message(HOST_MESSAGE, "\n%s is up and running.\n", NAME);
+  platform->AppendMessage(HOST_MESSAGE, "\n%s is up and running.\n", NAME);
   fastLoop = FLT_MAX;
   slowLoop = 0.0;
   lastTime = platform->Time();
@@ -249,7 +247,7 @@ void RepRap::Exit()
   move->Exit();
   gCodes->Exit();
   webserver->Exit();
-  platform->Message(HOST_MESSAGE, "RepRap class exited.\n");
+  platform->Message(BOTH_MESSAGE, "RepRap class exited.\n");
   platform->Exit();
 }
 
@@ -556,14 +554,14 @@ size_t StringRef::cat(const char* src)
 static char scratchStringBuffer[255];		// this is now used only for short messages and file names
 StringRef scratchString(scratchStringBuffer, ARRAY_SIZE(scratchStringBuffer));
 
-// For debug use
 void debugPrintf(const char* fmt, ...)
 {
+	char message[STRING_LENGTH]; // Never use scratchString for messages, because it can mess up macro filenames
 	va_list vargs;
 	va_start(vargs, fmt);
-	scratchString.vprintf(fmt, vargs);
+	vsnprintf(message, STRING_LENGTH - 1, fmt, vargs);
 	va_end(vargs);
-	reprap.GetPlatform()->Message(DEBUG_MESSAGE, scratchString);
+	reprap.GetPlatform()->Message(DEBUG_MESSAGE, message);
 }
 
 // String testing

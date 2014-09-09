@@ -39,7 +39,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	{
 		if(driveCount > DRIVES - AXES)
 		{
-			reprap.GetPlatform()->Message(HOST_MESSAGE, "Tool creation: attempt to use more drives than there are in the RepRap...");
+			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool creation: attempt to use more drives than there are in the RepRap...");
 			driveCount = 0;
 			heaterCount = 0;
 			return;
@@ -58,7 +58,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	{
 		if(heaterCount > HEATERS)
 		{
-			reprap.GetPlatform()->Message(HOST_MESSAGE, "Tool creation: attempt to use more heaters than there are in the RepRap...");
+			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool creation: attempt to use more heaters than there are in the RepRap...");
 			driveCount = 0;
 			heaterCount = 0;
 			return;
@@ -107,7 +107,7 @@ float Tool::MaxFeedrate() const
 {
 	if(driveCount <= 0)
 	{
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to get maximum feedrate for a tool with no drives.\n");
+		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Attempt to get maximum feedrate for a tool with no drives.\n");
 		return 1.0;
 	}
 	float result = 0.0;
@@ -126,7 +126,7 @@ float Tool::InstantDv() const
 {
 	if(driveCount <= 0)
 	{
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempt to get InstantDv for a tool with no drives.\n");
+		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Attempt to get InstantDv for a tool with no drives.\n");
 		return 1.0;
 	}
 	float result = FLT_MAX;
@@ -152,7 +152,7 @@ void Tool::AddTool(Tool* tool)
 	{
 		if(t->Number() == tool->Number())
 		{
-			reprap.GetPlatform()->Message(HOST_MESSAGE, "Add tool: tool number already in use.\n");
+			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Add tool: tool number already in use.\n");
 			return;
 		}
 		last = t;
@@ -211,11 +211,16 @@ void Tool::ResetTemperatureFault(int8_t wasDudHeater)
 	}
 }
 
-bool Tool::AllHeatersAtHighTemperature() const
+bool Tool::AllHeatersAtHighTemperature(bool forExtrusion) const
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
-		if(reprap.GetHeat()->GetTemperature(heaters[heater]) < HOT_ENOUGH_TO_EXTRUDE)
+		const float temperature = reprap.GetHeat()->GetTemperature(heaters[heater]);
+		if(temperature < HOT_ENOUGH_TO_EXTRUDE && forExtrusion)
+		{
+			return false;
+		}
+		else if (temperature < HOT_ENOUGH_TO_RETRACT)
 		{
 			return false;
 		}
@@ -272,12 +277,12 @@ void Tool::GetVariables(float* standby, float* active) const
 	}
 }
 
-bool Tool::ToolCanDrive() const
+bool Tool::ToolCanDrive(bool extrude) const
 {
 	if(heaterFault)
 		return false;
 
-	if(reprap.ColdExtrude() || AllHeatersAtHighTemperature())
+	if(reprap.ColdExtrude() || AllHeatersAtHighTemperature(extrude))
 		return true;
 
 	return false;

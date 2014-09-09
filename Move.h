@@ -122,6 +122,7 @@ protected:
 	MovementProfile Init(LookAhead* lookAhead, float& u, float& v);				// Set up the DDA.  Also used experimentally in look ahead.
 	void Start();																// Start executing the DDA.  I.e. move the move.
 	void Step();																// Take one step of the DDA.  Called by timed interrupt.
+	void Release();																// Called when the DDA is complete
 	bool Active() const;
 	DDA* Next();																// Next entry in the ring
 	float InstantDv() const;
@@ -165,13 +166,20 @@ class Move
     void Init();								// Start me up
     void Spin();								// Called in a tight loop to keep the class going
     void Exit();								// Shut down
+
+    bool IsRunning() const;						// Are we running any moves?
+    void Pause();								// Pause any moves in progress
+    bool IsPaused() const;						// Are all the moves paused?
+    void Resume();								// Resume paused moves
+    void Cancel();								// Cancel any pending moves
+
     bool GetCurrentUserPosition(float m[]); 	// Return the current position in transformed coords if possible.  Send false otherwise
 												// DANGER!!! the above function is mis-named because it has the side-effect of clearing currentFeedrate!!!
     void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
     void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
     void InterruptTime();						// Test function - not used
     bool AllMovesAreFinished();					// Is the look-ahead ring empty?  Stops more moves being added as well.
-    void ResumeMoving();						// Allow moves to be added after a call to AllMovesAreFinished()
+    void AddMoreMoves();						// Allow moves to be added after a call to AllMovesAreFinished()
     void DoLookAhead();							// Run the look-ahead procedure
     void HitLowStop(int8_t drive,				// What to do when a low endstop is hit
     		LookAhead* la, DDA* hitDDA);
@@ -207,11 +215,11 @@ class Move
     float Magnitude(const float v[], int8_t dimensions);  // Return the length of a vector
     void Scale(float v[], float scale,				// Multiply a vector by a scalar
     		int8_t dimensions);
-    float VectorBoxIntersection(const float v[],  // Compute the length that a vector would have to have to...
-    		const float box[], int8_t dimensions);// ...just touch the surface of a hyperbox.
-    
+    float VectorBoxIntersection(const float v[],	// Compute the length that a vector would have to have to...
+    		const float box[], int8_t dimensions);	// ...just touch the surface of a hyperbox.
+
   private:
-  
+
     void BedTransform(float move[]) const;			    // Take a position and apply the bed compensations
     bool GetCurrentMachinePosition(float m[]);			// Get the current position in untransformed coords if possible. Return false otherwise
     													// DANGER!!! the above function is mis-named because it has the side-effect of clearing currentFeedrate!!!
@@ -276,6 +284,8 @@ class Move
     volatile float lastZHit;						// The last Z value hit by the probe
     bool zProbing;									// Are we bed probing as well as moving?
     float longWait;									// A long time for things that need to be done occasionally
+
+    enum Status { running, paused, cancelled } state;
 };
 
 //********************************************************************************************************
@@ -295,7 +305,7 @@ inline float LookAhead::MachineToEndPoint(int8_t drive) const
 {
 	if(drive >= DRIVES)
 	{
-		platform->Message(HOST_MESSAGE, "MachineToEndPoint() called for feedrate!\n");
+		platform->Message(BOTH_MESSAGE, "MachineToEndPoint() called for feedrate!\n");
 		return 0.0;
 	}
 	return ((float)(endPoint[drive]))/platform->DriveStepsPerUnit(drive);
@@ -352,7 +362,7 @@ inline void LookAhead::SetProcessed(MovementState ms)
 
 inline void LookAhead::Release()
 {
-	 processed = released;
+  processed = released;
 }
 
 inline EndstopChecks LookAhead::EndStopsToCheck() const
@@ -398,6 +408,37 @@ inline float DDA::InstantDv() const
 
 //***************************************************************************************
 
+inline bool Move::IsRunning() const
+{
+	return state == running;
+}
+
+inline void Move::Pause()
+{
+	if (state != cancelled)
+	{
+		state = paused;
+	}
+}
+
+inline bool Move::IsPaused() const
+{
+	return state == paused;
+}
+
+inline void Move::Resume()
+{
+	if (state == paused)
+	{
+		state = running;
+	}
+}
+
+inline void Move::Cancel()
+{
+	state = cancelled;
+}
+
 inline bool Move::DDARingEmpty() const
 {
   return ddaRingGetPointer == ddaRingAddPointer;
@@ -405,9 +446,8 @@ inline bool Move::DDARingEmpty() const
 
 inline bool Move::NoLiveMovement() const
 {
-  if(dda != NULL)
-    return false;
-  return DDARingEmpty();
+  // If a queued command is being executed, gCodes->CanMove() will return false
+  return (dda == NULL && (DDARingEmpty() || !gCodes->CanMove()));
 }
 
 // Leave a gap of 2 as the last Get result may still be being processed
@@ -474,10 +514,10 @@ inline void Move::SetLiveCoordinates(float coords[])
 inline bool Move::AllMovesAreFinished()
 {
   addNoMoreMoves = true;
-  return LookAheadRingEmpty() && NoLiveMovement();
+  return (LookAheadRingEmpty() || state == paused) && NoLiveMovement();
 }
 
-inline void Move::ResumeMoving()
+inline void Move::AddMoreMoves()
 {
   addNoMoreMoves = false;
 }
@@ -486,7 +526,7 @@ inline void Move::SetXBedProbePoint(int index, float x)
 {
 	if(index < 0 || index >= NUMBER_OF_PROBE_POINTS)
 	{
-		platform->Message(HOST_MESSAGE, "Z probe point  X index out of range.\n");
+		platform->Message(BOTH_MESSAGE, "Z probe point X index out of range.\n");
 		return;
 	}
 	xBedProbePoints[index] = x;
@@ -497,7 +537,7 @@ inline void Move::SetYBedProbePoint(int index, float y)
 {
 	if(index < 0 || index >= NUMBER_OF_PROBE_POINTS)
 	{
-		platform->Message(HOST_MESSAGE, "Z probe point Y index out of range.\n");
+		platform->Message(BOTH_MESSAGE, "Z probe point Y index out of range.\n");
 		return;
 	}
 	yBedProbePoints[index] = y;
@@ -508,7 +548,7 @@ inline void Move::SetZBedProbePoint(int index, float z)
 {
 	if(index < 0 || index >= NUMBER_OF_PROBE_POINTS)
 	{
-		platform->Message(HOST_MESSAGE, "Z probe point Z index out of range.\n");
+		platform->Message(BOTH_MESSAGE, "Z probe point Z index out of range.\n");
 		return;
 	}
 	zBedProbePoints[index] = z;
@@ -670,7 +710,7 @@ inline float Move::AxisCompensation(int8_t axis)
 			return tanXZ;
 
 		default:
-			platform->Message(HOST_MESSAGE, "Axis compensation requested for non-existent axis.");
+			platform->Message(BOTH_MESSAGE, "Axis compensation requested for non-existent axis.");
 	}
 	return 0.0;
 }

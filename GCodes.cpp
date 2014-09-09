@@ -36,6 +36,7 @@ GCodes::GCodes(Platform* p, Webserver* w)
 	fileGCode = new GCodeBuffer(platform, "file: ");
 	serialGCode = new GCodeBuffer(platform, "serial: ");
 	cannedCycleGCode = new GCodeBuffer(platform, "macro: ");
+	queuedGCode = new GCodeBuffer(platform, "queued: ");
 }
 
 void GCodes::Exit()
@@ -59,6 +60,7 @@ void GCodes::Init()
 	eofString = EOF_STRING;
 	eofStringCounter = 0;
 	eofStringLength = strlen(eofString);
+	homing = false;
 	homeX = false;
 	homeY = false;
 	homeZ = false;
@@ -71,6 +73,7 @@ void GCodes::Init()
 	axisIsHomed[X_AXIS] = axisIsHomed[Y_AXIS] = axisIsHomed[Z_AXIS] = false;
 	toolChangeSequence = 0;
 	coolingInverted = false;
+	internalCodeQueue = NULL;
 }
 
 // This is called from Init and when doing an emergency stop
@@ -80,7 +83,10 @@ void GCodes::Reset()
 	fileGCode->Init();
 	serialGCode->Init();
 	cannedCycleGCode->Init();
+	queuedGCode->Init();
 	moveAvailable = false;
+	totalMoves = 0;
+	movesCompleted = 0;
 	fileBeingPrinted.Close();
 	fileToPrint.Close();
 	fileBeingWritten = NULL;
@@ -110,14 +116,14 @@ void GCodes::DoFilePrint(GCodeBuffer* gb)
 		{
 			if (gb->Put(b))
 			{
-				gb->SetFinished(ActOnCode(gb));
+				gb->SetFinished(ActOnCode(gb, doingCannedCycleFile));
 			}
 		}
 		else
 		{
 			if (gb->Put('\n')) // In case there wasn't one ending the file
 			{
-				gb->SetFinished(ActOnCode(gb));
+				gb->SetFinished(ActOnCode(gb, doingCannedCycleFile));
 			}
 			fileBeingPrinted.Close();
 		}
@@ -129,39 +135,14 @@ void GCodes::Spin()
 	if (!active)
 		return;
 
-	// Check each of the sources of G Codes (web, serial, and file) to
-	// see if what they are doing has been done.  If it hasn't, return without
-	// looking at anything else.
+	// Check each of the sources of G Codes (web, serial, queued and file) to
+	// see if they are finished in order to feed them new codes.
 	//
-	// Note the order establishes a priority: web first, then serial, and file
-	// last.  If file weren't last, then the others would never get a look in when
+	// Note the order establishes a priority: web, serial, queued, file.
+	// If file weren't last, then the others would never get a look in when
 	// a file was being printed.
 
-	if (webGCode->Active())
-	{
-		webGCode->SetFinished(ActOnCode(webGCode));
-		platform->ClassReport("GCodes", longWait);
-		return;
-	}
-
-	if (serialGCode->Active())
-	{
-		serialGCode->SetFinished(ActOnCode(serialGCode));
-		platform->ClassReport("GCodes", longWait);
-		return;
-	}
-
-	if (fileGCode->Active())
-	{
-		fileGCode->SetFinished(ActOnCode(fileGCode));
-		platform->ClassReport("GCodes", longWait);
-		return;
-	}
-
-	// Now check if a G Code byte is available from each of the sources
-	// in the same order for the same reason.
-
-	if (webserver->GCodeAvailable())
+	if (!webGCode->Active() && webserver->GCodeAvailable())
 	{
 		int8_t i = 0;
 		do
@@ -176,7 +157,7 @@ void GCodes::Spin()
 				}
 				else
 				{
-					webGCode->SetFinished(ActOnCode(webGCode));
+					webGCode->SetFinished(ActOnCode(webGCode, true));
 				}
 				break;	// stop after receiving a complete gcode in case we haven't finished processing it
 			}
@@ -186,23 +167,22 @@ void GCodes::Spin()
 		return;
 	}
 
-	// Now the serial interface.  First check the special case of our
-	// uploading the reprap.htm file
+	// Now the serial interface.
 
-	if (serialGCode->WritingFileDirectory() == platform->GetWebDir())
+	if (platform->GetLine()->Status() & byteAvailable)
 	{
-		if (platform->GetLine()->Status() & byteAvailable)
+		// First check the special case of uploading the reprap.htm file
+		if (serialGCode->WritingFileDirectory() == platform->GetWebDir())
 		{
 			char b;
 			platform->GetLine()->Read(b);
 			WriteHTMLToFile(b, serialGCode);
-		}
-	}
-	else
-	{
-		// Otherwise just deal in general with incoming bytes from the serial interface
 
-		if (platform->GetLine()->Status() & byteAvailable)
+			platform->ClassReport("GCodes", longWait);
+			return;
+		}
+		// Otherwise just deal in general with incoming bytes from the serial interface
+		else if (!serialGCode->Active())
 		{
 			// Read several bytes instead of just one. This approximately doubles the speed of file uploading.
 			int8_t i = 0;
@@ -219,18 +199,91 @@ void GCodes::Spin()
 					}
 					else
 					{
-						serialGCode->SetFinished(ActOnCode(serialGCode));
+						serialGCode->SetFinished(ActOnCode(serialGCode, reprap.GetMove()->IsPaused()));
 					}
 					break;	// stop after receiving a complete gcode in case we haven't finished processing it
 				}
 				++i;
 			} while (i < 16 && (platform->GetLine()->Status() & byteAvailable));
+
 			platform->ClassReport("GCodes", longWait);
 			return;
 		}
 	}
 
-	DoFilePrint(fileGCode);
+	// Then check if there are any queued codes left to be executed in-time
+
+	if (internalCodeQueue != NULL)
+	{
+		if (!queuedGCode->Active() && reprap.GetMove()->IsRunning())
+		{
+			// Check if the last queued code is complete and remove its entry
+			if (internalCodeQueue->IsExecuting())
+			{
+				CodeQueue *temp = internalCodeQueue;
+				internalCodeQueue = internalCodeQueue->Next();
+				delete temp;
+
+				platform->ClassReport("GCodes", longWait);
+				return;
+			}
+
+			// Check if a new code can be executed
+			else if (internalCodeQueue->ExecuteAtMove() <= movesCompleted)
+			{
+				internalCodeQueue->Execute();
+				queuedGCode->Put(internalCodeQueue->GetCommand(), internalCodeQueue->GetCommandLength());
+				queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
+				platform->ClassReport("GCodes", longWait);
+				return;
+			}
+		}
+	}
+	else if (totalMoves == movesCompleted != 0)
+	{
+		// If we don't have any queued codes left and all moves are complete, we can safely reset our counters here
+		totalMoves = 0;
+		movesCompleted = 0;
+	}
+
+	// Now run the G-Code buffers. It's important to fill up the G-Code buffers before we do this,
+	// otherwise we wouldn't have a chance to pause/cancel running prints.
+
+	if (webGCode->Active())
+	{
+		// Note: Direct web-printing has been dropped, so it's safe to execute web codes immediately
+		webGCode->SetFinished(ActOnCode(webGCode, true));
+		platform->ClassReport("GCodes", longWait);
+		return;
+	}
+
+	if (serialGCode->Active())
+	{
+		// We want codes from the serial interface to be queued unless the print was paused
+		serialGCode->SetFinished(ActOnCode(serialGCode, reprap.GetMove()->IsPaused()));
+		platform->ClassReport("GCodes", longWait);
+		return;
+	}
+
+	if (queuedGCode->Active())
+	{
+		queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
+		platform->ClassReport("GCodes", longWait);
+		return;
+	}
+
+	if (fileGCode->Active())
+	{
+		fileGCode->SetFinished(ActOnCode(fileGCode, doingCannedCycleFile));
+		platform->ClassReport("GCodes", longWait);
+		return;
+	}
+	if (reprap.GetMove()->IsRunning())
+	{
+		// Running codes from files is different, because DoFilePrint() does both read and execute
+		// G-Codes. For that reason we must leave this call here.
+		DoFilePrint(fileGCode);
+	}
 
 	platform->ClassReport("GCodes", longWait);
 }
@@ -238,23 +291,35 @@ void GCodes::Spin()
 void GCodes::Diagnostics()
 {
 	platform->AppendMessage(BOTH_MESSAGE, "GCodes Diagnostics:\n");
+	platform->AppendMessage(BOTH_MESSAGE, "Internal code queue is %s\n", internalCodeQueue == NULL ? "empty." :"not empty:");
+	if (internalCodeQueue != NULL)
+	{
+		unsigned int count = 0;
+		CodeQueue *item = internalCodeQueue;
+		do
+		{
+			count++;
+			platform->AppendMessage(BOTH_MESSAGE, "Queued: '%s'\n", item->GetCommand());
+		} while ((item = item->Next()) != NULL);
+		platform->AppendMessage(BOTH_MESSAGE, "%d codes have been queued.\n", count);
+	}
 }
 
 // The wait till everything's done function.  If you need the machine to
-// be idle before you do something (for example homeing an axis, or shutting down) call this
+// be idle before you do something (for example homing an axis, or shutting down) call this
 // until it returns true.  As a side-effect it loads moveBuffer with the last
 // position and feedrate for you.
 
 bool GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
 {
-	// Last one gone?
-	if(moveAvailable)
+	// Last one gone? Don't care if Move is paused; ActOnCode will sort out unwanted codes anyway
+	if(moveAvailable && !reprap.GetMove()->IsPaused())
 		return false;
 
 	// Wait for all the queued moves to stop so we get the actual last position and feedrate
 	if(!reprap.GetMove()->AllMovesAreFinished())
 		return false;
-	reprap.GetMove()->ResumeMoving();
+	reprap.GetMove()->AddMoreMoves();
 
 	// Load the last position; If Move can't accept more, return false - should never happen
 	if(!reprap.GetMove()->GetCurrentUserPosition(moveBuffer))
@@ -334,6 +399,13 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 		moveBuffer[drive] = 0.0;
 	}
 
+	// Deal with feed rate
+
+	if(gb->Seen(FEEDRATE_LETTER))
+	{
+		moveBuffer[DRIVES] = gb->GetFValue() * distanceScale * speedFactor; // G Code feedrates are in mm/minute; we need mm/sec
+	}
+
 	// First do extrusion, and check, if we are extruding, that we have a tool to extrude with
 
 	Tool* tool = reprap.GetCurrentTool();
@@ -347,7 +419,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 		}
 
 		int eMoveCount = tool->DriveCount();
-		if(eMoveCount > 0 && tool->ToolCanDrive())
+		if(eMoveCount > 0)
 		{
 			float eMovement[DRIVES-AXES];
 			if(tool->Mixing())
@@ -368,6 +440,18 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				}
 			}
 
+			// Check if extruding or retracting moves shall be performed
+			bool isExtruding = false;
+			for(int8_t drive = 0; drive < eMoveCount; drive++)
+			{
+				isExtruding |= (eMovement[drive] * moveBuffer[DRIVES] > 0.0);
+				if (isExtruding)
+				{
+					break;
+				}
+			}
+			bool eMoveAllowed = tool->ToolCanDrive(isExtruding);
+
 			// Set the drive values for this tool.
 
 			for(int8_t eDrive = 0; eDrive < eMoveCount; eDrive++)
@@ -379,15 +463,18 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 					moveBuffer[drive + AXES] = 0.0;		// no move required
 					lastPos[drive] = moveArg;
 				}
-				else if (drivesRelative)
+				else if (eMoveAllowed)
 				{
-					moveBuffer[drive + AXES] = moveArg * extrusionFactors[drive];
-					lastPos[drive] += moveArg;
-				}
-				else
-				{
-					moveBuffer[drive + AXES] = (moveArg - lastPos[drive]) * extrusionFactors[drive];
-					lastPos[drive] = moveArg;
+					if (drivesRelative)
+					{
+						moveBuffer[drive + AXES] = moveArg * extrusionFactors[drive];
+						lastPos[drive] += moveArg;
+					}
+					else
+					{
+						moveBuffer[drive + AXES] = (moveArg - lastPos[drive]) * extrusionFactors[drive];
+						lastPos[drive] = moveArg;
+					}
 				}
 			}
 		}
@@ -420,13 +507,6 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				axisIsHomed[axis] = true;		// doing a G92 defines the absolute axis position
 			}
 		}
-	}
-
-	// Deal with feed rate
-
-	if(gb->Seen(FEEDRATE_LETTER))
-	{
-		moveBuffer[DRIVES] = gb->GetFValue() * distanceScale * speedFactor; // G Code feedrates are in mm/minute; we need mm/sec
 	}
 
 	return true;
@@ -504,7 +584,6 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 		FileStore *f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
 		if (f == NULL)
 		{
-			// Don't use snprintf into scratchString here, because fileName may be aliased to scratchString
 			platform->Message(BOTH_ERROR_MESSAGE, "Macro file %s not found.\n", fileName);
 			if(!Pop())
 			{
@@ -522,11 +601,11 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 
 	if (cannedCycleGCode->Active())
 	{
-		cannedCycleGCode->SetFinished(ActOnCode(cannedCycleGCode));
+		cannedCycleGCode->SetFinished(ActOnCode(cannedCycleGCode, true));
 		return false;
 	}
 
-	 // Have we finished the file?
+	// Have we finished the file?
 
 	if (!fileBeingPrinted.IsLive())
 	{
@@ -683,8 +762,16 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 {
 	if (homeX && homeY && homeZ)
 	{
+		if (!homing)
+		{
+			homing = true;
+			axisIsHomed[X_AXIS] = false;
+			axisIsHomed[Y_AXIS] = false;
+			axisIsHomed[Z_AXIS] = false;
+		}
 		if (DoFileCannedCycles(HOME_ALL_G))
 		{
+			homing = false;
 			homeX = false;
 			homeY = false;
 			homeZ = false;
@@ -695,8 +782,14 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 
 	if (homeX)
 	{
+		if (!homing)
+		{
+			homing = true;
+			axisIsHomed[X_AXIS] = false;
+		}
 		if (DoFileCannedCycles(HOME_X_G))
 		{
+			homing = false;
 			homeX = false;
 			return NoHome();
 		}
@@ -705,8 +798,14 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 
 	if (homeY)
 	{
+		if (!homing)
+		{
+			homing = true;
+			axisIsHomed[Y_AXIS] = false;
+		}
 		if (DoFileCannedCycles(HOME_Y_G))
 		{
+			homing = false;
 			homeY = false;
 			return NoHome();
 		}
@@ -720,11 +819,18 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			// We can only home Z if X and Y have already been homed
 			reply.copy("Must home X and Y before homing Z");
 			error = true;
+			homing = false;
 			homeZ = false;
 			return true;
 		}
+		if (!homing)
+		{
+			homing = true;
+			axisIsHomed[Z_AXIS] = false;
+		}
 		if (DoFileCannedCycles(HOME_Z_G))
 		{
+			homing = false;
 			homeZ = false;
 			return NoHome();
 		}
@@ -1114,22 +1220,23 @@ void GCodes::WriteGCodeToFile(GCodeBuffer *gb)
 
 void GCodes::QueueFileToPrint(const char* fileName)
 {
-	fileToPrint.Close();
-	fileGCode->CancelPause();	// if we paused it and then asked to print a new file, cancel any pending command
 	FileStore *f = platform->GetFileStore(platform->GetGCodeDir(), fileName, false);
 	if (f != NULL)
 	{
-		// Reset all extruder positions when starting a new print
+		// Cancel current print if there is any
+		if (PrintingAFile())
+		{
+			CancelPrint();
+
+			fileGCode->SetToolNumberAdjust(0);
+			queuedGCode->SetToolNumberAdjust(0);
+		}
+
 		for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
 		{
 			lastPos[extruder - AXES] = 0.0;
 		}
-
 		fileToPrint.Set(f);
-		if (!fileBeingPrinted.IsLive())
-		{
-			fileGCode->SetToolNumberAdjust(0);	// clear tool number adjustment
-		}
 	}
 	else
 	{
@@ -1184,11 +1291,6 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
 
 	float dwell = 0.001 * (float) gb->GetLValue(); // P values are in milliseconds; we need seconds
 
-	// Wait for all the queued moves to stop
-
-	if (!reprap.GetMove()->AllMovesAreFinished())
-		return false;
-
 	return DoDwellTime(dwell);
 }
 
@@ -1201,7 +1303,6 @@ bool GCodes::DoDwellTime(float dwell)
 		if (platform->Time() - dwellTime >= 0.0)
 		{
 			dwellWaiting = false;
-			reprap.GetMove()->ResumeMoving();
 			return true;
 		}
 		return false;
@@ -1274,6 +1375,7 @@ void GCodes::AddNewTool(GCodeBuffer *gb, StringRef& reply)
 		{
 			int adjust = gb->GetIValue();
 			gb->SetToolNumberAdjust(adjust);
+			queuedGCode->SetToolNumberAdjust(adjust);
 		}
 		return;
 	}
@@ -1318,15 +1420,16 @@ void GCodes::AddNewTool(GCodeBuffer *gb, StringRef& reply)
 
 // Does what it says.
 
-bool GCodes::DisableDrives()
+void GCodes::DisableDrives()
 {
-	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-		return false;
 	for (int8_t drive = 0; drive < DRIVES; drive++)
 	{
 		platform->Disable(drive);
 	}
-	return true;
+
+	axisIsHomed[X_AXIS] = false;
+	axisIsHomed[Y_AXIS] = false;
+	axisIsHomed[Z_AXIS] = false;
 }
 
 // Does what it says.
@@ -1423,15 +1526,18 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 
 void GCodes::HandleReply(bool error, bool fromLine, const char* reply, char gMOrT, int code, bool resend)
 {
-	if (gMOrT != 'M' || (code != 111 && code != 122))	// web server reply for M111 and M122 is handled before we get here
-	{
-		platform->Message((error) ? WEB_ERROR_MESSAGE : WEB_MESSAGE, reply);
-	}
-
 	Compatibility c = platform->Emulating();
 	if (!fromLine)
 	{
 		c = me;
+	}
+
+	if (!reply[0] && (c == me || c == reprapFirmware))
+		return;
+
+	if (gMOrT != 'M' || (code != 111 && code != 122)) // Web server reply for M111 and M122 is handled before we get here
+	{
+		platform->Message((error) ? WEB_ERROR_MESSAGE : WEB_MESSAGE, reply);
 	}
 
 	const char* response = "ok";
@@ -1446,8 +1552,6 @@ void GCodes::HandleReply(bool error, bool fromLine, const char* reply, char gMOr
 	{
 	case me:
 	case reprapFirmware:
-		if (!reply[0])
-			return;
 		if (error)
 		{
 			platform->GetLine()->Write("Error: ");
@@ -1643,7 +1747,7 @@ void GCodes::SetToolHeaters(Tool *tool, float temperature)
 {
 	if(tool == NULL)
 	{
-		platform->Message(HOST_MESSAGE, "Setting temperature: no tool selected.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Setting temperature: no tool selected.\n");
 		return;
 	}
 
@@ -1657,31 +1761,109 @@ void GCodes::SetToolHeaters(Tool *tool, float temperature)
 	tool->SetVariables(standby, active);
 }
 
+// Can we queue this code for delayed execution?
+bool GCodes::CanQueueCode(GCodeBuffer *gb) const
+{
+	bool runNow = false;
+
+	// Check for unbuffered G-Codes
+	if (gb->Seen('G'))
+	{
+		const int code = gb->GetIValue();
+		runNow |= (code == 0 || code == 1);				// Controlled move
+		runNow |= (code == 20 || code == 21);			// Set units
+		runNow |= (code >= 28 && code <= 32);			// Homing and bed probing
+		runNow |= (code >= 90 && code <= 92);			// Positioning
+	}
+	// Check for unbuffered M-Codes
+	else if (gb->Seen('M'))
+	{
+		const int code = gb->GetIValue();
+		runNow |= (code == 18 || code == 84);			// Disable drives
+		runNow |= (code == 25 && gb == serialGCode);	// Pause print (for serial interface only)
+		runNow |= (code == 82 || code == 83);			// Relative or absolute E moves
+		runNow |= (code >= 120 && code <= 121);			// Stack operations
+		runNow |= (code == 208);						// Offset axes
+	}
+	// Check for T-Codes
+	else if (gb->Seen('T'))
+	{
+		runNow = true;							// Must select the right tool before setting up new moves
+	}
+
+	return !runNow;
+}
+
 // If the code to act on is completed, this returns true,
 // otherwise false.  It is called repeatedly for a given
 // code until it returns true for that code.
 
-bool GCodes::ActOnCode(GCodeBuffer *gb)
+bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 {
-	// M-code parameters might contain letters T and G, e.g. in filenames.
-	// dc42 assumes that G-and T-code parameters never contain the letter M.
-	// Therefore we must check for an M-code first.
-	if (gb->Seen('M'))
+	// Discard empty buffers right away
+	if (gb->IsEmpty())
 	{
-		return HandleMcode(gb);
-	}
-	// dc42 doesn't think a G-code parameter ever contains letter T, or a T-code ever contains letter G.
-	// So it doesn't matter in which order we look for them.
-	if (gb->Seen('G'))
-	{
-		return HandleGcode(gb);
-	}
-	if (gb->Seen('T'))
-	{
-		return HandleTcode(gb);
+		return true;
 	}
 
-	// An empty buffer gets discarded
+	// Ensure unbuffered codes are only executed if the machine is NOT paused
+	bool canQueue = CanQueueCode(gb);
+	if (!canQueue && reprap.GetMove()->IsPaused())
+	{
+		platform->Message(BOTH_ERROR_MESSAGE, "Command '%s' cannot be executed while a print is paused.\n", gb->Buffer());
+		return true;
+	}
+
+	// Check if we can execute this code immediately
+	if (executeImmediately || totalMoves == movesCompleted || !canQueue)
+	{
+		//platform->Message(DEBUG_MESSAGE, "%s%s\n", gb->Identity(), gb->Buffer());
+
+		// M-code parameters might contain letters T and G, e.g. in filenames.
+		// dc42 assumes that G-and T-code parameters never contain the letter M.
+		// Therefore we must check for an M-code first.
+		if (gb->Seen('M'))
+		{
+			return HandleMcode(gb);
+		}
+		// dc42 doesn't think a G-code parameter ever contains letter T, or a T-code ever contains letter G.
+		// So it doesn't matter in which order we look for them.
+		if (gb->Seen('G'))
+		{
+			return HandleGcode(gb);
+		}
+		if (gb->Seen('T'))
+		{
+			return HandleTcode(gb);
+		}
+	}
+	else
+	{
+		// Allocate a new queue item for each code
+		CodeQueue *newItem = new CodeQueue(gb->Buffer(), totalMoves);
+		if (newItem == NULL)
+		{
+			platform->Message(BOTH_ERROR_MESSAGE, "Out of memory while allocating element for code queue!\n");
+			return ActOnCode(gb, true);
+		}
+
+		// And append it to the queue so it's executed once all moves have finished
+		if (internalCodeQueue == NULL)
+		{
+			internalCodeQueue = newItem;
+		}
+		else
+		{
+			CodeQueue *lastItem = internalCodeQueue, *next;
+			while ((next = lastItem->Next()) != NULL)
+			{
+				lastItem = next;
+			}
+			lastItem->SetNext(newItem);
+		}
+	}
+
+	// An invalid or queued buffer gets discarded
 	HandleReply(false, gb == serialGCode, "", 'X', 0, false);
 	return true;
 }
@@ -1816,31 +1998,41 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	{
 	case 0: // Stop
 	case 1: // Sleep
-		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-			return false;
-
-		if (fileBeingPrinted.IsLive())
 		{
-			fileToPrint.MoveFrom(fileBeingPrinted);
-		}
+			if (reprap.GetMove()->IsPaused())
+			{
+				CancelPrint();
+				reprap.GetMove()->Cancel();
+			}
 
-		// Deselect the active tool
-		{
+			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+				return false;
+
+			CancelPrint();
+			fileToPrint.Close();
+
 			Tool* tool = reprap.GetCurrentTool();
 			if(tool != NULL)
 			{
 				reprap.StandbyTool(tool->Number());
 			}
+
+			// zpl 2014-09-08: Although RRP says M0 is supposed to turn off all drives,
+			// I think M1 is sufficient for this purpose. Leave M0 for a normal reset.
+			if (code == 1)
+			{
+				DisableDrives();
+			}
+
+			reprap.GetHeat()->SwitchOffAll();
+			break;
 		}
 
-		if (!DisableDrives())
+	case 18: // Motors off
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			return false;
 
-		reprap.GetHeat()->SwitchOffAll();
-		break;
-
-	case 18: // Motors off
-		result = DisableDrives();
+		DisableDrives();
 		break;
 
 	case 20:  // Deprecated...
@@ -1897,17 +2089,35 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 24: // Print/resume-printing the selected file
-		if (fileBeingPrinted.IsLive())
+		if (!fileToPrint.IsLive() && internalCodeQueue == NULL)
+		{
+			reply.copy("Cannot resume print, because no print is in progress!");
+			error = true;
 			break;
+		}
+		reprap.GetMove()->Resume();
 		fileBeingPrinted.MoveFrom(fileToPrint);
+		fileGCode->Resume();
+		queuedGCode->Resume();
 		break;
 
 	case 25: // Pause the print
-		fileToPrint.MoveFrom(fileBeingPrinted);
+		if (!PrintingAFile())
+		{
+			error = true;
+			reply.copy("Cannot pause print, because no print is in progress!");
+		}
+		else
+		{
+			reprap.GetMove()->Pause();
+			fileToPrint.MoveFrom(fileBeingPrinted);
+			fileGCode->Pause();
+			queuedGCode->Pause();
+		}
 		break;
 
 	case 27: // Report print status - Deprecated
-		if (fileBeingPrinted.IsLive())
+		if (PrintingAFile())
 		{
 			reply.copy("SD printing.");
 		}
@@ -1969,7 +2179,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 84: // Motors off - deprecated, use M18
-		result = DisableDrives();
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
+		DisableDrives();
 		break;
 
 	case 85: // Set inactive time
@@ -2121,10 +2334,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				tool = reprap.GetCurrentTool();
 			}
 			SetToolHeaters(tool, temperature);
-			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())	// tell Move not to wait for more moves
-			{
-				return false;
-			}
 			result = ToolHeatersAtSetTemperatures(tool);
 		}
 		break;
@@ -2174,10 +2383,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 116: // Wait for everything, especially set temperatures
-		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-		{
-			return false;
-		}
 		if (gb->Seen('P'))
 		{
 			// Wait for the heaters associated with the specified tool to be ready
@@ -2305,10 +2510,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				reprap.GetHeat()->SetActiveTemperature(HOT_BED, gb->GetFValue());
 				reprap.GetHeat()->Activate(HOT_BED);
-				if (!AllMovesAreFinishedAndMoveBufferIsLoaded())	// tell Move not to wait for more moves
-				{
-					return false;
-				}
 				result = reprap.GetHeat()->HeaterAtSetTemperature(HOT_BED);
 			}
 		}
@@ -2382,7 +2583,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount != DRIVES-AXES)
 				{
-					platform->Message(HOST_MESSAGE, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
+					platform->Message(BOTH_ERROR_MESSAGE, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
 				}
 				else
 				{
@@ -3111,13 +3312,23 @@ bool GCodes::ChangeTool(int newToolNumber)
 	return true;
 }
 
-// Pause the current SD card print. Called from the web interface.
-void GCodes::PauseSDPrint()
+// Cancel the current SD card print
+void GCodes::CancelPrint()
 {
+	while (internalCodeQueue != NULL)
+	{
+		CodeQueue *item = internalCodeQueue;
+		internalCodeQueue = item->Next();
+		delete item;
+	}
+	totalMoves = movesCompleted = 0;
+
+	fileGCode->CancelPause();	// if we paused it and then asked to print a new file, cancel any pending command
+	queuedGCode->CancelPause();
+
 	if (fileBeingPrinted.IsLive())
 	{
 		fileToPrint.MoveFrom(fileBeingPrinted);
-		fileGCode->Pause();		// if we are executing some sort of wait command, pause it until we restart
 	}
 }
 
@@ -3136,6 +3347,105 @@ bool GCodes::ToolHeatersAtSetTemperatures(const Tool *tool) const
     }
     return true;
 }
+
+// Called by the look-ahead to indicate a move will be performed
+void GCodes::MoveQueued()
+{
+	totalMoves++;
+}
+
+// Check if a new DDA can be processed (called by ISR)
+bool GCodes::CanMove() const
+{
+	// Do we have any queued codes left?
+	if (internalCodeQueue == NULL)
+	{
+		return true;
+	}
+
+	// Are we still waiting for a code to complete?
+	if (queuedGCode->Active())
+	{
+		return false;
+	}
+
+	// Check if there are any queued codes we must execute first
+	return (internalCodeQueue->ExecuteAtMove() > movesCompleted);
+}
+
+// Called by the DDA class to indicate that a move has been completed (called by ISR)
+void GCodes::MoveCompleted()
+{
+	movesCompleted++;
+}
+
+//*************************************************************************************
+
+// This class is used to ensure commands are executed in the right order and independently from the look-ahead queue.
+
+CodeQueue::CodeQueue(const char *cmd, unsigned int executeAtMove)
+	: moveToExecute(executeAtMove), next(NULL), executing(false)
+{
+	commandLength = strlen(cmd);
+	if (!commandLength || commandLength > GCODE_LENGTH)
+	{
+		if (commandLength)
+		{
+			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Invalid string passed to CodeBuffer constructor\n");
+		}
+		command = "";
+	}
+	else
+	{
+		command = (char*)malloc((commandLength + 1) * sizeof(char));
+		strncpy(command, cmd, commandLength);
+		command[commandLength] = 0;
+	}
+}
+
+CodeQueue::~CodeQueue()
+{
+	if (commandLength)
+	{
+		free(command);
+	}
+}
+
+void CodeQueue::SetNext(CodeQueue *n)
+{
+	next = n;
+}
+
+CodeQueue *CodeQueue::Next() const
+{
+	return next;
+}
+
+unsigned int CodeQueue::ExecuteAtMove() const
+{
+	return moveToExecute;
+}
+
+const char *CodeQueue::GetCommand() const
+{
+	return command;
+}
+
+unsigned int CodeQueue::GetCommandLength() const
+{
+	return commandLength;
+}
+
+void CodeQueue::Execute()
+{
+	executing = true;
+}
+
+bool CodeQueue::IsExecuting() const
+{
+	return executing;
+}
+
 
 //*************************************************************************************
 
@@ -3254,6 +3564,35 @@ bool GCodeBuffer::Put(char c)
 	}
 
 	return result;
+}
+
+bool GCodeBuffer::Put(const char *str, size_t len)
+{
+	for(size_t i=0; i<=len; i++)
+	{
+		if (Put(str[i]))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// Does this buffer contain any code?
+
+bool GCodeBuffer::IsEmpty() const
+{
+	const char *buf = gcodeBuffer;
+	while (strchr(" \t\n\r", *buf))
+	{
+		if (*buf == 0)
+		{
+			return true;
+		}
+		buf++;
+	}
+	return false;
 }
 
 // Is 'c' in the G Code string?
@@ -3388,7 +3727,7 @@ const char* GCodeBuffer::GetString()
 {
 	if (readPointer < 0)
 	{
-		platform->Message(HOST_MESSAGE, "GCodes: Attempt to read a GCode string before a search.\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "GCodes: Attempt to read a GCode string before a search.\n");
 		readPointer = -1;
 		return "";
 	}
