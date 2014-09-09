@@ -141,7 +141,7 @@ Licence: GPL
 #define Z_PROBE_AD_VALUE (400) // Default for the Z probe - should be overwritten by experiment
 #define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
-#define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_MOD_PIN (X25)					// Digital pin number to turn the IR LED on (high) or off (low)
 #define MAX_FEEDRATES {100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0} // mm/sec
 #define ACCELERATIONS {500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0} // mm/sec^2
 #define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0}
@@ -193,7 +193,7 @@ Licence: GPL
 // Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
 // Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
 #define THERMISTOR_BETAS {3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0} // Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
-#define THERMISTOR_SERIES_RS {1000, 1000, 1000, 1000, 1000, 1000} // Ohms in series with the thermistors
+#define THERMISTOR_SERIES_RS {4700, 4700, 1000, 1000, 1000, 1000} // Ohms in series with the thermistors
 #define THERMISTOR_25_RS {10000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0} // Thermistor ohms at 25 C = 298.15 K
 #define USE_PID {false, true, true, true, true, true} // PID or bang-bang for this heater?
 //#define PID_KIS { 2.2, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME} // Integral PID constants, adjusted by dc42 for Ormerod hot end
@@ -980,7 +980,7 @@ inline void Platform::PollZHeight()
 	{
 		zModOnThisTime = !zModOnThisTime;
 		// Reverse the modulation, ready for next time
-		digitalWrite(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
+		digitalWriteNonDue(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
 	} else
 		zModOnThisTime = true; // Defensive...
 }

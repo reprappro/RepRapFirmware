@@ -259,8 +259,8 @@ void Platform::InitZProbe()
 
   if(zProbeModulationPin >= 0)
   {
-	pinMode(zProbeModulationPin, OUTPUT);
-	digitalWrite(zProbeModulationPin, HIGH);	// turn on the IR LED
+	pinModeNonDue(zProbeModulationPin, OUTPUT);
+	digitalWriteNonDue(zProbeModulationPin, HIGH);	// turn on the IR LED
   }
 }
 
