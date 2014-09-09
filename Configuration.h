@@ -3,7 +3,7 @@
 RepRapFirmware - Configuration
 
 This is where all machine-independent configuration and other definitions are set up.  Nothing that
-depends on any particular RepRap, RepRap component, or RepRap controller  should go in here.  Define 
+depends on any particular RepRap, RepRap component, or RepRap controller should go in here.  Define
 machine-dependent things in Platform.h
 
 -----------------------------------------------------------------------------------------------------
@@ -24,7 +24,7 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.93"
+#define VERSION "0.94"
 #define DATE "2014-09-09"
 #define LAST_AUTHOR "reprappro"
 
@@ -76,7 +76,6 @@ enum Compatibility
 #define MESSAGE_FILE "messages.txt"
 #define FOUR04_FILE "html404.htm"
 #define CONFIG_FILE "config.g"         // The file that sets the machine's parameters
-//#define DEFAULT_FILE "default.g"       // If the config file isn't found
 #define HOME_X_G "homex.g"
 #define HOME_Y_G "homey.g"
 #define HOME_Z_G "homez.g"

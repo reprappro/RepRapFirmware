@@ -25,6 +25,8 @@ Licence: GPL
 
 #include "RepRapFirmware.h"
 
+const char axis_letters[AXES] = AXIS_LETTERS;
+
 GCodes::GCodes(Platform* p, Webserver* w)
 {
   active = false;
@@ -44,6 +46,8 @@ void GCodes::Exit()
 
 void GCodes::Init()
 {
+  int8_t drive;
+
   webGCode->Init();
   fileGCode->Init();
   serialGCode->Init();
@@ -56,10 +60,11 @@ void GCodes::Init()
   drivesRelative = true;
   axesRelative = false;
   checkEndStops = false;
-  axisLetters = AXIS_LETTERS;
   distanceScale = 1.0;
-  for(int8_t i = 0; i < DRIVES - AXES; i++)
-    lastPos[i] = 0.0;
+  for(int8_t drive = 0; drive < AXES; drive++)
+	  axisLetters[drive] = axis_letters[drive];
+  for(int8_t drive = 0; drive < DRIVES - AXES; drive++)
+    lastPos[drive] = 0.0;
   fileBeingPrinted = NULL;
   fileToPrint = NULL;
   fileBeingWritten = NULL;

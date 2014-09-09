@@ -131,14 +131,14 @@ Licence: GPL
 #define THERMISTOR_BETAS {3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0} // Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
 #define THERMISTOR_SERIES_RS {1000, 1000, 1000, 1000, 1000, 1000} // Ohms in series with the thermistors
 #define THERMISTOR_25_RS {10000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0} // Thermistor ohms at 25 C = 298.15 K
-#define USE_PID {false, true, true, true, true, true} // PID or bang-bang for this heater?
+#define USE_PIDS {false, true, true, true, true, true} // PID or bang-bang for this heater?
 #define PID_KIS { 2.2, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME} // Integral PID constants, adjusted by ab for Ormerod hot end
 #define PID_KDS {80, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME}// Derivative PID constants
 #define PID_KPS {12, 20, 20, 20, 20, 20} // Proportional PID constants
-#define FULL_PID_BAND {150, 150.0, 150.0, 150.0, 150.0, 150.0} // errors larger than this cause heater to be on or off and I-term set to zero
-#define PID_MIN {0.0, 0.0, 0.0, 0.0, 0.0, 0.0} // minimum value of I-term
-#define PID_MAX {180, 180, 180, 180, 180, 180} // maximum value of I-term, must be high enough to reach 245C for ABS printing
-#define D_MIX {0.5, 0.5, 0.5, 0.5, 0.5, 0.5} // higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
+#define FULL_PID_BANDS {150, 150.0, 150.0, 150.0, 150.0, 150.0} // errors larger than this cause heater to be on or off and I-term set to zero
+#define PID_MINS {0.0, 0.0, 0.0, 0.0, 0.0, 0.0} // minimum value of I-term
+#define PID_MAXES {180, 180, 180, 180, 180, 180} // maximum value of I-term, must be high enough to reach 245C for ABS printing
+#define D_MIXES {0.5, 0.5, 0.5, 0.5, 0.5, 0.5} // higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO}
 #define COOLING_FAN_PIN X6 //pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
@@ -599,7 +599,7 @@ class Platform
   int zProbeADValue;
   float zProbeStopHeight;
   bool zProbeEnable;
-  int8_t numMixingDrives;
+  //int8_t numMixingDrives;
 
 // AXES
 
@@ -621,14 +621,14 @@ class Platform
   float thermistorBetas[HEATERS];
   float thermistorSeriesRs[HEATERS];
   float thermistorRAt25[HEATERS];
-  bool usePID[HEATERS];
+  bool usePIDs[HEATERS];
   float pidKis[HEATERS];
   float pidKds[HEATERS];
   float pidKps[HEATERS];
-  float fullPidBand[HEATERS];
-  float pidMin[HEATERS];
-  float pidMax[HEATERS];
-  float dMix[HEATERS];
+  float fullPidBands[HEATERS];
+  float pidMins[HEATERS];
+  float pidMaxes[HEATERS];
+  float dMixes[HEATERS];
   float heatSampleTime;
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
@@ -1019,7 +1019,7 @@ inline void Platform::SetHeatSampleTime(float st)
 
 inline bool Platform::UsePID(int8_t heater) const
 {
-  return usePID[heater];
+  return usePIDs[heater];
 }
 
 
@@ -1040,22 +1040,22 @@ inline float Platform::PidKp(int8_t heater) const
 
 inline float Platform::FullPidBand(int8_t heater) const
 {
-  return fullPidBand[heater];
+  return fullPidBands[heater];
 }
 
 inline float Platform::PidMin(int8_t heater) const
 {
-  return pidMin[heater];  
+  return pidMins[heater];  
 }
 
 inline float Platform::PidMax(int8_t heater) const
 {
-  return pidMax[heater];
+  return pidMaxes[heater];
 }
 
 inline float Platform::DMix(int8_t heater) const
 {
-  return dMix[heater];  
+  return dMixes[heater];  
 }
 
 
