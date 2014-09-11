@@ -472,7 +472,7 @@ void Webserver::GetJsonResponse(const char* request)
 
     // Send the Z probe value
 
-    if (platform->GetZProbeType() == 2)
+    if (platform->GetZProbeType() >= 2)
     {
     	snprintf(scratchString, STRING_LENGTH, ",\"probe\":\"%d (%d)\"", (int)platform->ZProbe(), platform->ZProbeOnVal());
     }

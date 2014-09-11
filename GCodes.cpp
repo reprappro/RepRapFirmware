@@ -924,7 +924,7 @@ bool GCodes::SetPrintZProbe(GCodeBuffer* gb, char* reply)
 		{
 			platform->SetZProbe(gb->GetIValue());
 		}
-	} else if (platform->GetZProbeType() == 2)
+	} else if (platform->GetZProbeType() >= 2)
 	{
 		snprintf(reply, STRING_LENGTH, "%d (%d)", platform->ZProbe(), platform->ZProbeOnVal());
 	}

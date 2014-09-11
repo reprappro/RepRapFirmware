@@ -99,7 +99,8 @@ Licence: GPL
 #define Z_PROBE_AD_VALUE (400) // Default for the Z probe - should be overwritten by experiment
 #define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
-#define Z_PROBE_MOD_PIN (X25)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_MOD_PIN07 (X25)					// Digital pin number to turn the IR LED on (high) or off (low) Duet V0.7 onwards
+#define Z_PROBE_MOD_PIN (52)
 #define MAX_FEEDRATES {100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0} // mm/sec
 #define ACCELERATIONS {500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0} // mm/sec^2
 #define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0}
@@ -942,11 +943,14 @@ inline void Platform::PollZHeight()
 	else
 		zProbeOffSum = zProbeOffSum + currentReading - zProbeOffSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED;
 
-	if (zProbeType == 2)
+	if (zProbeType >= 2)
 	{
 		zModOnThisTime = !zModOnThisTime;
 		// Reverse the modulation, ready for next time
-		digitalWriteNonDue(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
+		if(zProbeType == 3)
+			digitalWriteNonDue(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
+		else
+			digitalWrite(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
 	} else
 		zModOnThisTime = true; // Defensive...
 }
@@ -955,7 +959,7 @@ inline int Platform::ZProbe() const
 {
 	return (zProbeType == 1)
 			? zProbeOnSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED		// non-modulated mode
-			: (zProbeType == 2)
+			: (zProbeType == 2 || zProbeType == 3)
 			  ? (zProbeOnSum - zProbeOffSum)/NUMBER_OF_A_TO_D_READINGS_AVERAGED	// modulated mode
 			    : 0;														// z-probe disabled
 }
@@ -964,7 +968,7 @@ inline int Platform::ZProbeOnVal() const
 {
 	return (zProbeType == 1)
 			? zProbeOnSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED
-			: (zProbeType == 2)
+			: (zProbeType == 2 || zProbeType == 3)
 			  ? zProbeOnSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED
 				: 0;
 }
@@ -986,7 +990,14 @@ inline void Platform::SetZProbe(int iZ)
 
 inline void Platform::SetZProbeType(int pt)
 {
-	zProbeType = (pt >= 0 && pt <= 2) ? pt : 0;
+	zProbeType = (pt >= 0 && pt <= 3) ? pt : 0;
+	if(zProbeType == 3)
+	{
+		zProbeModulationPin = Z_PROBE_MOD_PIN07;
+	}else
+	{
+		zProbeModulationPin = Z_PROBE_MOD_PIN;
+	}
 	InitZProbe();
 }
 

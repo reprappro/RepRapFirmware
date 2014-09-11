@@ -22,7 +22,7 @@ M305 P1 R4700                       ; Thermistor series resistor for Duet v0.7
 M906 X600 Y600 Z600 E600				; Set motor currents (mA)
 M569 P0 S0									; Reverse the X motor
 M92 E420                            ; Set extruder steps per mm
-M558 P2                             ; Use a modulated Z probe
+M558 P3                             ; Use a modulated Z probe on a Duet v0.7
 G31 Z2.3 P542                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
 M557 P0 X60 Y0                      ; Four... 
 M557 P1 X60 Y185                    ; ...probe points...
