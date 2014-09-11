@@ -287,6 +287,9 @@ public:
 	void ConnectionError(void* h);			 // Called when a network error has occured
 	bool Active() const;					 // Is the network connection live?
 	bool LinkIsUp();						 // Is the network link up?
+	void Enable();
+	void Disable();
+	bool Enabled();
 
 friend class Platform;
 
@@ -307,6 +310,7 @@ private:
 	int outputPointer;
 	bool writeEnabled;
 	bool closePending;
+	bool enabled;
 	int8_t status;
 	NetRing* netRingGetPointer;
 	NetRing* netRingAddPointer;
@@ -465,6 +469,9 @@ class Platform
   
   MassStorage* GetMassStorage();
   FileStore* GetFileStore(const char* directory, const char* fileName, bool write);
+  void EnableNetwork();
+  void DisableNetwork();
+  bool NetworkEnabled();
   void StartNetwork();
   const char* GetWebDir() const; // Where the htm etc files are
   const char* GetGCodeDir() const; // Where the gcodes are
@@ -1151,6 +1158,21 @@ inline Network* Platform::GetNetwork()
 	return network;
 }
 
+inline void Platform::EnableNetwork()
+{
+	network->Enable();
+}
+
+inline void Platform::DisableNetwork()
+{
+	network->Disable();
+}
+
+inline bool Platform::NetworkEnabled()
+{
+	return network->Enabled();
+}
+
 inline void Platform::SetIPAddress(byte ip[])
 {
 	for(uint8_t i = 0; i < 4; i++)
@@ -1262,6 +1284,20 @@ inline bool Network::Active() const
 	return active;
 }
 
+inline void Network::Enable()
+{
+	enabled = true;
+}
+
+inline void Network::Disable()
+{
+	enabled = false;
+}
+
+inline bool Network::Enabled()
+{
+	return enabled;
+}
 
 
 #endif

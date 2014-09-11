@@ -215,8 +215,12 @@ void RepRap::Init()
 	  }
   }
 
-  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
-  platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
+  if(platform->NetworkEnabled())
+  {
+	  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
+	  platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
+  } else
+	  platform->Message(HOST_MESSAGE, "\nNetwork disabled.\n");
 
   snprintf(scratchString, STRING_LENGTH, "\n%s is up and running.\n", NAME);
   platform->Message(HOST_MESSAGE, scratchString);

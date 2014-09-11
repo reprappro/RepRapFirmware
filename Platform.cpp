@@ -1199,6 +1199,7 @@ Network::Network()
 	for(int8_t i = 1; i < HTTP_STATE_SIZE; i++)
 		netRingGetPointer = new NetRing(netRingGetPointer);
 	netRingAddPointer->SetNext(netRingGetPointer);
+	enabled = true;
 }
 
 // Reset the network to its disconnected and ready state.
@@ -1227,6 +1228,11 @@ void Network::CleanRing()
 
 void Network::Init()
 {
+	if(!enabled)
+	{
+		reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempting to start the network when it is disabled.\n");
+		return;
+	}
 	CleanRing();
 	Reset();
 	RepRapNetworkSetMACAddress(reprap.GetPlatform()->MACAddress());
@@ -1238,7 +1244,7 @@ void Network::Init()
 
 void Network::Spin()
 {
-	if(!active)
+	if(!active || !enabled)
 	{
 		//ResetEther();
 		return;
@@ -1367,6 +1373,8 @@ void Network::ReceiveInput(char* data, int length, void* pbuf, void* pcb, void* 
 
 bool Network::CanWrite() const
 {
+	if(!enabled)
+		return false;
 	if(windowedSendPackets > 1)
 		return writeEnabled && sentPacketsOutstanding < windowedSendPackets;
 	return writeEnabled;

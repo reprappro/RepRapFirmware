@@ -2077,6 +2077,13 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		break;
 
 	case 552: // Set/Get IP address
+		if(gb->Seen('S'))  // Has the user turned the network off?
+		{
+			if(gb->GetIValue() == 0)
+				platform->DisableNetwork();
+			else
+				platform->EnableNetwork();
+		}
 		if(gb->Seen('P'))
 			SetEthernetAddress(gb, code);
 		else
