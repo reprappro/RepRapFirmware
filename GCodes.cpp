@@ -1806,19 +1806,28 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		return true;
 	}
 
-	// Ensure unbuffered codes are only executed if the machine is NOT paused
+	// Execute unbuffered codes only if they don't mess around with queued look-ahead entries
 	bool canQueue = CanQueueCode(gb);
-	if (!canQueue && reprap.GetMove()->IsPaused())
+	if (!canQueue && totalMoves != movesCompleted)
 	{
-		platform->Message(BOTH_ERROR_MESSAGE, "Command '%s' cannot be executed while a print is paused.\n", gb->Buffer());
-		return true;
+		// Execute them only if the machine is NOT paused
+		if (reprap.GetMove()->IsPaused())
+		{
+			platform->Message(BOTH_ERROR_MESSAGE, "Cannot execute '%s' while a print is paused.\n", gb->Buffer());
+			return true;
+		}
+
+		// And if they aren't issued by the web interface during a running print
+		if (gb == webGCode && PrintingAFile())
+		{
+			platform->Message(WEB_ERROR_MESSAGE, "Cannot execute '%s' while a print is in progress.\n", gb->Buffer());
+			return true;
+		}
 	}
 
 	// Check if we can execute this code immediately
 	if (executeImmediately || totalMoves == movesCompleted || !canQueue)
 	{
-		//platform->Message(DEBUG_MESSAGE, "%s%s\n", gb->Identity(), gb->Buffer());
-
 		// M-code parameters might contain letters T and G, e.g. in filenames.
 		// dc42 assumes that G-and T-code parameters never contain the letter M.
 		// Therefore we must check for an M-code first.
