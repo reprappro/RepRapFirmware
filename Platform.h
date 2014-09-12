@@ -36,7 +36,7 @@ Licence: GPL
 
 // What are we supposed to be running on
 
-#define ELECTRONICS "Duet + Extension"
+#define ELECTRONICS "Duet (+ Extension)"
 
 // Language-specific includes
 
@@ -66,47 +66,6 @@ Licence: GPL
 
 /**************************************************************************************************/
 
-//// The physical capabilities of the machine
-//
-//#define DRIVES 4  // The number of drives in the machine, including X, Y, and Z plus extruder drives
-//#define AXES 3    // The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
-//#define HEATERS 2 // The number of heaters in the machine; 0 is the heated bed even if there isn't one.
-//
-//// The numbers of entries in each {} array definition must correspond with the values of DRIVES,
-//// AXES, or HEATERS.  Set values to -1 to flag unavailability.  Pins are the microcontroller pin numbers.
-//
-//// DRIVES
-//
-//#define STEP_PINS {14, 25, 5, X2}				// Full array for Duet + Duex4 is {14, 25, 5, X2, 41, 39, X4, 49}
-//#define DIRECTION_PINS {15, 26, 4, X3}			// Full array for Duet + Duex4 is {15, 26, 4, X3, 35, 53, 51, 48}
-//#define FORWARDS true     						// What to send to go...
-//#define BACKWARDS false    						// ...in each direction
-//#define ENABLE_PINS {29, 27, X1, X0}            // Full array for Duet + Duex4 is {29, 27, X1, X0, 37, X8, 50, 47}
-//#define ENABLE false      						// What to send to enable...
-//#define DISABLE true     						// ...and disable a drive
-//#define DISABLE_DRIVES {false, false, true, false} // Set true to disable a drive when it becomes idle
-//#define LOW_STOP_PINS {11, -1, 60, 31}				// Full array endstop pins for Duet + Duex4 is {11, 28, 60, 31, 24, 46, 45, 44}
-//#define HIGH_STOP_PINS {-1, 28, -1, -1}
-//#define ENDSTOP_HIT 1 							// when a stop == this it is hit
-//// Indices for motor current digipots (if any)
-////  first 4 are for digipot 1,(on duet)
-////  second 4 for digipot 2(on expansion board)
-////  Full order is {1, 3, 2, 0, 1, 3, 2, 0}, only include as many as you have DRIVES defined
-//#define POT_WIPES {1, 3, 2, 0} 					// Indices for motor current digipots (if any)
-//#define SENSE_RESISTOR 0.1   					// Stepper motor current sense resistor (ohms)
-//#define MAX_STEPPER_DIGIPOT_VOLTAGE ( 3.3*2.5/(2.7+2.5) ) // Stepper motor current reference voltage
-//#define Z_PROBE_AD_VALUE (400)					// Default for the Z probe - should be overwritten by experiment
-//#define Z_PROBE_STOP_HEIGHT (0.7) 				// mm
-////#define Z_PROBE_PIN (0) 						// Analogue pin number
-////#define Z_PROBE_MOD_PIN (61)					// Digital pin number to turn the IR LED on (high) or off (low)
-//#define Z_PROBE_PIN (10) 						// Analogue pin number
-//#define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
-//#define MAX_FEEDRATES {50.0, 50.0, 3.0, 16.0}   // mm/sec
-//#define ACCELERATIONS {800.0, 800.0, 10.0, 250.0}    // mm/sec^2
-//#define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0}
-//#define INSTANT_DVS {15.0, 15.0, 0.2, 2.0}    	// (mm/sec)
-//#define NUM_MIXING_DRIVES 1; //number of mixing drives
-
 // The physical capabilities of the machine
 
 #define DRIVES 8 // The number of drives in the machine, including X, Y, and Z plus extruder drives
@@ -129,7 +88,6 @@ Licence: GPL
 #define DISABLE_DRIVES {false, false, true, false, false, false, false, false} // Set true to disable a drive when it becomes idle
 #define LOW_STOP_PINS {11, -1, 60, 31, 24, 46, 45, 44} //E Stops not currently used
 #define HIGH_STOP_PINS {-1, 28, -1, -1, -1, -1, -1, -1}
-//#define HOME_DIRECTION {1, 1, 1, -1, -1, -1, -1, -1} // 1 for Max/High, -1 for Min/ Low
 #define ENDSTOP_HIT 1 // when a stop == this it is hit
 // Indices for motor current digipots (if any)
 // first 4 are for digipot 1,(on duet)
@@ -141,22 +99,13 @@ Licence: GPL
 #define Z_PROBE_AD_VALUE (400) // Default for the Z probe - should be overwritten by experiment
 #define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
-#define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_MOD_PIN07 (X25)					// Digital pin number to turn the IR LED on (high) or off (low) Duet V0.7 onwards
+#define Z_PROBE_MOD_PIN (52)
 #define MAX_FEEDRATES {100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0} // mm/sec
 #define ACCELERATIONS {500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0} // mm/sec^2
 #define DRIVE_STEPS_PER_UNIT {87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0}
 #define INSTANT_DVS {15.0, 15.0, 0.2, 2.0, 2.0, 2.0, 2.0, 2.0} // (mm/sec)
 #define NUM_MIXING_DRIVES 1; //number of mixing drives
-
-// AXES
-
-#define AXIS_LENGTHS {220, 200, 200} 			// mm
-#define HOME_FEEDRATES {50.0, 50.0, 1.0} 		// mm/sec
-#define HEAD_OFFSETS {0.0, 0.0, 0.0}			// mm
-
-#define X_AXIS 0  								// The index of the X axis in the arrays
-#define Y_AXIS 1  								// The index of the Y axis
-#define Z_AXIS 2  								// The index of the Z axis
 
 #define E0_DRIVE 3 //the index of the first Extruder drive
 #define E1_DRIVE 4 //the index of the second Extruder drive
@@ -164,29 +113,17 @@ Licence: GPL
 #define E3_DRIVE 6 //the index of the fourth Extruder drive
 #define E4_DRIVE 7 //the index of the fifth Extruder drive
 
-// HEATERS - The bed is assumed to be the at index 0
+// AXES
 
-//#define TEMP_SENSE_PINS {5, 4}  				// Analogue pin numbers (full array for Duet+Duex4 = {5, 4, 0, 7, 8, 9} )
-//#define HEAT_ON_PINS {6, X5}					// PWM pins (full array for Duet+Duex4 = {6, X5, X7, 7, 8, 9} )
-//
-//// Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
-//// Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
-//#define THERMISTOR_BETAS {3988.0, 4138.0}		// See http://en.wikipedia.org/wiki/Thermistor
-//#define THERMISTOR_SERIES_RS {1000, 1000} 		// Ohms in series with the thermistors
-//#define THERMISTOR_25_RS {10000.0, 100000.0} 	// Thermistor ohms at 25 C = 298.15 K
-//#define USE_PID {false, true} 					// PID or bang-bang for this heater?
-//#define PID_KIS {-1, 0.027 / HEAT_SAMPLE_TIME} 	// Integral PID constants, adjusted by dc42 for Ormerod hot end
-//#define PID_KDS {-1, 100 * HEAT_SAMPLE_TIME}	// Derivative PID constants
-//#define PID_KPS {-1, 20}						// Proportional PID constants
-//#define FULL_PID_BAND {-1, 150.0}				// errors larger than this cause heater to be on or off and I-term set to zero
-//#define PID_MIN {-1, 0.0}						// minimum value of I-term
-//#define PID_MAX {-1, 180}						// maximum value of I-term, must be high enough to reach 245C for ABS printing
-//#define D_MIX {-1, 0.5}							// higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
-//#define TEMP_INTERVAL 0.122 					// secs - check and control temperatures this often
-//#define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
-//#define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
-//#define COOLING_FAN_PIN X6 										//pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
-//#define HEAT_ON 0 								// 0 for inverted heater (eg Duet v0.6) 1 for not (e.g. Duet v0.4)
+#define AXIS_LENGTHS {230, 200, 200} 			// mm
+#define HOME_FEEDRATES {50.0, 50.0, 1.0} 		// mm/sec
+#define HEAD_OFFSETS {0.0, 0.0, 0.0}			// mm
+
+#define X_AXIS 0  								// The index of the X axis in the arrays
+#define Y_AXIS 1  								// The index of the Y axis
+#define Z_AXIS 2  								// The index of the Z axis
+
+// HEATERS - The bed is assumed to be the at index 0
 
 #define TEMP_SENSE_PINS {5, 4, 0, 7, 8, 9} // Analogue pin numbers
 #define HEAT_ON_PINS {6, X5, X7, 7, 8, 9} //pin D38 is PWM capable but not an Arduino PWM pin - //FIXME TEST if E1 PWM works as D38
@@ -195,15 +132,14 @@ Licence: GPL
 #define THERMISTOR_BETAS {3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0} // Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
 #define THERMISTOR_SERIES_RS {1000, 1000, 1000, 1000, 1000, 1000} // Ohms in series with the thermistors
 #define THERMISTOR_25_RS {10000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0} // Thermistor ohms at 25 C = 298.15 K
-#define USE_PID {false, true, true, true, true, true} // PID or bang-bang for this heater?
-//#define PID_KIS { 2.2, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME, 0.027 / HEAT_SAMPLE_TIME} // Integral PID constants, adjusted by dc42 for Ormerod hot end
-#define PID_KIS { 2.2, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME} // Integral PID constants, adjusted by dc42 for Ormerod hot end
+#define USE_PIDS {false, true, true, true, true, true} // PID or bang-bang for this heater?
+#define PID_KIS { 2.2, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME, 0.5 / HEAT_SAMPLE_TIME} // Integral PID constants, adjusted by ab for Ormerod hot end
 #define PID_KDS {80, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME, 100 * HEAT_SAMPLE_TIME}// Derivative PID constants
 #define PID_KPS {12, 20, 20, 20, 20, 20} // Proportional PID constants
-#define FULL_PID_BAND {150, 150.0, 150.0, 150.0, 150.0, 150.0} // errors larger than this cause heater to be on or off and I-term set to zero
-#define PID_MIN {0.0, 0.0, 0.0, 0.0, 0.0, 0.0} // minimum value of I-term
-#define PID_MAX {180, 180, 180, 180, 180, 180} // maximum value of I-term, must be high enough to reach 245C for ABS printing
-#define D_MIX {0.5, 0.5, 0.5, 0.5, 0.5, 0.5} // higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
+#define FULL_PID_BANDS {150, 150.0, 150.0, 150.0, 150.0, 150.0} // errors larger than this cause heater to be on or off and I-term set to zero
+#define PID_MINS {0.0, 0.0, 0.0, 0.0, 0.0, 0.0} // minimum value of I-term
+#define PID_MAXES {180, 180, 180, 180, 180, 180} // maximum value of I-term, must be high enough to reach 245C for ABS printing
+#define D_MIXES {0.5, 0.5, 0.5, 0.5, 0.5, 0.5} // higher values make the PID controller less sensitive to noise in the temperature reading, but too high makes it unstable
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO}
 #define COOLING_FAN_PIN X6 //pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
@@ -218,10 +154,10 @@ Licence: GPL
 
 #define HOT_BED 0 	// The index of the heated bed; set to -1 if there is no heated bed
 #define E0_HEATER 1 //the index of the first extruder heater
-#define E1_HEATER 2 //the index of the first extruder heater
-#define E2_HEATER 3 //the index of the first extruder heater
-#define E3_HEATER 4 //the index of the first extruder heater
-#define E4_HEATER 5 //the index of the first extruder heater
+#define E1_HEATER 2 //the index of the second extruder heater
+#define E2_HEATER 3 //the index of the third extruder heater
+#define E3_HEATER 4 //the index of the fourth extruder heater
+#define E4_HEATER 5 //the index of the fifth extruder heater
 
 /****************************************************************************************************/
 
@@ -352,6 +288,9 @@ public:
 	void ConnectionError(void* h);			 // Called when a network error has occured
 	bool Active() const;					 // Is the network connection live?
 	bool LinkIsUp();						 // Is the network link up?
+	void Enable();
+	void Disable();
+	bool Enabled();
 
 friend class Platform;
 
@@ -372,6 +311,7 @@ private:
 	int outputPointer;
 	bool writeEnabled;
 	bool closePending;
+	bool enabled;
 	int8_t status;
 	NetRing* netRingGetPointer;
 	NetRing* netRingAddPointer;
@@ -440,13 +380,14 @@ class FileStore //: public InputOutput
 {
 public:
 
-	int8_t Status(); // Returns OR of IOStatus
-	bool Read(char& b);
-	void Write(char b);
-	void Write(const char* s);
-	void Close();
-	void GoToEnd(); // Position the file at the end (so you can write on the end).
-	unsigned long Length(); // File size in bytes
+	int8_t Status();        	// Returns OR of IOStatus
+	bool Read(char& b);     	// Read 1 byte
+	void Write(char b);     	// Write 1 byte
+	void Write(const char* s); 	// Write a string
+	void Close();				// Shut the file and tidy up
+	void GoToEnd();         	// Position the file at the end (so you can write on the end).
+	unsigned long Length(); 	// File size in bytes
+	float FractionRead();   	// How far in we are
 
 friend class Platform;
 
@@ -455,13 +396,14 @@ protected:
 	FileStore(Platform* p);
 	void Init();
     bool Open(const char* directory, const char* fileName, bool write);
-        
+
+private:
+
   bool inUse;
   byte buf[FILE_BUF_LEN];
   int bufferPointer;
+  unsigned long bytesRead;
   
-private:
-
   void ReadBuffer();
   void WriteBuffer();
 
@@ -528,12 +470,16 @@ class Platform
   
   MassStorage* GetMassStorage();
   FileStore* GetFileStore(const char* directory, const char* fileName, bool write);
+  void EnableNetwork();
+  void DisableNetwork();
+  bool NetworkEnabled();
   void StartNetwork();
   const char* GetWebDir() const; // Where the htm etc files are
   const char* GetGCodeDir() const; // Where the gcodes are
   const char* GetSysDir() const;  // Where the system files are
   const char* GetTempDir() const; // Where temporary files are
   const char* GetConfigFile() const; // Where the configuration is stored (in the system dir).
+  //const char* GetDefaultFile() const; // Where the default configuration is stored (in the system dir).
   
   void Message(char type, const char* message);        // Send a message.  Messages may simply flash an LED, or,
                             // say, display the messages on an LCD. This may also transmit the messages to the host.
@@ -551,6 +497,7 @@ class Platform
   void Step(byte drive);
   void Disable(byte drive); // There is no drive enable; drives get enabled automatically the first time they are used.
   void SetMotorCurrent(byte drive, float current);
+  float MotorCurrent(byte drive) const;
   float DriveStepsPerUnit(int8_t drive) const;
   void SetDriveStepsPerUnit(int8_t drive, float value);
   float Acceleration(int8_t drive) const;
@@ -577,8 +524,8 @@ class Platform
   void SetZProbeType(int iZ);
   int GetZProbeType() const;
   //Mixing support
-  void SetMixingDrives(int);
-  int GetMixingDrives();
+ // void SetMixingDrives(int);
+ // int GetMixingDrives();
 
   int8_t SlowestDrive();
 
@@ -594,9 +541,19 @@ class Platform
   float PidMax(int8_t heater) const;
   float DMix(int8_t heater) const;
   bool UsePID(int8_t heater) const;
+  float ThermistorBeta(int8_t heater) const;
+  float ThermistorSeriesR(int8_t heater) const;
+  float ThermistorRAt25(int8_t heater) const;
+  void SetThermistorBeta(int8_t heater, float b);
+  void SetThermistorSeriesR(int8_t heater, float r);
+  void SetThermistorRAt25(int8_t heater, float r);
   float HeatSampleTime() const;
+  void SetHeatSampleTime(float st);
   void CoolingFan(float speed);
   void SetPidValues(size_t heater, float pVal, float iVal, float dVal);
+  float TimeToHot() const;
+  void SetTimeToHot(float t);
+
 
 //-------------------------------------------------------------------------------------------------------
   protected:
@@ -650,7 +607,7 @@ class Platform
   int zProbeADValue;
   float zProbeStopHeight;
   bool zProbeEnable;
-  int8_t numMixingDrives;
+  //int8_t numMixingDrives;
 
 // AXES
 
@@ -671,19 +628,20 @@ class Platform
   int8_t heatOnPins[HEATERS];
   float thermistorBetas[HEATERS];
   float thermistorSeriesRs[HEATERS];
-  float thermistorInfRs[HEATERS];
-  bool usePID[HEATERS];
+  float thermistorRAt25[HEATERS];
+  bool usePIDs[HEATERS];
   float pidKis[HEATERS];
   float pidKds[HEATERS];
   float pidKps[HEATERS];
-  float fullPidBand[HEATERS];
-  float pidMin[HEATERS];
-  float pidMax[HEATERS];
-  float dMix[HEATERS];
+  float fullPidBands[HEATERS];
+  float pidMins[HEATERS];
+  float pidMaxes[HEATERS];
+  float dMixes[HEATERS];
   float heatSampleTime;
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
   int8_t coolingFanPin;
+  float timeToHot;
 
 // Serial/USB
 
@@ -695,16 +653,12 @@ class Platform
   MassStorage* massStorage;
   FileStore* files[MAX_FILES];
   bool fileStructureInitialised;
-  //bool* inUse;
   char* webDir;
   char* gcodeDir;
   char* sysDir;
   char* tempDir;
   char* configFile;
-  //byte* buf[MAX_FILES];
-  //int bPointer[MAX_FILES];
-  //char fileList[FILE_LIST_LENGTH];
-  //char scratchString[STRING_LENGTH];
+ // char* defaultFile;
   
 // Network connection
 
@@ -785,6 +739,11 @@ inline const char* Platform::GetConfigFile() const
   return configFile;
 }
 
+//inline const char* Platform::GetDefaultFile() const
+//{
+//  return defaultFile;
+//}
+
 
 
 //*****************************************************************************************************************
@@ -857,33 +816,30 @@ inline bool Platform::HighStopButNotLow(int8_t axis) const
 	return (lowStopPins[axis] < 0) && (highStopPins[axis] >= 0);
 }
 
+inline void Platform::SetDirectionValue(byte drive, bool dVal)
+{
+	directions[drive] = dVal;
+}
+
+inline bool Platform::GetDirectionValue(byte drive)
+{
+	return directions[drive];
+}
+
 inline void Platform::SetDirection(byte drive, bool direction)
 {
 	if(directionPins[drive] < 0)
 		return;
-
- 	bool d;
- 	if(direction == FORWARDS)
- 		d = directions[drive];
- 	else
- 		d = !directions[drive];
-
+	bool d;
+	if(direction == FORWARDS)
+		d = directions[drive];
+	else
+		d = !directions[drive];
 	if(drive == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
 		digitalWriteNonDue(directionPins[drive], d);
 	else
 		digitalWrite(directionPins[drive], d);
 }
-
-inline void Platform::SetDirectionValue(byte drive, bool dVal)
-{
- 	directions[drive] = dVal;
-}
-
-inline bool Platform::GetDirectionValue(byte drive)
-{
- 	return directions[drive];
-}
-
 
 inline void Platform::Disable(byte drive)
 {
@@ -940,6 +896,17 @@ inline void Platform::SetMotorCurrent(byte drive, float current)
 	}
 }
 
+inline float Platform::MotorCurrent(byte drive) const
+{
+	unsigned short pot;
+	if(drive < 4)
+		pot = mcpDuet.getNonVolatileWiper(potWipes[drive]);
+	else
+		pot = mcpExpansion.getNonVolatileWiper(potWipes[drive]);
+	return (float)pot*maxStepperDigipotVoltage/(0.256*8.0*senseResistor);
+}
+
+
 inline float Platform::HomeFeedRate(int8_t axis) const
 {
   return homeFeedrates[axis];
@@ -976,11 +943,14 @@ inline void Platform::PollZHeight()
 	else
 		zProbeOffSum = zProbeOffSum + currentReading - zProbeOffSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED;
 
-	if (zProbeType == 2)
+	if (zProbeType >= 2)
 	{
 		zModOnThisTime = !zModOnThisTime;
 		// Reverse the modulation, ready for next time
-		digitalWrite(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
+		if(zProbeType == 3)
+			digitalWriteNonDue(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
+		else
+			digitalWrite(zProbeModulationPin, zModOnThisTime ? HIGH : LOW);
 	} else
 		zModOnThisTime = true; // Defensive...
 }
@@ -989,7 +959,7 @@ inline int Platform::ZProbe() const
 {
 	return (zProbeType == 1)
 			? zProbeOnSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED		// non-modulated mode
-			: (zProbeType == 2)
+			: (zProbeType == 2 || zProbeType == 3)
 			  ? (zProbeOnSum - zProbeOffSum)/NUMBER_OF_A_TO_D_READINGS_AVERAGED	// modulated mode
 			    : 0;														// z-probe disabled
 }
@@ -998,7 +968,7 @@ inline int Platform::ZProbeOnVal() const
 {
 	return (zProbeType == 1)
 			? zProbeOnSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED
-			: (zProbeType == 2)
+			: (zProbeType == 2 || zProbeType == 3)
 			  ? zProbeOnSum/NUMBER_OF_A_TO_D_READINGS_AVERAGED
 				: 0;
 }
@@ -1020,28 +990,20 @@ inline void Platform::SetZProbe(int iZ)
 
 inline void Platform::SetZProbeType(int pt)
 {
-	zProbeType = (pt >= 0 && pt <= 2) ? pt : 0;
+	zProbeType = (pt >= 0 && pt <= 3) ? pt : 0;
+	if(zProbeType == 3)
+	{
+		zProbeModulationPin = Z_PROBE_MOD_PIN07;
+	}else
+	{
+		zProbeModulationPin = Z_PROBE_MOD_PIN;
+	}
 	InitZProbe();
 }
 
 inline int Platform::GetZProbeType() const
 {
 	return zProbeType;
-}
-
-inline void Platform::SetMixingDrives(int num_drives)
-{
-	if(num_drives>(DRIVES-AXES))
-	{
-		Message(HOST_MESSAGE, "More mixing extruder drives set with M160 than exist in firmware configuration\n");
-		return;
-	}
-	numMixingDrives = num_drives;
-}
-
-inline int Platform::GetMixingDrives()
-{
-	return numMixingDrives;
 }
 
 //********************************************************************************************************
@@ -1068,9 +1030,14 @@ inline float Platform::HeatSampleTime() const
   return heatSampleTime; 
 }
 
+inline void Platform::SetHeatSampleTime(float st)
+{
+	heatSampleTime = st;
+}
+
 inline bool Platform::UsePID(int8_t heater) const
 {
-  return usePID[heater];
+  return usePIDs[heater];
 }
 
 
@@ -1091,40 +1058,89 @@ inline float Platform::PidKp(int8_t heater) const
 
 inline float Platform::FullPidBand(int8_t heater) const
 {
-  return fullPidBand[heater];
+  return fullPidBands[heater];
 }
 
 inline float Platform::PidMin(int8_t heater) const
 {
-  return pidMin[heater];  
+  return pidMins[heater];  
 }
 
 inline float Platform::PidMax(int8_t heater) const
 {
-  return pidMax[heater];
+  return pidMaxes[heater];
 }
 
 inline float Platform::DMix(int8_t heater) const
 {
-  return dMix[heater];  
+  return dMixes[heater];  
 }
 
-//Changed to be compatible with existing gcode norms
-// M106 S0 = fully off M106 S255 = fully on
+
+inline float Platform::ThermistorBeta(int8_t heater) const
+{
+	return thermistorBetas[heater];
+}
+
+inline float Platform::ThermistorSeriesR(int8_t heater) const
+{
+	return thermistorSeriesRs[heater];
+}
+
+inline float Platform::ThermistorRAt25(int8_t heater) const
+{
+	return thermistorRAt25[heater]*exp(thermistorBetas[heater]/(25.0 - ABS_ZERO));
+}
+
+inline void Platform::SetThermistorBeta(int8_t heater, float b)
+{
+	thermistorBetas[heater] = b;
+	thermistorRAt25[heater] = ( ThermistorRAt25(heater)*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO)) );
+}
+
+inline void Platform::SetThermistorSeriesR(int8_t heater, float r)
+{
+	thermistorSeriesRs[heater] = r;
+}
+
+inline void Platform::SetThermistorRAt25(int8_t heater, float r)
+{
+	thermistorRAt25[heater] = r*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO));
+}
+
+inline float Platform::TimeToHot() const
+{
+	return timeToHot;
+}
+
+inline void Platform::SetTimeToHot(float t)
+{
+	timeToHot = t;
+}
+
+// This is a bit of a compromise - old RepRaps used fan speeds in the range
+// [0, 255], which is very hardware dependent.  It makes much more sense
+// to specify speeds in [0.0, 1.0].  This looks at the value supplied (which
+// the G Code reader will get right for a float or an int) and attempts to
+// do the right thing whichever the user has done.  This will only not work
+// for an old-style fan speed of 1/255...
+
 inline void Platform::CoolingFan(float speed)
 {
-	//byte p = (byte)(255.0*fmin(1.0, fmax(0.0, speed))); //this reverts to 0= off, 1 = on if uncommented
-	byte p = (byte)speed;
-	p = 255 - p; //duet v0.6
 	if(coolingFanPin < 0)
 		return;
+
+	byte p;
+
+	if(speed <= 1.0)
+		p = (byte)(255.0*fmax(0.0, speed));
+	else
+		p = (byte)speed;
+
+	p = 255 - p; //duet v0.6
+
 	analogWriteNonDue(coolingFanPin, p);
 }
-
-//inline void Platform::SetHeatOn(int8_t ho)
-//{
-//	turnHeatOn = ho;
-//}
 
 
 //*********************************************************************************************************
@@ -1151,6 +1167,21 @@ inline void Platform::SetInterrupt(float s) // Seconds
 inline Network* Platform::GetNetwork()
 {
 	return network;
+}
+
+inline void Platform::EnableNetwork()
+{
+	network->Enable();
+}
+
+inline void Platform::DisableNetwork()
+{
+	network->Disable();
+}
+
+inline bool Platform::NetworkEnabled()
+{
+	return network->Enabled();
 }
 
 inline void Platform::SetIPAddress(byte ip[])
@@ -1202,6 +1233,18 @@ inline Line* Platform::GetLine() const
 	return line;
 }
 
+inline void Platform::PushMessageIndent()
+{
+	messageIndent += 2;
+}
+
+inline void Platform::PopMessageIndent()
+{
+	messageIndent -= 2;
+}
+
+//******************************************************************************************
+
 inline int8_t Line::Status() const
 {
 	return numChars == 0 ? nothing : byteAvailable;
@@ -1238,16 +1281,6 @@ inline void Line::Write(long l)
 	SerialUSB.print(scratchString);
 }
 
-inline void Platform::PushMessageIndent()
-{
-	messageIndent += 2;
-}
-
-inline void Platform::PopMessageIndent()
-{
-	messageIndent -= 2;
-}
-
 
 //***************************************************************************************
 
@@ -1262,6 +1295,20 @@ inline bool Network::Active() const
 	return active;
 }
 
+inline void Network::Enable()
+{
+	enabled = true;
+}
+
+inline void Network::Disable()
+{
+	enabled = false;
+}
+
+inline bool Network::Enabled()
+{
+	return enabled;
+}
 
 
 #endif

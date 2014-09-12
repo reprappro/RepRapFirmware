@@ -9,7 +9,7 @@
 M111 S0                             ; Debug off
 M550 PMy RepRapPro Ormerod 2        ; Machine name (can be anything you like)
 M551 Preprap                        ; Machine password (currently not used)
-M540 P0xBE:0xEF:0xDE:0xAD:0xFE:0xED ; MAC Address
+M540 PBE:EF:DE:AD:FE:ED 				; MAC Address
 M552 P192.168.1.14                  ; IP address
 M553 P255.255.255.0                 ; Netmask
 M554 P192.168.1.1                   ; Gateway
@@ -17,15 +17,11 @@ M555 P2                             ; Set output to look like Marlin
 G21                                 ; Work in millimetres
 G90                                 ; Send absolute corrdinates...
 M83                                 ; ...but relative extruder moves
-M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
+M906 X800 Y800 Z800 E800				; Set motor currents (mA)
 M569 P0 S0									; Reverse the X motor
 M92 E420                            ; Set extruder steps per mm
 M558 P2                             ; Use a modulated Z probe
-G31 Z0.8 P600                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
-M557 P0 X60 Y0                      ; Four... 
-M557 P1 X60 Y185                    ; ...probe points...
-M557 P2 X210 Y185                   ; ...for bed...
-M557 P3 X210 Y0                     ; ...levelling
+G31 Z0.5 P542                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
 M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
 M201 X800 Y800 Z15 E1000            ; Accelerations (mm/s^2)
 M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)

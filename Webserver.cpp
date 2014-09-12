@@ -433,8 +433,9 @@ void Webserver::GetJsonResponse(const char* request)
   
   if(StringStartsWith(request, "poll"))
   {
+	float fractionPrinted = reprap.GetGCodes()->FractionOfFilePrinted();
     strncpy(jsonResponse, "{\"poll\":[", STRING_LENGTH);
-    if(reprap.GetGCodes()->PrintingAFile())
+    if(fractionPrinted >= 0.0)
     	strncat(jsonResponse, "\"P\",", STRING_LENGTH); // Printing
     else
     	strncat(jsonResponse, "\"I\",", STRING_LENGTH); // Idle
@@ -471,7 +472,7 @@ void Webserver::GetJsonResponse(const char* request)
 
     // Send the Z probe value
 
-    if (platform->GetZProbeType() == 2)
+    if (platform->GetZProbeType() >= 2)
     {
     	snprintf(scratchString, STRING_LENGTH, ",\"probe\":\"%d (%d)\"", (int)platform->ZProbe(), platform->ZProbeOnVal());
     }
@@ -492,6 +493,11 @@ void Webserver::GetJsonResponse(const char* request)
     strncat(jsonResponse, (reprap.GetGCodes()->GetAxisIsHomed(1)) ? "1" : "0", STRING_LENGTH);
     strncat(jsonResponse, ",\"hz\":", STRING_LENGTH);
     strncat(jsonResponse, (reprap.GetGCodes()->GetAxisIsHomed(2)) ? "1" : "0", STRING_LENGTH);
+
+    // Send the fraction printed
+    strncat(jsonResponse, ",\"fraction_printed\":", STRING_LENGTH);
+    snprintf(scratchString, STRING_LENGTH, "%.4f", max(0.0, fractionPrinted));
+    strncat(jsonResponse, scratchString, STRING_LENGTH);
 
     // Send the name
     strncat(jsonResponse, ",\"reprap_name\":", STRING_LENGTH);
@@ -962,6 +968,11 @@ void Webserver::SetName(const char* nm)
 	myName[SHORT_STRING_LENGTH] = 0; // NB array is dimensioned to SHORT_STRING_LENGTH+1
 }
 
+const char* Webserver::GetName() const
+{
+	return myName;
+}
+
 // Get the actual amount of gcode buffer space we have
 unsigned int Webserver::GetGcodeBufferSpace() const
 {
@@ -980,5 +991,10 @@ unsigned int Webserver::GetReportedGcodeBufferSpace() const
 void Webserver::WebDebug(bool wdb)
 {
 	webDebug = wdb;
+}
+
+bool Webserver::PasswordGiven()
+{
+	return gotPassword;
 }
 

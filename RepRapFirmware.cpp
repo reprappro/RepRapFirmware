@@ -177,43 +177,52 @@ void RepRap::Init()
   heat->Init();
   currentTool = NULL;
   active = true;
+  coldExtrude = false;
 
-  platform->Message(HOST_MESSAGE, NAME);
-  platform->Message(HOST_MESSAGE, " Version ");
-  platform->Message(HOST_MESSAGE, VERSION);
-  platform->Message(HOST_MESSAGE, ", dated ");
-  platform->Message(HOST_MESSAGE, DATE);
-  platform->Message(HOST_MESSAGE, ".\n\nExecuting ");
-  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
-  platform->Message(HOST_MESSAGE, "...\n\n");
+  snprintf(scratchString, STRING_LENGTH, "%s Version %s dated %s\n", NAME, VERSION, DATE);
+  platform->Message(HOST_MESSAGE, scratchString);
 
-  // We inject an M98 into the serial input stream to run the start-up macro
+  FileStore* startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
 
-  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
-  platform->GetLine()->InjectString(scratchString);
+  platform->Message(HOST_MESSAGE, "\n\nExecuting ");
+  if(startup != NULL)
+  {
+	  startup->Close();
+	  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
+	  platform->Message(HOST_MESSAGE, "...\n\n");
+	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
+	  // We inject an M98 into the serial input stream to run the start-up macro
+	  platform->GetLine()->InjectString(scratchString);
+  } else
+  {
+	  platform->Message(HOST_MESSAGE, "config.g not found in the sys folder.  Did you copy ormerod1/2.g?\n");
+//	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
+//	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
+//	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());
+  }
 
   bool runningTheFile = false;
   bool initialisingInProgress = true;
   while(initialisingInProgress)
   {
 	  Spin();
-	  if(gCodes->PrintingAFile())
+	  if(gCodes->FractionOfFilePrinted() >= 0.0)
 		  runningTheFile = true;
 	  if(runningTheFile)
 	  {
-		  if(!gCodes->PrintingAFile())
+		  if(gCodes->FractionOfFilePrinted() < 0.0)
 			  initialisingInProgress = false;
 	  }
   }
 
+  if(platform->NetworkEnabled())
+  {
+	  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
+	  platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
+  } else
+	  platform->Message(HOST_MESSAGE, "\nNetwork disabled.\n");
 
-  //while(gCodes->RunConfigurationGCodes()); // Wait till the file is finished
-
-  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
-  platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
-
-  platform->Message(HOST_MESSAGE, "\n");
-  snprintf(scratchString, STRING_LENGTH, "%s is up and running.\n", NAME);
+  snprintf(scratchString, STRING_LENGTH, "\n%s is up and running.\n", NAME);
   platform->Message(HOST_MESSAGE, scratchString);
   fastLoop = FLT_MAX;
   slowLoop = 0.0;
@@ -324,6 +333,22 @@ void RepRap::AddTool(Tool* tool)
 	toolList->AddTool(tool);
 }
 
+void RepRap::PrintTool(int toolNumber, char* reply)
+{
+	Tool* tool = toolList;
+
+	while(tool)
+	{
+		if(tool->Number() == toolNumber)
+		{
+			tool->Print(reply);
+			return;
+		}
+		tool = tool->Next();
+	}
+	platform->Message(HOST_MESSAGE, "Attempt to print details of non-existent tool.");
+}
+
 void RepRap::SelectTool(int toolNumber)
 {
 	Tool* tool = toolList;
@@ -344,7 +369,6 @@ void RepRap::SelectTool(int toolNumber)
 	if(currentTool != NULL)
 		StandbyTool(currentTool->Number());
 	currentTool = NULL;
-
 }
 
 void RepRap::StandbyTool(int toolNumber)
