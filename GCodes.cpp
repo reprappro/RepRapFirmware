@@ -2162,6 +2162,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 	case 80:	// ATX power on
 	case 81:	// ATX power off
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
 		platform->SetAtxPower(code == 80);
 		break;
 
