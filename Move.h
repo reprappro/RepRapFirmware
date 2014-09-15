@@ -645,7 +645,7 @@ inline float Move::SecondDegreeTransformZ(float x, float y) const
 // This is called from the step ISR. Any variables it modifies that are also read by code outside the ISR must be declared 'volatile'.
 inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 {
-	float hitPoint = platform->AxisMinimum(drive);
+	float hitPoint;
 	if(drive == Z_AXIS)
 	{
 		if(zProbing)
@@ -666,7 +666,8 @@ inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 				lastZHit = hitPoint;
 			}
 			return;
-		} else
+		}
+		else
 		{
 			// Executing G30, so set the current Z height to the value at which the end stop is triggered
 			// Transform it first so that the height is correct in user coordinates
@@ -677,6 +678,10 @@ inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 			hitPoint = xyzPoint[Z_AXIS];
 		}
 	}
+	else
+	{
+		hitPoint = (hitDDA->directions[drive] == FORWARDS ? platform->AxisMaximum(drive) : platform->AxisMinimum(drive));
+	}
 	la->SetDriveCoordinateAndZeroEndSpeed(hitPoint, drive);
 	gCodes->SetAxisIsHomed(drive);
 }
@@ -684,8 +689,9 @@ inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 // This is called from the step ISR. Any variables it modifies that are also read by code outside the ISR must be declared 'volatile'.
 inline void Move::HitHighStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 {
-  la->SetDriveCoordinateAndZeroEndSpeed(platform->AxisMaximum(drive), drive);
-  gCodes->SetAxisIsHomed(drive);
+	const float pos = (hitDDA->directions[drive] == FORWARDS ? platform->AxisMaximum(drive) : platform->AxisMinimum(drive));
+	la->SetDriveCoordinateAndZeroEndSpeed(pos, drive);
+	gCodes->SetAxisIsHomed(drive);
 }
 
 inline float Move::ComputeCurrentCoordinate(int8_t drive, LookAhead* la, DDA* runningDDA)

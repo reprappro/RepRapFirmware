@@ -172,8 +172,8 @@ class GCodes
     void DisableDrives();												// Turn the motors off
     void SetEthernetAddress(GCodeBuffer *gb, int mCode);				// Does what it says
     void SetMACAddress(GCodeBuffer *gb);								// Deals with an M540
-    void HandleReply(bool error, bool fromLine, const char* reply, 		// If the GCode is from the serial interface, reply to it
-    		char gMOrT, int code, bool resend);
+    void HandleReply(bool error, const GCodeBuffer *gb, 				// If the GCode is from the serial interface, reply to it
+    		const char* reply, char gMOrT, int code, bool resend);
     bool OpenFileToWrite(const char* directory,							// Start saving GCodes in a file
     		const char* fileName, GCodeBuffer *gb);
     void WriteGCodeToFile(GCodeBuffer *gb);								// Write this GCode into a file
