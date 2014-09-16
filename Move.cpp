@@ -967,7 +967,10 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 
 		stopAStep = (long)((dCross*totalSteps)/distance);
 		startDStep = stopAStep + 1;
-	} else if(totalSteps > 5 && stopAStep <= 1 && startDStep >= totalSteps - 1)
+	}
+/*
+// 78 -> 96 #1
+	else if(totalSteps > 5 && stopAStep <= 1 && startDStep >= totalSteps - 1)
 	{
 		// If we try to get to speed in a single step, the error from the
 		// Euler integration can create silly speeds.
@@ -978,7 +981,7 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		stopAStep = 0;
 		startDStep = totalSteps;
 	}
-
+*/
 	return result;
 }
 
@@ -1055,6 +1058,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
 
   acceleration = lookAhead->Acceleration();
   instantDv = lookAhead->MinSpeed();
+  //***FIXME: next line should be timeStep = distance/(float)totalSteps;
   timeStep = 1.0/platform->DriveStepsPerUnit(bigDirection);
 
   result = AccelerationCalculation(u, v, result);
@@ -1176,10 +1180,11 @@ void DDA::Step()
 	  }
     
     // Euler is only approximate.
-    
+/*
+// 78 -> 96 #2
     if(velocity < 0.0) //instantDv)
       velocity = instantDv;
-      
+*/
     stepCount++;
     active = stepCount < totalSteps;
     
