@@ -367,22 +367,10 @@ bool GCodes::Pop()
 	stackPointer--;
 	drivesRelative = drivesRelativeStack[stackPointer];
 	axesRelative = axesRelativeStack[stackPointer];
-	fileBeingPrinted.MoveFrom(fileStack[stackPointer]);
-	platform->PopMessageIndent();
-	// Remember for next time if we have just been switched to absolute drive moves
-	// DC 2014-07-16: the following code is wrong, it messes up the absolute extruder position (typically it resets it to zero) and does nothing useful as far as I can see.
-	// So I am commenting it out.
-	//for(int8_t i = AXES; i < DRIVES; i++)
-	//{
-	//  lastPos[i - AXES] = moveBuffer[i];
-	//}
-
-	// Set the correct feedrate
-
 	moveBuffer[DRIVES] = feedrateStack[stackPointer];
-
+	fileBeingPrinted.MoveFrom(fileStack[stackPointer]);
 	endStopsToCheck = 0;
-	moveAvailable = true;
+	platform->PopMessageIndent();
 	return true;
 }
 
