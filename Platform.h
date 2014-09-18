@@ -594,6 +594,12 @@ class Platform
   float PidMax(int8_t heater) const;
   float DMix(int8_t heater) const;
   bool UsePID(int8_t heater) const;
+  float ThermistorBeta(int8_t heater) const;
+  float ThermistorSeriesR(int8_t heater) const;
+  float ThermistorRAt25(int8_t heater) const;
+  void SetThermistorBeta(int8_t heater, float b);
+  void SetThermistorSeriesR(int8_t heater, float r);
+  void SetThermistorRAt25(int8_t heater, float r);
   float HeatSampleTime() const;
   void CoolingFan(float speed);
   void SetPidValues(size_t heater, float pVal, float iVal, float dVal);
@@ -671,7 +677,7 @@ class Platform
   int8_t heatOnPins[HEATERS];
   float thermistorBetas[HEATERS];
   float thermistorSeriesRs[HEATERS];
-  float thermistorInfRs[HEATERS];
+  float thermistorRAt25[HEATERS];
   bool usePID[HEATERS];
   float pidKis[HEATERS];
   float pidKds[HEATERS];
@@ -1125,6 +1131,37 @@ inline void Platform::CoolingFan(float speed)
 //{
 //	turnHeatOn = ho;
 //}
+
+inline float Platform::ThermistorBeta(int8_t heater) const
+{
+	return thermistorBetas[heater];
+}
+
+inline float Platform::ThermistorSeriesR(int8_t heater) const
+{
+	return thermistorSeriesRs[heater];
+}
+
+inline float Platform::ThermistorRAt25(int8_t heater) const
+{
+	return thermistorRAt25[heater]*exp(thermistorBetas[heater]/(25.0 - ABS_ZERO));
+}
+
+inline void Platform::SetThermistorBeta(int8_t heater, float b)
+{
+	thermistorBetas[heater] = b;
+	thermistorRAt25[heater] = ( ThermistorRAt25(heater)*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO)) );
+}
+
+inline void Platform::SetThermistorSeriesR(int8_t heater, float r)
+{
+	thermistorSeriesRs[heater] = r;
+}
+
+inline void Platform::SetThermistorRAt25(int8_t heater, float r)
+{
+	thermistorRAt25[heater] = r*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO));
+}
 
 
 //*********************************************************************************************************

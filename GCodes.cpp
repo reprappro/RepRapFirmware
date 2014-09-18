@@ -1945,8 +1945,39 @@ bool GCodes::ActOnGcode(GCodeBuffer *gb)
     case 302: // Allow cold extrudes
     	break;
 
-    case 304: // Set thermistor parameters
-    	break;
+
+	case 305: // Set/report thermistor parameters
+	{
+		if(!gb->Seen('P')) // Must specify the heater
+			break;
+
+		int8_t heater = gb->GetIValue();
+
+		seen = false;
+		if (gb->Seen('T'))
+		{
+			platform->SetThermistorRAt25(heater, gb->GetFValue());
+			seen = true;
+		}
+
+		if (gb->Seen('R'))
+		{
+			platform->SetThermistorSeriesR(heater, gb->GetFValue());
+			seen = true;
+		}
+
+		if (gb->Seen('B'))
+		{
+			platform->SetThermistorBeta(heater, gb->GetFValue());
+			seen = true;
+		}
+
+		if (!seen)
+		{
+			snprintf(reply, STRING_LENGTH, "Heater %d thermistor - Beta: %.1f, series R: %.1f, R at 25 C: %.1f",
+					heater, platform->ThermistorBeta(heater), platform->ThermistorSeriesR(heater), platform->ThermistorRAt25(heater) );
+		}
+	}
 
     case 503: // list variable settings
     	result = SendConfigToLine();
