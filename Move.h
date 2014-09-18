@@ -203,7 +203,7 @@ class Move
     void Diagnostics();							// Report useful stuff
     float ComputeCurrentCoordinate(int8_t drive,// Turn a DDA value back into a real world coordinate
     		LookAhead* la, DDA* runningDDA);
-    void SetStepHypotenuse();					// Set up the hypotenuse lengths for multiple axis steps, like step both X and Y at once
+    //void SetStepHypotenuse();					// Set up the hypotenuse lengths for multiple axis steps, like step both X and Y at once
     float Normalise(float v[], int8_t dimensions);  // Normalise a vector to unit length
     void Absolute(float v[], int8_t dimensions);	// Put a vector in the positive hyperquadrant
     float Magnitude(const float v[], int8_t dimensions);  // Return the length of a vector
@@ -263,7 +263,7 @@ class Move
     float liveCoordinates[DRIVES + 1];				// The last endpoint that the machine moved to
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
     float normalisedDirectionVector[DRIVES];		// Used to hold a unit-length vector in the direction of motion
-    float stepDistances[(1<<DRIVES)];				// The length of steps in different numbers of dimensions
+    //float stepDistances[(1<<DRIVES)];				// The length of steps in different numbers of dimensions
     long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
     float xBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
     float yBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe

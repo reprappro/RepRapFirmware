@@ -100,7 +100,7 @@ void Move::Init()
   lastMove->Release();
   liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
 
-  SetStepHypotenuse();
+  //SetStepHypotenuse();
 
   currentFeedrate = -1.0;
 
@@ -144,8 +144,8 @@ void Move::Spin()
     
   DoLookAhead();
   
-  // If there's space in the DDA ring, and there are completed
-  // moves in the look-ahead ring, transfer them.
+  // If there's space in the DDA ring, and there is a completed
+  // move in the look-ahead ring, transfer it.
  
   if(!DDARingFull())
   {
@@ -205,7 +205,7 @@ void Move::Spin()
     Absolute(normalisedDirectionVector, DRIVES);
     if(Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
     {
-    	platform->Message(HOST_MESSAGE, "\nAttempt to normailse zero-length move.\n");  // Should never get here - noMove above
+    	platform->Message(HOST_MESSAGE, "\nAttempt to normailse zero-length move.\n");  // Should never get here - noMove above should catch it
         platform->ClassReport("Move", longWait);
         return;
     }
@@ -220,7 +220,7 @@ void Move::Spin()
      float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
      float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
 
-     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES],minSpeed, maxSpeed, acceleration, checkEndStopsOnNextMove))
+     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, checkEndStopsOnNextMove))
     	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
   }
   platform->ClassReport("Move", longWait);
@@ -230,8 +230,7 @@ void Move::Spin()
 
 /*
  * Take a unit positive-hyperquadrant vector, and return the factor needed to obtain
- * length of the vector as projected to touch box[].  As a side effect, the face that
- * constrained the vector is recorded in hitFace.
+ * length of the vector as projected to touch box[].
  */
 
 float Move::VectorBoxIntersection(const float v[], const float box[], int8_t dimensions)
@@ -271,7 +270,6 @@ float Move::Magnitude(const float v[], int8_t dimensions)
 {
 	float magnitude = 0.0;
 	for(int8_t d = 0; d < dimensions; d++)
-
 		magnitude += v[d]*v[d];
 	magnitude = sqrt(magnitude);
 	return magnitude;
@@ -378,35 +376,35 @@ bool Move::GetCurrentUserPosition(float m[])
 }
 
 
-void Move::SetStepHypotenuse()
-{
-	  // The stepDistances array is a look-up table of the Euclidean distance
-	  // between the start and end of a step.  If the step is just along one axis,
-	  // it's just that axis's step length.  If it's more, it is a Pythagoran
-	  // sum of all the axis steps that take part.
-
-	  float d, e;
-	  int i, j;
-
-	  for(i = 0; i < (1<<DRIVES); i++)
-	  {
-	    d = 0.0;
-	    for(j = 0; j < DRIVES; j++)
-	    {
-	       if(i & (1<<j))
-	       {
-	          e = 1.0/platform->DriveStepsPerUnit(j);
-	          d += e*e;
-	       }
-	    }
-	    stepDistances[i] = sqrt(d);
-	  }
-
-	  // We don't want 0.  If no axes/extruders are moving these should never be used.
-	  // But try to be safe.
-
-	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
-}
+//void Move::SetStepHypotenuse()
+//{
+//	  // The stepDistances array is a look-up table of the Euclidean distance
+//	  // between the start and end of a step.  If the step is just along one axis,
+//	  // it's just that axis's step length.  If it's more, it is a Pythagoran
+//	  // sum of all the axis steps that take part.
+//
+//	  float d, e;
+//	  int i, j;
+//
+//	  for(i = 0; i < (1<<DRIVES); i++)
+//	  {
+//	    d = 0.0;
+//	    for(j = 0; j < DRIVES; j++)
+//	    {
+//	       if(i & (1<<j))
+//	       {
+//	          e = 1.0/platform->DriveStepsPerUnit(j);
+//	          d += e*e;
+//	       }
+//	    }
+//	    stepDistances[i] = sqrt(d);
+//	  }
+//
+//	  // We don't want 0.  If no axes/extruders are moving these should never be used.
+//	  // But try to be safe.
+//
+//	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
+//}
 
 
 // Take an item from the look-ahead ring and add it to the DDA ring, if
@@ -580,7 +578,10 @@ void Move::Interrupt()
     
     dda = DDARingGet();    
     if(dda != NULL)
+    {
       dda->Start();  // Yes - got it.  So fire it up.
+      dda->Step();   // And take the first step.
+    }
     return;   
   }
   
@@ -1117,7 +1118,6 @@ void DDA::Step()
 	  return;
 
   int drivesMoving = 0;
-//  uint8_t extrudersMoving = 0;
   
   for(int8_t drive = 0; drive < DRIVES; drive++)
   {

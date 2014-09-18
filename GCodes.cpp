@@ -1629,8 +1629,8 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 				if(drive < DRIVES-1)
 					strncat(reply, ":", STRING_LENGTH);
 			}
-		} else
-			reprap.GetMove()->SetStepHypotenuse();
+		} //else
+			//reprap.GetMove()->SetStepHypotenuse();
 		break;
 
 
