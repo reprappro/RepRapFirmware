@@ -232,8 +232,11 @@ void GCodes::Spin()
 			else if (internalCodeQueue->ExecuteAtMove() <= movesCompleted)
 			{
 				internalCodeQueue->Execute();
-				queuedGCode->Put(internalCodeQueue->GetCommand(), internalCodeQueue->GetCommandLength());
-				queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
+				if (queuedGCode->Put(internalCodeQueue->GetCommand(), internalCodeQueue->GetCommandLength()))
+				{
+					queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
+				}
+
 				platform->ClassReport("GCodes", longWait);
 				return;
 			}
@@ -259,7 +262,7 @@ void GCodes::Spin()
 
 	if (serialGCode->Active())
 	{
-		// We want codes from the serial interface to be queued unless the print was paused
+		// We want codes from the serial interface to be queued unless the print has been paused
 		serialGCode->SetFinished(ActOnCode(serialGCode, reprap.GetMove()->IsPaused()));
 		platform->ClassReport("GCodes", longWait);
 		return;
@@ -294,12 +297,12 @@ void GCodes::Diagnostics()
 	platform->AppendMessage(BOTH_MESSAGE, "Internal code queue is %s\n", internalCodeQueue == NULL ? "empty." :"not empty:");
 	if (internalCodeQueue != NULL)
 	{
+		platform->AppendMessage(BOTH_MESSAGE, "Total moves: %d, moves completed: %d\n", totalMoves, movesCompleted);
 		unsigned int count = 0;
 		CodeQueue *item = internalCodeQueue;
-		do
-		{
+		do {
 			count++;
-			platform->AppendMessage(BOTH_MESSAGE, "Queued: '%s'\n", item->GetCommand());
+			platform->AppendMessage(BOTH_MESSAGE, "Queued '%s' for move %d\n", item->GetCommand(), item->ExecuteAtMove());
 		} while ((item = item->Next()) != NULL);
 		platform->AppendMessage(BOTH_MESSAGE, "%d codes have been queued.\n", count);
 	}
@@ -2075,11 +2078,46 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 
 	case 18: // Motors off
-		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-			return false;
+	case 84:
+		{
+			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+				return false;
 
-		DisableDrives();
-		break;
+			bool seen = false;
+			for(uint8_t axis=0; axis<AXES; axis++)
+			{
+				if (gb->Seen(axisLetters[axis]))
+				{
+					axisIsHomed[axis] = false;
+					platform->Disable(axis);
+					seen = true;
+				}
+			}
+
+			if (gb->Seen(EXTRUDE_LETTER))
+			{
+				long int eDrive[DRIVES-AXES];
+				int eCount = DRIVES-AXES;
+				gb->GetLongArray(eDrive, eCount);
+				for(uint8_t i=0; i<eCount; i++)
+				{
+					seen = true;
+					if (eDrive[i] >= DRIVES-AXES)
+					{
+						reply.printf("Invalid extruder number specified: %ld\n", eDrive[i]);
+						error = true;
+						break;
+					}
+					platform->Disable(AXES + eDrive[i]);
+				}
+			}
+
+			if (!seen)
+			{
+				DisableDrives();
+			}
+			break;
+		}
 
 	case 20:  // Deprecated...
 		{
@@ -2225,13 +2263,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			drivesRelative = true;
 		}
-		break;
-
-	case 84: // Motors off - deprecated, use M18
-		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-			return false;
-
-		DisableDrives();
 		break;
 
 	case 85: // Set inactive time
