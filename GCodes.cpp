@@ -2287,7 +2287,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				float eVals[DRIVES-AXES];
 				int eCount = DRIVES-AXES;
 				gb->GetFloatArray(eVals, eCount);
-				if(eCount != DRIVES-AXES)
+				if(eCount > DRIVES-AXES)
 				{
 					platform->Message(BOTH_ERROR_MESSAGE, "Setting steps/mm - wrong number of E drives: %s\n", gb->Buffer());
 				}

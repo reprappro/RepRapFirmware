@@ -501,7 +501,9 @@ float Platform::Time()
 {
 	unsigned long now = micros();
 	if (now < lastTimeCall) // Has timer overflowed?
+	{
 		addToTime += ((float) ULONG_MAX) * TIME_FROM_REPRAP;
+	}
 	lastTimeCall = now;
 	return addToTime + TIME_FROM_REPRAP * (float) now;
 }

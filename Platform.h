@@ -777,12 +777,12 @@ private:
   MassStorage* massStorage;
   FileStore* files[MAX_FILES];
   bool fileStructureInitialised;
-  char* webDir;
-  char* gcodeDir;
-  char* sysDir;
-  char* tempDir;
-  char* configFile;
-  char* defaultFile;
+  const char* webDir;
+  const char* gcodeDir;
+  const char* sysDir;
+  const char* tempDir;
+  const char* configFile;
+  const char* defaultFile;
   
 // Data used by the tick interrupt handler
 

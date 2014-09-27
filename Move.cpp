@@ -247,7 +247,7 @@ void Move::Spin()
 	else if (state == cancelled && LookAheadRingEmpty() && DDARingEmpty())
 	{
 		// Make sure the last look-ahead entry points to the same coordinates we're at right now
-		for(uint8_t i=0; i<=DRIVES; i++)
+		for(uint8_t i=0; i<DRIVES; i++)
 		{
 			lastMove->endPoint[i] = LookAhead::EndPointToMachine(i, liveCoordinates[i]);
 		}
@@ -337,7 +337,7 @@ void Move::SetPositions(float move[])
 {
 	for(uint8_t drive = 0; drive < DRIVES; drive++)
 	{
-		lastMove->SetDriveCoordinateAndZeroEndSpeed(move[drive], drive);
+		lastMove->SetDriveCoordinate(move[drive], drive);
 	}
 	lastMove->SetFeedRate(move[DRIVES]);
 }
@@ -1350,16 +1350,27 @@ float LookAhead::Cosine()
   return cosine;
 }
 
-//Returns units (mm) from steps for a particular drive
+// Returns units (mm) from steps for a particular drive
 float LookAhead::MachineToEndPoint(int8_t drive, long coord)
 {
 	return ((float)coord)/reprap.GetPlatform()->DriveStepsPerUnit(drive);
 }
 
-//Returns steps from units (mm) for a particular drive
+// Returns steps from units (mm) for a particular drive
 long LookAhead::EndPointToMachine(int8_t drive, float coord)
 {
-	return  (long)roundf(coord*reprap.GetPlatform()->DriveStepsPerUnit(drive));
+	return (long)roundf(coord*reprap.GetPlatform()->DriveStepsPerUnit(drive));
+}
+
+void LookAhead::MoveAborted(float done)
+{
+	for (size_t drive = 0; drive < AXES; ++drive)
+	{
+		long prev = previous->endPoint[drive];
+		endPoint[drive] = prev + (long)((endPoint[drive] - prev) * done);
+	}
+	v = platform->InstantDv(platform->SlowestDrive());
+	cosine = 2.0;		// not sure this is needed
 }
 
 /*
