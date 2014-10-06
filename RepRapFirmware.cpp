@@ -438,10 +438,32 @@ Tool* RepRap::GetTool(int toolNumber)
 	while(tool)
 	{
 		if(tool->Number() == toolNumber)
+		{
 			return tool;
+		}
+
 		tool = tool->Next();
 	}
 	return NULL; // Not an error
+}
+
+Tool* RepRap::GetToolByDrive(int driveNumber)
+{
+	Tool* tool = toolList;
+
+	while (tool)
+	{
+		for(uint8_t drive = 0; drive < tool->DriveCount(); drive++)
+		{
+			if (tool->Drive(drive) + AXES == driveNumber)
+			{
+				return tool;
+			}
+		}
+
+		tool = tool->Next();
+	}
+	return NULL;
 }
 
 void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures)

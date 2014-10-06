@@ -129,6 +129,12 @@ void Move::Init()
   lastTime = platform->Time();
   longWait = lastTime;
 
+  for(uint8_t drive = AXES; drive < DRIVES; drive++)
+  {
+    canExtrude[drive - AXES] = false;
+    canRetract[drive - AXES] = false;
+  }
+
   state = running;
   active = true;  
 }
@@ -147,6 +153,16 @@ void Move::Spin()
 	// Do some look-ahead work, if there's any to do
 
 	DoLookAhead();
+
+	// Check extrusion capabilities of each extruder drive
+
+	Tool *tool;
+	for(uint8_t drive = AXES; drive < DRIVES; drive++)
+	{
+		tool = reprap.GetToolByDrive(drive);
+		canExtrude[drive - AXES] = (tool == NULL) ? false : tool->ToolCanDrive(true);
+		canRetract[drive - AXES] = (tool == NULL) ? false : tool->ToolCanDrive(false);
+	}
 
 	// If there's space in the DDA ring, and there are completed
 	// moves in the look-ahead ring, transfer them.
@@ -1157,13 +1173,25 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 
 void DDA::Start()
 {
-  for(int8_t drive = 0; drive < DRIVES; drive++)
-  {
-    platform->SetDirection(drive, directions[drive]);
-  }
+	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		platform->SetDirection(drive, directions[drive]);
+	}
 
-  platform->SetInterrupt(timeStep); // seconds
-  active = true;
+	// zpl-2014-10-03: Because my fork enqueues certain G-Codes, we may have to block E moves here and NOT in the GCodes class
+	for(uint8_t drive = AXES; drive < DRIVES; drive++)
+	{
+		if (delta[drive] > 0)
+		{
+			// Don't interact with "foreign" classes in this ISR; use cached values instead
+			eMoveAllowed[drive - AXES] = (directions[drive] == FORWARDS) ?
+					move->canExtrude[drive - AXES] :
+					move->canRetract[drive - AXES];
+		}
+	}
+
+	platform->SetInterrupt(timeStep); // seconds
+	active = true;
 }
 
 // This function is called from the ISR.
@@ -1183,7 +1211,14 @@ void DDA::Step()
     counter[drive] += delta[drive];
     if(counter[drive] > 0)
     {
-      platform->Step(drive);
+      // zpl-2014-10-03: My fork contains an alternative cold extrusion/retraction check due to code queuing, so
+      // step the E drives only if this is actually possible. Yet behave as if moves were always performed, so absolute
+      // E moves are handled properly just in case the minimum temperatures are met sometime later.
+
+      if (drive < AXES || eMoveAllowed[drive - AXES])
+      {
+        platform->Step(drive);
+      }
 
       counter[drive] -= totalSteps;
       
@@ -1218,7 +1253,6 @@ void DDA::Step()
   if(active)
   {
 	timeStep = distance/(totalSteps * velocity);	// dc42 use the average distance per step
-    //timeStep = move->stepDistances[drivesMoving] / velocity;
 
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?

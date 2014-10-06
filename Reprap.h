@@ -40,6 +40,7 @@ class RepRap
     void StandbyTool(int toolNumber);
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
+    Tool* GetToolByDrive(int driveNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
     void AllowColdExtrude();
     void DenyColdExtrude();

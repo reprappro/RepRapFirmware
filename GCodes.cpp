@@ -431,19 +431,8 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				}
 			}
 
-			// Check if extruding or retracting moves shall be performed
-			bool isExtruding = false;
-			for(int8_t drive = 0; drive < eMoveCount; drive++)
-			{
-				isExtruding |= (eMovement[drive] * moveBuffer[DRIVES] > 0.0);
-				if (isExtruding)
-				{
-					break;
-				}
-			}
-			bool eMoveAllowed = tool->ToolCanDrive(isExtruding);
-
 			// Set the drive values for this tool.
+			// zpl-2014-10-03: Do NOT check extruder temperatures here, because we may be executing queued codes like M116
 
 			for(int8_t eDrive = 0; eDrive < eMoveCount; eDrive++)
 			{
@@ -454,7 +443,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 					moveBuffer[drive + AXES] = 0.0;		// no move required
 					lastPos[drive] = moveArg;
 				}
-				else if (eMoveAllowed)
+				else
 				{
 					if (drivesRelative)
 					{

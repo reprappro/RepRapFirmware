@@ -151,6 +151,7 @@ private:
     float acceleration;						// The acceleration to use
     float instantDv;						// The lowest possible velocity
     float feedRate;
+    bool eMoveAllowed[DRIVES-AXES];		// Which extruder is allowed to move?
     volatile bool active;					// Is the DDA running?
 };
 
@@ -286,6 +287,10 @@ class Move
     bool zProbing;									// Are we bed probing as well as moving?
     float longWait;									// A long time for things that need to be done occasionally
 
+    // Additional Move information
+
+    bool canExtrude[DRIVES-AXES];					// Can we perform extruding moves with this drive?
+    bool canRetract[DRIVES-AXES];					// Can we perform retraction moves with this drive?
     enum Status { running, paused, cancelled } state;
 };
 
