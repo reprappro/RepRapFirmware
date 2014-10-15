@@ -35,7 +35,7 @@ GCodes::GCodes(Platform* p, Webserver* w)
 	webGCode = new GCodeBuffer(platform, "web: ");
 	fileGCode = new GCodeBuffer(platform, "file: ");
 	serialGCode = new GCodeBuffer(platform, "serial: ");
-	cannedCycleGCode = new GCodeBuffer(platform, "macro: ");
+	fileMacroGCode = new GCodeBuffer(platform, "macro: ");
 	queuedGCode = new GCodeBuffer(platform, "queued: ");
 }
 
@@ -54,7 +54,7 @@ void GCodes::Init()
 	distanceScale = 1.0;
 	for (int8_t i = 0; i < DRIVES - AXES; i++)
 	{
-		lastPos[i] = 0.0;
+		lastExtruderPosition[i] = 0.0;
 	}
 	configFile = NULL;
 	eofString = EOF_STRING;
@@ -82,7 +82,7 @@ void GCodes::Reset()
 	webGCode->Init();
 	fileGCode->Init();
 	serialGCode->Init();
-	cannedCycleGCode->Init();
+	fileMacroGCode->Init();
 	queuedGCode->Init();
 	moveAvailable = false;
 	totalMoves = 0;
@@ -91,7 +91,8 @@ void GCodes::Reset()
 	fileToPrint.Close();
 	fileBeingWritten = NULL;
 	endStopsToCheck = 0;
-	doingCannedCycleFile = false;
+	doingFileMacro = false;
+	fractionOfFilePrinted = -1.0;
 	dwellWaiting = false;
 	stackPointer = 0;
 	waitingForMoveToComplete = false;
@@ -116,14 +117,14 @@ void GCodes::DoFilePrint(GCodeBuffer* gb)
 		{
 			if (gb->Put(b))
 			{
-				gb->SetFinished(ActOnCode(gb, doingCannedCycleFile));
+				gb->SetFinished(ActOnCode(gb, doingFileMacro));
 			}
 		}
 		else
 		{
 			if (gb->Put('\n')) // In case there wasn't one ending the file
 			{
-				gb->SetFinished(ActOnCode(gb, doingCannedCycleFile));
+				gb->SetFinished(ActOnCode(gb, doingFileMacro));
 			}
 			fileBeingPrinted.Close();
 		}
@@ -277,7 +278,7 @@ void GCodes::Spin()
 
 	if (fileGCode->Active())
 	{
-		fileGCode->SetFinished(ActOnCode(fileGCode, doingCannedCycleFile));
+		fileGCode->SetFinished(ActOnCode(fileGCode, doingFileMacro));
 		platform->ClassReport("GCodes", longWait);
 		return;
 	}
@@ -441,19 +442,19 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				if (doingG92)
 				{
 					moveBuffer[drive + AXES] = 0.0;		// no move required
-					lastPos[drive] = moveArg;
+					lastExtruderPosition[drive] = moveArg;
 				}
 				else
 				{
 					if (drivesRelative)
 					{
 						moveBuffer[drive + AXES] = moveArg * extrusionFactors[drive];
-						lastPos[drive] += moveArg;
+						lastExtruderPosition[drive] += moveArg;
 					}
 					else
 					{
-						moveBuffer[drive + AXES] = (moveArg - lastPos[drive]) * extrusionFactors[drive];
-						lastPos[drive] = moveArg;
+						moveBuffer[drive + AXES] = (moveArg - lastExtruderPosition[drive]) * extrusionFactors[drive];
+						lastExtruderPosition[drive] = moveArg;
 					}
 				}
 			}
@@ -559,16 +560,20 @@ bool GCodes::ReadMove(float m[], EndstopChecks& ce)
 	return true;
 }
 
-bool GCodes::DoFileCannedCycles(const char* fileName)
+bool GCodes::DoFileMacro(const char* fileName)
 {
 	// Have we started the file?
 
-	if (!doingCannedCycleFile)
+	if (!doingFileMacro)
 	{
 		// No
 
 		if (!Push())
+		{
 			return false;
+		}
+
+		fractionOfFilePrinted = fileBeingPrinted.FractionRead();
 
 		FileStore *f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
 		if (f == NULL)
@@ -581,16 +586,16 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 			return true;
 		}
 		fileBeingPrinted.Set(f);
-		doingCannedCycleFile = true;
-		cannedCycleGCode->Init();
+		doingFileMacro = true;
+		fileMacroGCode->Init();
 		return false;
 	}
 
 	// Complete the current move (must do this before checking whether we have finished the file in case it didn't end in newline)
 
-	if (cannedCycleGCode->Active())
+	if (fileMacroGCode->Active())
 	{
-		cannedCycleGCode->SetFinished(ActOnCode(cannedCycleGCode, true));
+		fileMacroGCode->SetFinished(ActOnCode(fileMacroGCode, true));
 		return false;
 	}
 
@@ -601,28 +606,32 @@ bool GCodes::DoFileCannedCycles(const char* fileName)
 		// Yes
 
 		if (!Pop())
+		{
 			return false;
-		doingCannedCycleFile = false;
-		cannedCycleGCode->Init();
+		}
+
+		fractionOfFilePrinted = -1.0;
+		doingFileMacro = false;
+		fileMacroGCode->Init();
 		return true;
 	}
 
 	// No - Do more of the file
 
-	DoFilePrint(cannedCycleGCode);
+	DoFilePrint(fileMacroGCode);
 	return false;
 }
 
-bool GCodes::FileCannedCyclesReturn()
+bool GCodes::FileMacroCyclesReturn()
 {
-	if (!doingCannedCycleFile)
+	if (!doingFileMacro)
 		return true;
 
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
 
-	doingCannedCycleFile = false;
-	cannedCycleGCode->Init();
+	doingFileMacro = false;
+	fileMacroGCode->Init();
 
 	fileBeingPrinted.Close();
 	return true;
@@ -640,14 +649,18 @@ bool GCodes::DoCannedCycleMove(EndstopChecks ce)
 	if (cannedCycleMoveQueued)
 	{ // Yes.
 		if (!Pop()) // Wait for the move to finish then restore the state
+		{
 			return false;
+		}
 		cannedCycleMoveQueued = false;
 		return true;
 	}
 	else
 	{ // No.
 		if (!Push()) // Wait for the RepRap to finish whatever it was doing, save it's state, and load moveBuffer[] with the current position.
+		{
 			return false;
+		}
 		for (int8_t drive = 0; drive <= DRIVES; drive++)
 		{
 			if (activeDrive[drive])
@@ -758,7 +771,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			axisIsHomed[Y_AXIS] = false;
 			axisIsHomed[Z_AXIS] = false;
 		}
-		if (DoFileCannedCycles(HOME_ALL_G))
+		if (DoFileMacro(HOME_ALL_G))
 		{
 			homing = false;
 			homeX = false;
@@ -776,7 +789,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			homing = true;
 			axisIsHomed[X_AXIS] = false;
 		}
-		if (DoFileCannedCycles(HOME_X_G))
+		if (DoFileMacro(HOME_X_G))
 		{
 			homing = false;
 			homeX = false;
@@ -792,7 +805,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			homing = true;
 			axisIsHomed[Y_AXIS] = false;
 		}
-		if (DoFileCannedCycles(HOME_Y_G))
+		if (DoFileMacro(HOME_Y_G))
 		{
 			homing = false;
 			homeY = false;
@@ -817,7 +830,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			homing = true;
 			axisIsHomed[Z_AXIS] = false;
 		}
-		if (DoFileCannedCycles(HOME_Z_G))
+		if (DoFileMacro(HOME_Z_G))
 		{
 			homing = false;
 			homeZ = false;
@@ -1003,8 +1016,15 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply)
 // triangle or four in the corners), then sets the bed transformation to compensate
 // for the bed not quite being the plane Z = 0.
 
-bool GCodes::DoMultipleZProbe(StringRef& reply)
+bool GCodes::SetBedEquationWithProbe(StringRef& reply)
 {
+	// zpl-2014-10-09: In order to stay compatible with old firmware versions, only execute bed.g
+	// if it is actually present in the sys directory
+	if (platform->GetMassStorage()->PathExists(SYS_DIR SET_BED_EQUATION))
+	{
+		return DoFileMacro(SET_BED_EQUATION);
+	}
+
 	if (reprap.GetMove()->NumberOfXYProbePoints() < 3)
 	{
 		reply.copy("Bed probing: there needs to be 3 or more points set.\n");
@@ -1222,7 +1242,7 @@ void GCodes::QueueFileToPrint(const char* fileName)
 	if (f != NULL)
 	{
 		// Cancel current print if there is any
-		if (PrintingAFile())
+		if (FractionOfFilePrinted() >= 0.0)
 		{
 			CancelPrint();
 
@@ -1232,8 +1252,10 @@ void GCodes::QueueFileToPrint(const char* fileName)
 
 		for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
 		{
-			lastPos[extruder - AXES] = 0.0;
+			lastExtruderPosition[extruder - AXES] = 0.0;
 		}
+		reprap.GetMove()->ResetExtruderPositions();
+
 		fileToPrint.Set(f);
 	}
 	else
@@ -1847,7 +1869,7 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		}
 
 		// And if they aren't issued by the web interface during a running print
-		if (gb == webGCode && PrintingAFile() && !doingCannedCycleFile)
+		if (gb == webGCode && FractionOfFilePrinted() >= 0.0 && !doingFileMacro)
 		{
 			platform->Message(WEB_ERROR_MESSAGE, "Cannot execute '%s' while a print is in progress.\n", gb->Buffer());
 			return true;
@@ -1991,7 +2013,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		}
 		else
 		{
-			result = DoMultipleZProbe(reply);
+			result = SetBedEquationWithProbe(reply);
 		}
 		break;
 
@@ -2175,7 +2197,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 25: // Pause the print
-		if (!PrintingAFile())
+		if (FractionOfFilePrinted() < 0.0)
 		{
 			error = true;
 			reply.copy("Cannot pause print, because no print is in progress!");
@@ -2190,7 +2212,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 27: // Report print status - Deprecated
-		if (PrintingAFile())
+		if (FractionOfFilePrinted() >= 0.0)
 		{
 			reply.copy("SD printing.");
 		}
@@ -2237,8 +2259,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
 			{
-				lastPos[extruder - AXES] = 0.0;
+				lastExtruderPosition[extruder - AXES] = 0.0;
 			}
+			reprap.GetMove()->ResetExtruderPositions();
 			drivesRelative = false;
 		}
 		break;
@@ -2248,8 +2271,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
 			{
-				lastPos[extruder - AXES] = 0.0;
+				lastExtruderPosition[extruder - AXES] = 0.0;
 			}
+			reprap.GetMove()->ResetExtruderPositions();
 			drivesRelative = true;
 		}
 		break;
@@ -2309,12 +2333,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 98:
 		if (gb->Seen('P'))
 		{
-			result = DoFileCannedCycles(gb->GetString());
+			result = DoFileMacro(gb->GetString());
 		}
 		break;
 
 	case 99:
-		result = FileCannedCyclesReturn();
+		result = FileMacroCyclesReturn();
 		break;
 
 	case 104: // Deprecated.  This sets the active temperature of every heater of the active tool
@@ -2868,15 +2892,36 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 552: // Set/Get IP address
-		if (gb->Seen('P'))
+	case 552: // Enable/Disable network and/or Set/Get IP address
 		{
-			SetEthernetAddress(gb, code);
-		}
-		else
-		{
-			const byte *ip = platform->IPAddress();
-			reply.printf("IP address: %d.%d.%d.%d\n ", ip[0], ip[1], ip[2], ip[3]);
+			bool seen = false;
+			if (gb->Seen('S')) // Has the user turned the network off?
+			{
+				seen = true;
+				if (gb->GetIValue())
+				{
+					reprap.GetNetwork()->Enable();
+				}
+				else
+				{
+					reprap.GetNetwork()->Disable();
+				}
+			}
+
+			if (gb->Seen('P'))
+			{
+				seen = true;
+				SetEthernetAddress(gb, code);
+			}
+
+			if (!seen)
+			{
+				const byte *ip = platform->IPAddress();
+				reply.printf("Network is %s, IP address: %d.%d.%d.%d\n ",
+						reprap.GetNetwork()->IsEnabled() ? "enabled" : "disabled",
+						ip[0], ip[1], ip[2], ip[3]);
+			}
+
 		}
 		break;
 
@@ -3295,12 +3340,6 @@ bool GCodes::HandleTcode(GCodeBuffer* gb)
     return result;
 }
 
-// Return the amount of filament extruded
-float GCodes::GetExtruderPosition(uint8_t extruder) const
-{
-	return (extruder < (DRIVES - AXES)) ? lastPos[extruder] : 0;
-}
-  
 bool GCodes::ChangeTool(int newToolNumber)
 {
 	Tool* oldTool = reprap.GetCurrentTool();
@@ -3315,7 +3354,7 @@ bool GCodes::ChangeTool(int newToolNumber)
 			if(oldTool != NULL)
 			{
 				scratchString.printf("tfree%d.g", oldTool->Number());
-				if(DoFileCannedCycles(scratchString.Pointer()))
+				if(DoFileMacro(scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -3334,11 +3373,11 @@ bool GCodes::ChangeTool(int newToolNumber)
 			toolChangeSequence++;
 			return false;
 
-		case 2: // Run the pre-tool-change canned cycle for the new tool (if any)
+		case 2: // Run the pre-tool-change macro cycle for the new tool (if any)
 			if(newTool != NULL)
 			{
 				scratchString.printf("tpre%d.g", newToolNumber);
-				if(DoFileCannedCycles(scratchString.Pointer()))
+				if(DoFileMacro(scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -3354,11 +3393,11 @@ bool GCodes::ChangeTool(int newToolNumber)
 			toolChangeSequence++;
 			return false;
 
-		case 4: // Run the post-tool-change canned cycle for the new tool (if any)
+		case 4: // Run the post-tool-change macro cycle for the new tool (if any)
 			if(newTool != NULL)
 			{
 				scratchString.printf("tpost%d.g", newToolNumber);
-				if(DoFileCannedCycles(scratchString.Pointer()))
+				if(DoFileMacro(scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -3391,6 +3430,7 @@ void GCodes::CancelPrint()
 		delete item;
 	}
 	totalMoves = movesCompleted = 0;
+	moveAvailable = false;
 
 	fileGCode->CancelPause();	// if we paused it and then asked to print a new file, cancel any pending command
 	queuedGCode->CancelPause();
@@ -3417,28 +3457,29 @@ bool GCodes::ToolHeatersAtSetTemperatures(const Tool *tool) const
     return true;
 }
 
-// Called by the look-ahead to indicate a move will be performed
+// Called by the look-ahead to indicate a new (real) move
 void GCodes::MoveQueued()
 {
 	totalMoves++;
 }
 
-// Check if a new DDA can be processed (called by ISR)
+// Check if a new DDA can be processed (may be called by ISR)
 bool GCodes::CanMove() const
 {
 	// Do we have any queued codes left?
+
 	if (internalCodeQueue == NULL)
 	{
-		return true;
+		return true; // No, go on
 	}
 
-	// Are we still waiting for a code to complete?
+	// Are we still waiting for a queued code to complete?
+
 	if (queuedGCode->Active())
 	{
-		return false;
+		return false; // Yes, so don't move until it has finished
 	}
 
-	// Check if there are any queued codes we must execute first
 	return (internalCodeQueue->ExecuteAtMove() > movesCompleted);
 }
 

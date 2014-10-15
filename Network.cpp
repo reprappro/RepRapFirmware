@@ -388,7 +388,7 @@ SendBuffer::SendBuffer(SendBuffer *n) : next(n)
 // Network/Ethernet class
 
 Network::Network()
-	: state(NetworkInactive), readingData(false),
+	: isEnabled(true), state(NetworkInactive), readingData(false),
 	  freeTransactions(NULL), readyTransactions(NULL), writingTransactions(NULL),
 	  dataCs(NULL), ftpCs(NULL), telnetCs(NULL),
 	  sendBuffer(NULL)
@@ -428,6 +428,11 @@ void Network::PrependTransaction(RequestState* volatile* list, RequestState *r)
 
 void Network::Init()
 {
+	if (!isEnabled)
+	{
+		reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempting to start the network when it is disabled.\n");
+		return;
+	}
 	RepRapNetworkSetMACAddress(reprap.GetPlatform()->MACAddress());
 	init_ethernet();
 	state = NetworkInitializing;
@@ -501,7 +506,7 @@ void Network::Spin()
 
 void Network::Interrupt()
 {
-	if (!inLwip)
+	if (isEnabled && !inLwip && state != NetworkInactive)
 	{
 		++inLwip;
 		ethernet_timers_update();
@@ -517,6 +522,32 @@ bool Network::InLwip() const
 void Network::ReadPacket()
 {
 	readingData = true;
+}
+
+void Network::Enable()
+{
+	if (!isEnabled)
+	{
+		readingData = true;
+		// EMAC RX callback will be reset on next Spin calls
+		Init();
+		isEnabled = true;
+	}
+}
+
+void Network::Disable()
+{
+	if (isEnabled)
+	{
+		readingData = false;
+		ethernet_set_rx_callback(NULL);
+		state = NetworkInactive;
+	}
+}
+
+bool Network::IsEnabled() const
+{
+	return isEnabled;
 }
 
 bool Network::AllocateSendBuffer(SendBuffer *&buffer)

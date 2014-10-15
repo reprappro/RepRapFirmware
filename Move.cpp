@@ -174,14 +174,14 @@ void Move::Spin()
 		{
 			if (!DDARingAdd(nextFromLookAhead))
 			{
-				platform->Message(HOST_MESSAGE, "Can't add to non-full DDA ring!\n"); // Should never happen...
+				platform->Message(BOTH_ERROR_MESSAGE, "Can't add to non-full DDA ring!\n"); // Should never happen...
 			}
 		}
 	}
 
 	// If we either don't want to, or can't, add to the look-ahead ring, go home.
 
-	if ((addNoMoreMoves && state != cancelled) || LookAheadRingFull())
+	if ((addNoMoreMoves && state != cancelled) || LookAheadRingFull() || state == paused)
 	{
 		platform->ClassReport("Move", longWait);
 		return;
@@ -191,7 +191,7 @@ void Move::Spin()
 	// ring for processing.
 
 	EndstopChecks endStopsToCheck;
-	if (gCodes->ReadMove(nextMove, endStopsToCheck))
+	if (gCodes->ReadMove(nextMove, endStopsToCheck) && state != cancelled)
 	{
 		Transform(nextMove);
 
@@ -232,7 +232,7 @@ void Move::Spin()
 		Absolute(normalisedDirectionVector, DRIVES);
 		if (Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
 		{
-			platform->Message(HOST_MESSAGE, "\nAttempt to normalise zero-length move.\n");  // Should never get here - noMove above
+			platform->Message(BOTH_ERROR_MESSAGE, "\nAttempt to normalise zero-length move.\n");  // Should never get here - noMove above
 			platform->ClassReport("Move", longWait);
 			return;
 		}
@@ -249,15 +249,12 @@ void Move::Spin()
 
 		if (LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
 		{
-			if (state != cancelled)
-			{
-				// Tell GCodes class we're about to perform a new move
-				reprap.GetGCodes()->MoveQueued();
-			}
+			// Tell GCodes class we're about to perform a new move
+			reprap.GetGCodes()->MoveQueued();
 		}
 		else
 		{
-			platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+			platform->Message(BOTH_ERROR_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
 		}
 	}
 	else if (state == cancelled && LookAheadRingEmpty() && DDARingEmpty())
@@ -425,7 +422,7 @@ void Move::Diagnostics()
 bool Move::GetCurrentMachinePosition(float m[])
 {
 	// If moves are still running, use the last look-ahead entry to retrieve the current position
-	if (state == running)
+	if (state == running && reprap.GetGCodes()->CanMove())
 	{
 		if(LookAheadRingFull())
 			return false;
@@ -445,7 +442,7 @@ bool Move::GetCurrentMachinePosition(float m[])
 		currentFeedrate = -1.0;
 		return true;
 	}
-	// If our state is either paused or cancelled, return liveCoordinates instead
+	// If there is no real movement, return liveCoordinates instead
 	else if (NoLiveMovement())
 	{
 		for(int8_t drive = 0; drive <= DRIVES; drive++)
@@ -588,32 +585,34 @@ void Move::DoLookAhead()
   
   if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
   {
-    n0 = lookAheadRingGetPointer;
-    n1 = n0->Next();
-    while(n1 != lookAheadRingAddPointer)
+	n0 = n1->Previous();
+	n1 = lookAheadRingGetPointer;
+	LookAhead* n2 = n1->Next();
+    while(n2 != lookAheadRingAddPointer)
     {
-      if(n0->Processed() == unprocessed)
+      if(n1->Processed() == unprocessed)
       {
-        float c = n0->V();
-        float m = fmin(n0->MinSpeed(), n1->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
-        c = c*n0->Cosine();
+    	float c = n1->V();
+        float m = min<float>(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
+        c = c*n1->Cosine();
         if(c < m)
         {
         	c = m;
         }
-        n0->SetV(c);
-        n0->SetProcessed(vCosineSet);
+        n1->SetV(c);
+        n1->SetProcessed(vCosineSet);
       } 
       n0 = n1;
-      n1 = n1->Next();
+      n1 = n2;
+      n2 = n2->Next();
     }
 
     // If we are just doing one isolated move, set its end velocity to an appropriate minimum speed.
 
     if(addNoMoreMoves || !gCodes->HaveIncomingData())
     {
-      n0->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
-      n0->SetProcessed(complete);
+    	n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
+    	n1->SetProcessed(complete);
     }
   }
 }
@@ -1198,12 +1197,9 @@ void DDA::Start()
 // Any variables it modifies that are also read by code outside the ISR must be declared 'volatile'.
 void DDA::Step()
 {
-  if(!active)
+  if(!active || !move->active)
     return;
   
-  if(!move->active)
-	  return;
-
   int drivesMoving = 0;
   
   for(size_t drive = 0; drive < DRIVES; drive++)
@@ -1212,8 +1208,8 @@ void DDA::Step()
     if(counter[drive] > 0)
     {
       // zpl-2014-10-03: My fork contains an alternative cold extrusion/retraction check due to code queuing, so
-      // step the E drives only if this is actually possible. Yet behave as if moves were always performed, so absolute
-      // E moves are handled properly just in case the minimum temperatures are met sometime later.
+      // step E drives only if this is actually possible. Yet behave as if moves were always performed, so absolute
+      // E moves are handled properly just in case extrusion with absolute positions is resumed sometime later.
 
       if (drive < AXES || eMoveAllowed[drive - AXES])
       {
@@ -1284,7 +1280,14 @@ void DDA::Step()
   {
 	for(int8_t drive = 0; drive < DRIVES; drive++)
 	{
-	  move->liveCoordinates[drive] = myLookAheadEntry->MachineToEndPoint(drive); // Don't use SetLiveCoordinates because that applies the transform
+	  if (drive < AXES)
+	  {
+	    move->liveCoordinates[drive] = myLookAheadEntry->MachineToEndPoint(drive); // XYZ absolute
+	  }
+	  else
+	  {
+		move->liveCoordinates[drive] += myLookAheadEntry->MachineToEndPoint(drive); // Es relative
+	  }
 	}
 	move->liveCoordinates[DRIVES] = myLookAheadEntry->FeedRate();
 

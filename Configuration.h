@@ -3,7 +3,7 @@
 RepRapFirmware - Configuration
 
 This is where all machine-independent configuration and other definitions are set up.  Nothing that
-depends on any particular RepRap, RepRap component, or RepRap controller  should go in here.  Define 
+depends on any particular RepRap, RepRap component, or RepRap controller  should go in here. Define
 machine-dependent things in Platform.h
 
 -----------------------------------------------------------------------------------------------------
@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.89m-zpl"
-#define DATE "2014-10-06"
+#define VERSION "0.96a-zpl"
+#define DATE "2014-10-15"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Other firmware that we might switch to be compatible with.
@@ -42,17 +42,17 @@ enum Compatibility
 
 // Some numbers...
 
-#define ABS_ZERO (-273.15)  // Celsius
+#define ABS_ZERO (-273.15)  					// Celsius
 
 #define INCH_TO_MM (25.4)
 
-#define HEAT_SAMPLE_TIME (0.5) // Seconds
+#define HEAT_SAMPLE_TIME (0.5)					// Seconds
 
-#define TEMPERATURE_CLOSE_ENOUGH (2.5) 		// Celsius
-#define TEMPERATURE_LOW_SO_DONT_CARE (40.0)	// Celsius
-#define HOT_ENOUGH_TO_EXTRUDE (160.0)       // Celsius
-#define HOT_ENOUGH_TO_RETRACT (90.0)		// Celsius
-#define TIME_TO_HOT (120.0)					// Seconds
+#define TEMPERATURE_CLOSE_ENOUGH (2.5) 			// Celsius
+#define TEMPERATURE_LOW_SO_DONT_CARE (40.0)		// Celsius
+#define HOT_ENOUGH_TO_EXTRUDE (160.0)       	// Celsius
+#define HOT_ENOUGH_TO_RETRACT (90.0)			// Celsius
+#define TIME_TO_HOT (120.0)						// Seconds
 
 // If temperatures fall outside this range, something nasty has happened.
 
@@ -60,11 +60,11 @@ enum Compatibility
 #define BAD_LOW_TEMPERATURE -10.0
 #define BAD_HIGH_TEMPERATURE 300.0
 
-#define STANDBY_INTERRUPT_RATE 2.0e-4 // Seconds
+#define STANDBY_INTERRUPT_RATE 2.0e-4			// Seconds
 
-#define NUMBER_OF_PROBE_POINTS 5	// Maximum number of probe points
-#define Z_DIVE 5.0					// Height from which to probe the bed (mm)
-#define TRIANGLE_0 -0.001			// Slightly less than 0 for point-in-triangle tests
+#define NUMBER_OF_PROBE_POINTS 5				// Maximum number of probe points
+#define Z_DIVE 5.0								// Height from which to probe the bed (mm)
+#define TRIANGLE_0 -0.001						// Slightly less than 0 for point-in-triangle tests
 
 #define SILLY_Z_VALUE -9999.0
 
@@ -73,14 +73,15 @@ enum Compatibility
 #define DEFAULT_PASSWORD "reprap"
 #define DEFAULT_NAME "My RepRap 1"
 #define INDEX_PAGE "reprap.htm"
-//#define MESSAGE_FILE "messages.txt"	// currently unused
+//#define MESSAGE_FILE "messages.txt"			// currently unused
 #define FOUR04_FILE "html404.htm"
-#define CONFIG_FILE "config.g"         // The file that sets the machine's parameters
-#define DEFAULT_FILE "default.g"       // If the config file isn't found
+#define CONFIG_FILE "config.g"					// The file that sets the machine's parameters
+#define DEFAULT_FILE "default.g"				// If the config file isn't found
 #define HOME_X_G "homex.g"
 #define HOME_Y_G "homey.g"
 #define HOME_Z_G "homez.g"
 #define HOME_ALL_G "homeall.g"
+#define SET_BED_EQUATION "bed.g"
 
 #define WEB_DEBUG_TRUE 9
 #define WEB_DEBUG_FALSE 8

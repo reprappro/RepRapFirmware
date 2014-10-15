@@ -931,7 +931,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 			}
 		}
 		// Poll file info about a file currently being printed
-		else if (reprap.GetGCodes()->PrintingAFile() && webserver->fileInfoDetected)
+		else if (reprap.GetGCodes()->FractionOfFilePrinted() >= 0.0 && webserver->fileInfoDetected)
 		{
 			response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
 							webserver->currentFileInfo.fileSize, webserver->currentFileInfo.objectHeight, webserver->currentFileInfo.layerHeight);
@@ -1014,11 +1014,12 @@ void Webserver::HttpInterpreter::GetJsonUploadResponse(StringRef& response)
 void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t type)
 {
 	GCodes *gc = reprap.GetGCodes();
+	float fractionPrinted = gc->FractionOfFilePrinted();
 	if (type == 1)
 	{
 		// New-style status request
 		// Send the printing/idle status
-		char ch = (reprap.IsStopped()) ? 'S' : (gc->PrintingAFile()) ? 'P' : 'I';
+		char ch = (reprap.IsStopped()) ? 'S' : (fractionPrinted >= 0.0) ? 'P' : 'I';
 		response.printf("{\"status\":\"%c\",\"heaters\":", ch);
 
 		// Send the heater actual temperatures
@@ -1080,9 +1081,9 @@ void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t 
 		// Send extruder total extrusion since power up, last G92 or last M23
 		response.catf("],\"extr\":");		// announce the extruder positions
 		ch = '[';
-		for (int8_t drive = 0; drive < reprap.GetExtrudersInUse(); drive++)		// loop through extruders
+		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
 		{
-			response.catf("%c%.1f", ch, gc->GetExtruderPosition(drive));
+			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
 			ch = ',';
 		}
 		response.cat("]");
@@ -1106,7 +1107,7 @@ void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t 
 		// These are all returned in a single vector called "poll".
 		// This is a poor choice of format because we can't easily tell which is which unless we already know the number of heaters and extruders.
 		// RRP reversed the order at version 0.65 to send the positions before the heaters, but we haven't yet done that.
-		char c = (gc->PrintingAFile()) ? 'P' : 'I';
+		char c = (fractionPrinted >= 0.0) ? 'P' : 'I';
 		response.printf("{\"poll\":[\"%c\",", c); // Printing
 		for (int8_t heater = 0; heater < HEATERS; heater++)
 		{
@@ -1165,6 +1166,9 @@ void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t 
 
 	// Send the response sequence number
 	response.catf(",\"seq\":%u", (unsigned int) seq);
+
+	// Send the fraction printed
+	response.catf(",\"fraction_printed\":%.4f", max<float>(0.0, fractionPrinted));
 
 	// Send the response to the last command. Do this last because it is long and may need to be truncated.
 	response.cat(",\"resp\":\"");

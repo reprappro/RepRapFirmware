@@ -156,9 +156,9 @@ void Platform::Init()
 			pp.kP = defaultPidKps[i];
 			pp.kT = defaultPidKts[i];
 			pp.kS = defaultPidKss[i];
-			pp.fullBand = defaultFullBand[i];
-			pp.pidMin = defaultPidMin[i];
-			pp.pidMax = defaultPidMax[i];
+			pp.fullBand = defaultFullBands[i];
+			pp.pidMin = defaultPidMins[i];
+			pp.pidMax = defaultPidMaxes[i];
 			pp.adcLowOffset = pp.adcHighOffset = 0.0;
 		}
 
@@ -173,9 +173,9 @@ void Platform::Init()
 
 	massStorage->Init();
 
-	for (size_t i = 0; i < MAX_FILES; i++)
+	for (size_t file = 0; file < MAX_FILES; file++)
 	{
-		files[i]->Init();
+		files[file]->Init();
 	}
 
 	fileStructureInitialised = true;
@@ -202,7 +202,7 @@ void Platform::Init()
 	potWipes = POT_WIPES;
 	senseResistor = SENSE_RESISTOR;
 	maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
-	numMixingDrives = NUM_MIXING_DRIVES;
+	//numMixingDrives = NUM_MIXING_DRIVES;
 
 	// Z PROBE
 
@@ -236,59 +236,56 @@ void Platform::Init()
 	gcodeDir = GCODE_DIR;
 	tempDir = TEMP_DIR;
 
-	for (size_t i = 0; i < DRIVES; i++)
+	for (size_t drive = 0; drive < DRIVES; drive++)
 	{
-		if (stepPins[i] >= 0)
+		if (stepPins[drive] >= 0)
 		{
-			pinModeNonDue(stepPins[i], OUTPUT);
+			pinModeNonDue(stepPins[drive], OUTPUT);
 		}
-		if (directionPins[i] >= 0)
+		if (directionPins[drive] >= 0)
 		{
-			pinModeNonDue(directionPins[i], OUTPUT);
+			pinModeNonDue(directionPins[drive], OUTPUT);
 		}
-		if (enablePins[i] >= 0)
+		if (enablePins[drive] >= 0)
 		{
-			pinModeNonDue(enablePins[i], OUTPUT);
+			pinModeNonDue(enablePins[drive], OUTPUT);
 		}
-		Disable(i);
-		driveEnabled[i] = false;
-	}
-	for(size_t i = 0; i < DRIVES; i++)
-	{
-		if (lowStopPins[i] >= 0)
+		if (lowStopPins[drive] >= 0)
 		{
-			pinModeNonDue(lowStopPins[i], INPUT_PULLUP);
+			pinModeNonDue(lowStopPins[drive], INPUT_PULLUP);
 		}
-		if (highStopPins[i] >= 0)
+		if (highStopPins[drive] >= 0)
 		{
-			pinModeNonDue(highStopPins[i], INPUT_PULLUP);
+			pinModeNonDue(highStopPins[drive], INPUT_PULLUP);
 		}
+		Disable(drive);
+		driveEnabled[drive] = false;
 	}
 
-	for (size_t i = 0; i < HEATERS; i++)
+	for (size_t heater = 0; heater < HEATERS; heater++)
 	{
-		if (heatOnPins[i] >= 0)
+		if (heatOnPins[heater] >= 0)
 		{
-			digitalWriteNonDue(heatOnPins[i], HIGH);	// turn the heater off
-			pinModeNonDue(heatOnPins[i], OUTPUT);
+			digitalWriteNonDue(heatOnPins[heater], HIGH);	// turn the heater off
+			pinModeNonDue(heatOnPins[heater], OUTPUT);
 		}
 		analogReadResolution(12);
-		thermistorFilters[i].Init(analogRead(tempSensePins[i]));
-		heaterAdcChannels[i] = PinToAdcChannel(tempSensePins[i]);
+		thermistorFilters[heater].Init(analogRead(tempSensePins[heater]));
+		heaterAdcChannels[heater] = PinToAdcChannel(tempSensePins[heater]);
 
 		// Calculate and store the ADC average sum that corresponds to an overheat condition, so that we can check is quickly in the tick ISR
-		float thermistorOverheatResistance = nvData.pidParams[i].GetRInf()
-				* exp(-nvData.pidParams[i].GetBeta() / (BAD_HIGH_TEMPERATURE - ABS_ZERO));
+		float thermistorOverheatResistance = nvData.pidParams[heater].GetRInf()
+				* exp(-nvData.pidParams[heater].GetBeta() / (BAD_HIGH_TEMPERATURE - ABS_ZERO));
 		float thermistorOverheatAdcValue = (adRangeReal + 1) * thermistorOverheatResistance
-				/ (thermistorOverheatResistance + nvData.pidParams[i].thermistorSeriesR);
-		thermistorOverheatSums[i] = (uint32_t) (thermistorOverheatAdcValue + 0.9) * numThermistorReadingsAveraged;
+				/ (thermistorOverheatResistance + nvData.pidParams[heater].thermistorSeriesR);
+		thermistorOverheatSums[heater] = (uint32_t) (thermistorOverheatAdcValue + 0.9) * numThermistorReadingsAveraged;
 	}
 
 	if (coolingFanPin >= 0)
 	{
+		// Inverse logic for Duet v0.6 and later; this turns it off
 		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? 255 : 0, true);
 	}
-
 	if (coolingFanRpmPin >= 0)
 	{
 		pinModeNonDue(coolingFanRpmPin, INPUT_PULLUP, 1500);
@@ -317,13 +314,15 @@ void Platform::InitZProbe()
 	zProbeOnFilter.Init(0);
 	zProbeOffFilter.Init(0);
 
-	if (nvData.zProbeType == 1 || nvData.zProbeType == 2)
+	// zpl-2014-10-12: The Z-probe index of dc42's ultrasonic sensor has moved from 3 to 4 to stay compatible with RRP's FW
+	if (nvData.zProbeType >= 1 && nvData.zProbeType <= 3)
 	{
+		zProbeModulationPin = (nvData.zProbeType == 3) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
 		pinModeNonDue(zProbeModulationPin, OUTPUT);
-		digitalWriteNonDue(zProbeModulationPin, HIGH);	// enable the IR LED
+		digitalWriteNonDue(zProbeModulationPin, HIGH);		// enable the IR LED
 		SetZProbing(false);
 	}
-	else if (nvData.zProbeType == 3)
+	else if (nvData.zProbeType == 4)
 	{
 		pinModeNonDue(zProbeModulationPin, OUTPUT);
 		digitalWriteNonDue(zProbeModulationPin, LOW);		// enable the alternate sensor
@@ -345,11 +344,12 @@ int Platform::ZProbe() const
 		switch (nvData.zProbeType)
 		{
 		case 1:
-		case 3:
+		case 4:
 			// Simple IR sensor, or direct-mode ultrasonic sensor
 			return (int) ((zProbeOnFilter.GetSum() + zProbeOffFilter.GetSum()) / (8 * numZProbeReadingsAveraged));
 
 		case 2:
+		case 3:
 			// Modulated IR sensor. We assume that zProbeOnFilter and zprobeOffFilter average the same number of readings.
 			// Because of noise, it is possible to get a negative reading, so allow for this.
 			return (int) (((int32_t) zProbeOnFilter.GetSum() - (int32_t) zProbeOffFilter.GetSum())
@@ -370,6 +370,7 @@ int Platform::GetZProbeSecondaryValues(int& v1, int& v2)
 		switch (nvData.zProbeType)
 		{
 		case 2:		// modulated IR sensor
+		case 3:		// modulated IR sensor (Duet 0.7)
 			v1 = (int) (zProbeOnFilter.GetSum() / (4 * numZProbeReadingsAveraged));	// pass back the reading with IR turned on
 			return 1;
 		default:
@@ -409,8 +410,9 @@ float Platform::ZProbeStopHeight() const
 		return nvData.switchZProbeParameters.GetStopHeight(GetTemperature(0));
 	case 1:
 	case 2:
-		return nvData.irZProbeParameters.GetStopHeight(GetTemperature(0));
 	case 3:
+		return nvData.irZProbeParameters.GetStopHeight(GetTemperature(0));
+	case 4:
 		return nvData.alternateZProbeParameters.GetStopHeight(GetTemperature(0));
 	default:
 		return 0;
@@ -419,7 +421,7 @@ float Platform::ZProbeStopHeight() const
 
 void Platform::SetZProbeType(int pt)
 {
-	int newZProbeType = (pt >= 0 && pt <= 3) ? pt : 0;
+	int newZProbeType = (pt >= 0 && pt <= 4) ? pt : 0;
 	if (newZProbeType != nvData.zProbeType)
 	{
 		nvData.zProbeType = newZProbeType;
@@ -437,9 +439,10 @@ bool Platform::GetZProbeParameters(struct ZProbeParameters& params) const
 		return true;
 	case 1:
 	case 2:
+	case 3:
 		params = nvData.irZProbeParameters;
 		return true;
-	case 3:
+	case 4:
 		params = nvData.alternateZProbeParameters;
 		return true;
 	default:
@@ -460,13 +463,14 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 		return true;
 	case 1:
 	case 2:
+	case 3:
 		if (nvData.irZProbeParameters != params)
 		{
 			nvData.irZProbeParameters = params;
 			WriteNvData();
 		}
 		return true;
-	case 3:
+	case 4:
 		if (nvData.alternateZProbeParameters != params)
 		{
 			nvData.alternateZProbeParameters = params;
@@ -725,9 +729,9 @@ void Platform::Tick()
 	case 2:			// last conversion started was the Z probe, with IR LED on
 		const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
-		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
+		if (nvData.zProbeType == 2 || nvData.zProbeType == 4)	// if using a modulated IR sensor
 		{
-			digitalWriteNonDue(Z_PROBE_MOD_PIN, LOW);					// turn off the IR emitter
+			digitalWriteNonDue(zProbeModulationPin, LOW);		// turn off the IR emitter
 		}
 		++tickState;
 		break;
@@ -737,11 +741,13 @@ void Platform::Tick()
 		// no break
 	case 0:			// this is the state after initialisation, no conversion has been started
 	default:
+	{
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
-		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
+		if (nvData.zProbeType == 2 || nvData.zProbeType == 4)	// if using a modulated IR sensor
 		{
-			digitalWriteNonDue(Z_PROBE_MOD_PIN, HIGH);				// turn on the IR emitter
+			digitalWriteNonDue(zProbeModulationPin, HIGH);		// turn on the IR emitter
 		}
+	}
 		tickState = 1;
 		break;
 	}
@@ -1648,7 +1654,7 @@ bool FileStore::GoToEnd()
 	return Seek(Length());
 }
 
-unsigned long FileStore::Length()
+unsigned long FileStore::Length() const
 {
 	if (!inUse)
 	{
@@ -1658,7 +1664,7 @@ unsigned long FileStore::Length()
 	return file.fsize;
 }
 
-float FileStore::FractionRead()
+float FileStore::FractionRead() const
 {
 	unsigned long len = Length();
 	if(len <= 0)

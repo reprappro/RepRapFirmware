@@ -13,6 +13,7 @@ G21                                 ; Work in millimetres
 G90                                 ; Send absolute coordinates...
 M83                                 ; ...but relative extruder moves
 M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
+M569 P0 S1                          ; Reverse the X motor
 M563 P1 D0 H1                       ; Define tool 1
 G10 P1 S0 R0                        ; Set tool 1 operating and standby temperatures
 ;M563 P2 D1 H2                      ; Define tool 2 (un-comment this for dual nozzle machines)

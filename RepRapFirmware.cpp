@@ -215,24 +215,32 @@ void RepRap::Init()
 
   bool runningTheFile = false;
   bool initialisingInProgress = true;
-  while(initialisingInProgress)
+  while (initialisingInProgress)
   {
 	  Spin();
-	  if(gCodes->PrintingAFile())
+	  if (gCodes->FractionOfFilePrinted() >= 0.0)
 	  {
 		  runningTheFile = true;
 	  }
-	  if(runningTheFile)
+	  if (runningTheFile)
 	  {
-		  if(!gCodes->PrintingAFile())
+		  if (gCodes->FractionOfFilePrinted() < 0.0)
 		  {
 			  initialisingInProgress = false;
 		  }
 	  }
   }
 
-  platform->AppendMessage(HOST_MESSAGE, "\nStarting network...\n");
-  network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
+
+  if(network->IsEnabled())
+  {
+	  platform->AppendMessage(HOST_MESSAGE, "\nStarting network...\n");
+	  network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
+  }
+  else
+  {
+	  platform->AppendMessage(HOST_MESSAGE, "\nNetwork disabled.\n");
+  }
 
   platform->AppendMessage(HOST_MESSAGE, "\n%s is up and running.\n", NAME);
   fastLoop = FLT_MAX;

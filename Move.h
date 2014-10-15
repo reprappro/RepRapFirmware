@@ -178,6 +178,7 @@ class Move
     bool GetCurrentUserPosition(float m[]); 	// Return the current position in transformed coords if possible.  Send false otherwise
 												// DANGER!!! the above function is mis-named because it has the side-effect of clearing currentFeedrate!!!
     void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
+    void ResetExtruderPositions();				// Resets the extruder positions to zero
     void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
     void InterruptTime();						// Test function - not used
     bool AllMovesAreFinished();					// Is the look-ahead ring empty?  Stops more moves being added as well.
@@ -501,6 +502,16 @@ inline void Move::SetLiveCoordinates(float coords[])
 	for(int8_t drive = 0; drive <= DRIVES; drive++)
 	{
 		liveCoordinates[drive] = coords[drive];
+	}
+}
+
+// Resets the extruder positions to zero
+
+inline void Move::ResetExtruderPositions()
+{
+	for(uint8_t drive = AXES; drive < DRIVES; drive++)
+	{
+		liveCoordinates[drive] = 0.0;
 	}
 }
 

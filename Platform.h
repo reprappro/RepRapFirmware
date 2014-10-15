@@ -79,7 +79,7 @@ Licence: GPL
 #define DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
 #define FORWARDS true // What to send to go...
 #define BACKWARDS (!FORWARDS) // ...in each direction
-#define DIRECTIONS {false, true, true, true, true, true, true, true}
+#define DIRECTIONS {BACKWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS} // What each axis needs to make it go forwards - defaults
 #define ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
 #define ENABLE false // What to send to enable...
 #define DISABLE true // ...and disable a drive
@@ -99,6 +99,7 @@ Licence: GPL
 #define Z_PROBE_STOP_HEIGHT (0.7) // mm
 #define Z_PROBE_PIN (10) 						// Analogue pin number
 #define Z_PROBE_MOD_PIN (52)					// Digital pin number to turn the IR LED on (high) or off (low)
+#define Z_PROBE_MOD_PIN07 (X25)					// Digital pin number to turn the IR LED on (high) or off (low) Duet V0.7 onwards
 #define Z_PROBE_AXES {true, false, true}		// Axes for which the Z-probe is normally used
 const unsigned int numZProbeReadingsAveraged = 8;	// we average this number of readings with IR on, and the same number with IR off
 
@@ -116,7 +117,7 @@ const unsigned int numZProbeReadingsAveraged = 8;	// we average this number of r
 
 // AXES
 
-#define AXIS_MAXIMA {220, 200, 200} 			// mm
+#define AXIS_MAXIMA {230, 200, 200} 			// mm
 #define AXIS_MINIMA {0, 0, 0}					// mm
 #define HOME_FEEDRATES {50.0, 50.0, 100.0/60.0}	// mm/sec (dc42 increased Z because we slow down z-homing when approaching the target height)
 #define HEAD_OFFSETS {0.0, 0.0, 0.0}			// mm
@@ -165,9 +166,9 @@ const float defaultPidKds[HEATERS] = {500.0, 100.0, 100.0, 100.0, 100.0, 100.0};
 const float defaultPidKps[HEATERS] = {-1.0, 10.0, 10.0, 10.0, 10.0, 10.0};		// Proportional PID constants, negative values indicate use bang-bang instead of PID
 const float defaultPidKts[HEATERS] = {2.7, 0.4, 0.4, 0.4, 0.4, 0.4};			// approximate PWM value needed to maintain temperature, per degC above room temperature
 const float defaultPidKss[HEATERS] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};			// PWM scaling factor, to allow for variation in heater power and supply voltage
-const float defaultFullBand[HEATERS] = {5.0, 30.0, 30.0, 30.0, 30.0, 30.0};		// errors larger than this cause heater to be on or off
-const float defaultPidMin[HEATERS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};			// minimum value of I-term
-const float defaultPidMax[HEATERS] = {255, 180, 180, 180, 180, 180};			// maximum value of I-term, must be high enough to reach 245C for ABS printing
+const float defaultFullBands[HEATERS] = {5.0, 30.0, 30.0, 30.0, 30.0, 30.0};	// errors larger than this cause heater to be on or off
+const float defaultPidMins[HEATERS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};			// minimum value of I-term
+const float defaultPidMaxes[HEATERS] = {255, 180, 180, 180, 180, 180};			// maximum value of I-term, must be high enough to reach 245C for ABS printing
 
 #define STANDBY_TEMPERATURES {ABS_ZERO, ABS_ZERO} // We specify one for the bed, though it's not needed
 #define ACTIVE_TEMPERATURES {ABS_ZERO, ABS_ZERO}
@@ -368,8 +369,8 @@ public:
 	bool Close();									// Shut the file and tidy up
 	bool Seek(unsigned long pos);					// Jump to pos in the file
 	bool GoToEnd();									// Position the file at the end (so you can write on the end).
-	unsigned long Length();							// File size in bytes
-	float FractionRead();							// How far in we are
+	unsigned long Length() const;					// File size in bytes
+	float FractionRead() const;						// How far in we are
 	void Duplicate();								// Create a second reference to this file
 	bool Flush();									// Write remaining buffer data
 	static float GetAndClearLongestWriteTime();		// Return the longest time it took to write a block to a file, in milliseconds
@@ -740,7 +741,7 @@ private:
   volatile ZProbeAveragingFilter zProbeOnFilter;					// Z probe readings we took with the IR turned on
   volatile ZProbeAveragingFilter zProbeOffFilter;					// Z probe readings we took with the IR turned off
   volatile ThermistorAveragingFilter thermistorFilters[HEATERS];	// bed and extruder thermistor readings
-  int8_t numMixingDrives;
+  //int8_t numMixingDrives;
 
 // AXES
 
@@ -846,6 +847,11 @@ public:
 	bool Flush()
 	{
 		return f->Flush();
+	}
+
+	float FractionRead() const
+	{
+		return (f == NULL ? -1.0 : f->FractionRead());
 	}
 
 	unsigned long Length()

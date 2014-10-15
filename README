@@ -49,13 +49,14 @@ Naming conventions:
 
 Structure:
 
-There are six main classes:
+There are seven main classes:
 
   * RepRap
   * GCodes
   * Heat
   * Move
-  * Platform, and
+  * Platform
+  * Network, and
   * Webserver
 
 RepRap:
@@ -82,10 +83,15 @@ controlling electronics.  It implements the interface between all the other clas
 All the other classes are completely machine-independent (though they may declare arrays dimensioned
 to values #defined in Platform.h).
 
+Network:
+
+This class implements a basic TCP interface for the Webserver classes using lwip.
+
 Webserver:
 
 This class talks to the network (via Platform) and implements a simple webserver to give an interactive
 interface to the RepRap machine.  It uses the Knockout and Jquery Javascript libraries to achieve this.
+In addition, FTP and Telnet servers are provided for easier SD card file management and G-Code handling.
 
 
 
@@ -202,13 +208,29 @@ The major changes are:
 - Added temperature (T) and temperature coefficient of height (C) parameters to the G31 command
 - Added support for modulated IR sensor (M558 P2) and ultrasonic sensor (M558 P3)
 - Various parameters are now saved to flash memory (Z-probe parameters, network parameters, PID parameters)
+- FAN0 line is driven at 25kHz and pin 25 on the expansion header (Duet) can utilise the tacho line of 4-pin PWM fans
+
+-------------
+Note on zpl fork of this firmware:
+
+Based on dc42's long-time proven Duet firmware fork, I have implemented a couple more features and (partially) merged in features from RepRapPro's development firmware branch.
+The most significant changes are:
+
+- FTP and Telnet support
+- Reliable low-level networking and implementation of the internal EMAC ISR
+- Internal G-Code queuing to execute non-movement codes just-in-time and not when commands are fed into the look-ahead (~20 moves too early)
+- M25: SD-card prints are paused as soon as the current move finishes
+- M0 does no longer turn off the stepper motors to simplify print restarts (requires my web interface fork)
+- Implemented cold retracts, minimum temperature is 90C
+
+See the "Changes in ... fork" text files for complete lists of all the changes dc42 and zpl have contributed.
 
 -------------
 
 Version 0.mn beta
 
 Started: 2012-11-18
-This README dated: 2013-12-30
+This README dated: 2014-10-12
 
 Adrian Bowyer
 RepRap Professional Ltd

@@ -165,6 +165,10 @@ public:
 	bool InLwip() const;
 	void ReadPacket();
 
+	void Enable();
+	void Disable();
+	bool IsEnabled() const;
+
 private:
 
 	void AppendTransaction(RequestState* volatile * list, RequestState *r);
@@ -180,6 +184,7 @@ private:
 	RequestState * volatile writingTransactions;
 
 	enum { NetworkInactive, NetworkInitializing, NetworkActive } state;
+	bool isEnabled;
 	bool volatile readingData;
 
 	ConnectionState *dataCs;

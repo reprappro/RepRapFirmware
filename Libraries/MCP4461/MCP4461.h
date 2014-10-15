@@ -40,7 +40,7 @@ public:
   void setNonVolatileWipers(uint16_t);
   void toggleWiper(uint8_t); //NOT YET IMPLEMENTED
   uint16_t getVolatileWiper(uint8_t);
-  uint16_t getNonVolatileWiper(uint8_t);
+  uint16_t getNonVolatileWiper(uint8_t) const;
   uint16_t getStatus();
 
 private:
