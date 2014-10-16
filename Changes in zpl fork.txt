@@ -32,6 +32,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * M0 does NOT turn off any drives, however M1 still does. Use my web interface fork (version 1.03+) to restart failed prints easily on demand
 
+* Ability to specify which drives may be disabled by M18 and M84
+
 * Buffered G-codes are enqueued if moves are being performed to ensure all codes are executed just-in-time
 
 * When prints are paused, movement stops as soon as the current move has finished
