@@ -18,6 +18,7 @@ G21                                 ; Work in millimetres
 G90                                 ; Send absolute corrdinates...
 M83                                 ; ...but relative extruder moves
 M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
+M305 P1 R1000								; Set the hot-end thermistor series resistor to 1K
 M569 P0 S0									; Reverse the X motor
 M92 E420                            ; Set extruder steps per mm
 M558 P2                             ; Use a modulated Z probe
