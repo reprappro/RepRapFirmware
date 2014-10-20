@@ -969,7 +969,7 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		stopAStep = (long)((dCross*totalSteps)/distance);
 		startDStep = stopAStep + 1;
 	}
-/**/
+/*
 // 78 -> 96 #1
 	else if(totalSteps > 5 && stopAStep <= 1 && startDStep >= totalSteps - 1)
 	{
@@ -982,7 +982,7 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		stopAStep = 0;
 		startDStep = totalSteps;
 	}
-/**/
+*/
 	return result;
 }
 
@@ -1181,11 +1181,11 @@ void DDA::Step()
 	  }
     
     // Euler is only approximate.
-/**/
+/*
 // 78 -> 96 #2
     if(velocity < 0.0) //instantDv)
       velocity = instantDv;
-/**/
+*/
     stepCount++;
     active = stepCount < totalSteps;
     
@@ -1247,7 +1247,7 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
   if(reprap.GetGCodes()->HaveIncomingData())
     processed = unprocessed;
   else
-    processed = complete|vCosineSet|upPass;
+    processed = complete|vCosineSet;
 }
 
 

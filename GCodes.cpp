@@ -803,7 +803,7 @@ bool GCodes::DoSingleZProbe()
 	{
 		cannedCycleMoveCount = 0;
 		probeCount = 0;
-		axisIsHomed[Z_AXIS] = true;	// we have homed the Z axis
+		axisIsHomed[Z_AXIS] = true;	// we have homed the Z axis. FIXME - no we haven't, we have set the Z zero which is not the same...
 		return true;
 	}
 	return false;

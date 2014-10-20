@@ -40,9 +40,8 @@ enum MovementState
 {
   unprocessed = 0,
   vCosineSet = 1,
-  upPass = 2,
-  complete = 4,
-  released = 8
+  complete = 2,
+  released = 4
 };
 
 
