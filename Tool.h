@@ -30,70 +30,31 @@ class Tool
 {
 public:
 
-	Tool(int toolNumber, long d[], int dCount, long h[], int hCount);
-	void GetOffset(float& xx, float& yy, float& zz);
-	int DriveCount();
-	int Drive(int driveNumber);
-	bool ToolCanDrive();
-	int HeaterCount();
-	int Heater(int heaterNumber);
-	int Number();
-	void SetVariables(float* standby, float* active);
-	void GetVariables(float* standby, float* active);
-	void DefineMix(float* m);
-	float* GetMix() const;
-	void TurnMixingOn();
-	void TurnMixingOff();
-	bool Mixing();
-	float MaxFeedrate();
-	float InstantDv();
-	void Print(char* reply);
+	Tool(int tNum, int d[], int h[]);
 
 	friend class RepRap;
 
 protected:
 
 	Tool* Next();
+	int Number();
 	void Activate(Tool* currentlyActive);
 	void Standby();
 	void AddTool(Tool* t);
-	void FlagTemperatureFault(int8_t dudHeater);
-	void ClearTemperatureFault(int8_t wasDudHeater);
+	void SetVariables(float xx, float yy, float zz, float* standbyTemperatures, float* activeTemperatures);
+	void GetOffset(float& xx, float& yy, float& zz);
 
 private:
 
-	void SetTemperatureFault(int8_t dudHeater);
-	void ResetTemperatureFault(int8_t wasDudHeater);
-	bool AllHeatersAtHighTemperature();
 	int myNumber;
 	int* drives;
-	float* mix;
-	bool mixing;
 	int driveCount;
 	int* heaters;
-	float* activeTemperatures;
-	float* standbyTemperatures;
 	int heaterCount;
 	Tool* next;
+	float x, y, z;
 	bool active;
-	bool heaterFault;
 };
-
-
-inline int Tool::Drive(int driveNumber)
-{
-	return drives[driveNumber];
-}
-
-inline int Tool::HeaterCount()
-{
-	return heaterCount;
-}
-
-inline int Tool::Heater(int heaterNumber)
-{
-	return heaters[heaterNumber];
-}
 
 inline Tool* Tool::Next()
 {
@@ -105,35 +66,11 @@ inline int Tool::Number()
 	return myNumber;
 }
 
-inline void Tool::DefineMix(float* m)
+inline void Tool::GetOffset(float& xx, float& yy, float& zz)
 {
-	for(int8_t drive = 0; drive < driveCount; drive++)
-		mix[drive] = m[drive];
-}
-
-inline float* Tool::GetMix() const
-{
-	return mix;
-}
-
-inline void Tool::TurnMixingOn()
-{
-	mixing = true;
-}
-
-inline void Tool::TurnMixingOff()
-{
-	mixing = false;
-}
-
-inline bool Tool::Mixing()
-{
-	return mixing;
-}
-
-inline int Tool::DriveCount()
-{
-	return driveCount;
+	xx = x;
+	yy = y;
+	zz = z;
 }
 
 

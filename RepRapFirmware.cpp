@@ -157,9 +157,10 @@ RepRap reprap;
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap() : active(false), debug(false)
+RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ticksInSpinState(0), resetting(false)
 {
   platform = new Platform();
+  network = new Network();
   webserver = new Webserver(platform);
   gCodes = new GCodes(platform, webserver);
   move = new Move(platform, gCodes);
@@ -170,60 +171,35 @@ RepRap::RepRap() : active(false), debug(false)
 void RepRap::Init()
 {
   debug = false;
+
+  // All of the following init functions must execute reasonably quickly before the watchdog times us out
   platform->Init();
   gCodes->Init();
   webserver->Init();
   move->Init();
   heat->Init();
   currentTool = NULL;
-  active = true;
-  coldExtrude = false;
+  const uint32_t wdtTicks = 256;	// number of watchdog ticks @ 32768Hz/128 before the watchdog times out (max 4095)
+  WDT_Enable(WDT, (wdtTicks << WDT_MR_WDV_Pos) | (wdtTicks << WDT_MR_WDD_Pos) | WDT_MR_WDRSTEN);	// enable watchdog, reset the mcu if it times out
+  active = true;		// must do this before we start the network, else the watchdog may time out
 
-  snprintf(scratchString, STRING_LENGTH, "%s Version %s dated %s\n", NAME, VERSION, DATE);
-  platform->Message(HOST_MESSAGE, scratchString);
+  platform->Message(HOST_MESSAGE, NAME);
+  platform->Message(HOST_MESSAGE, " Version ");
+  platform->Message(HOST_MESSAGE, VERSION);
+  platform->Message(HOST_MESSAGE, ", dated ");
+  platform->Message(HOST_MESSAGE, DATE);
+  platform->Message(HOST_MESSAGE, ".\n\nExecuting ");
+  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
+  platform->Message(HOST_MESSAGE, "...\n\n");
 
-  FileStore* startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
+  while(gCodes->RunConfigurationGCodes()) { } // Wait till the file is finished
 
-  platform->Message(HOST_MESSAGE, "\n\nExecuting ");
-  if(startup != NULL)
-  {
-	  startup->Close();
-	  platform->Message(HOST_MESSAGE, platform->GetConfigFile());
-	  platform->Message(HOST_MESSAGE, "...\n\n");
-	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetConfigFile());
-	  // We inject an M98 into the serial input stream to run the start-up macro
-	  platform->GetLine()->InjectString(scratchString);
-  } else
-  {
-	  platform->Message(HOST_MESSAGE, "config.g not found in the sys folder.  Did you copy ormerod1/2.g?\n");
-//	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
-//	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
-//	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());
-  }
+  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
+  network->Init();
 
-  bool runningTheFile = false;
-  bool initialisingInProgress = true;
-  while(initialisingInProgress)
-  {
-	  Spin();
-	  if(gCodes->FractionOfFilePrinted() >= 0.0)
-		  runningTheFile = true;
-	  if(runningTheFile)
-	  {
-		  if(gCodes->FractionOfFilePrinted() < 0.0)
-			  initialisingInProgress = false;
-	  }
-  }
-
-  if(platform->NetworkEnabled())
-  {
-	  platform->Message(HOST_MESSAGE, "\nStarting network...\n");
-	  platform->StartNetwork(); // Need to do this here, as the configuration GCodes may set IP address etc.
-  } else
-	  platform->Message(HOST_MESSAGE, "\nNetwork disabled.\n");
-
-  snprintf(scratchString, STRING_LENGTH, "\n%s is up and running.\n", NAME);
-  platform->Message(HOST_MESSAGE, scratchString);
+  platform->Message(HOST_MESSAGE, "\n");
+  platform->Message(HOST_MESSAGE, NAME);
+  platform->Message(HOST_MESSAGE, " is up and running.\n");
   fastLoop = FLT_MAX;
   slowLoop = 0.0;
   lastTime = platform->Time();
@@ -242,15 +218,35 @@ void RepRap::Exit()
 
 void RepRap::Spin()
 {
-  if(!active)
-    return;
+	if(!active)
+		return;
 
-  platform->Spin();
-  webserver->Spin();
-  gCodes->Spin();
-  move->Spin();
-  heat->Spin();
+	spinState = 1;
+	ticksInSpinState = 0;
+	platform->Spin();
 
+	++spinState;
+	ticksInSpinState = 0;
+	network->Spin();
+
+	++spinState;
+	ticksInSpinState = 0;
+	webserver->Spin();
+
+	++spinState;
+	ticksInSpinState = 0;
+	gCodes->Spin();
+
+	++spinState;
+	ticksInSpinState = 0;
+	move->Spin();
+
+	++spinState;
+	ticksInSpinState = 0;
+	heat->Spin();
+
+	spinState = 0;
+	ticksInSpinState = 0;
   // Keep track of the loop time
 
   double t = platform->Time();
@@ -262,14 +258,6 @@ void RepRap::Spin()
   lastTime = t;
 }
 
-void RepRap::Timing()
-{
-	snprintf(scratchString, STRING_LENGTH, "Slowest main loop (seconds): %f; fastest: %f\n", slowLoop, fastLoop);
-	platform->AppendMessage(BOTH_MESSAGE, scratchString);
-	fastLoop = FLT_MAX;
-	slowLoop = 0.0;
-}
-
 void RepRap::Diagnostics()
 {
   platform->Diagnostics();
@@ -277,7 +265,10 @@ void RepRap::Diagnostics()
   heat->Diagnostics();
   gCodes->Diagnostics();
   webserver->Diagnostics();
-  Timing();
+  snprintf(scratchString, STRING_LENGTH, "Slow loop secs: %f; fast: %f\n", slowLoop, fastLoop);
+  platform->Message(HOST_MESSAGE, scratchString);
+  fastLoop = FLT_MAX;
+  slowLoop = 0.0;
 }
 
 // Turn off the heaters, disable the motors, and
@@ -286,18 +277,24 @@ void RepRap::Diagnostics()
 
 void RepRap::EmergencyStop()
 {
+	stopped = true;
+	platform->SetAtxPower(false);		// turn off the ATX power if we can
+
 	//platform->DisableInterrupts();
 
-	Tool* tool = toolList;
-	while(tool)
+	Tool* t = toolList;
+	while(t)
 	{
-		tool->Standby();
-		tool = tool->Next();
+		t->Standby();
+		t = t->Next();
 	}
 
 	heat->Exit();
-	for(int8_t heater = 0; heater < HEATERS; heater++)
-		platform->SetHeater(heater, 0.0);
+	for(int8_t i = 0; i < HEATERS; i++)
+	{
+		platform->SetHeater(i, 0.0);
+	}
+
 
 	// We do this twice, to avoid an interrupt switching
 	// a drive back on.  move->Exit() should prevent
@@ -306,133 +303,215 @@ void RepRap::EmergencyStop()
 	for(int8_t i = 0; i < 2; i++)
 	{
 		move->Exit();
-		for(int8_t drive = 0; drive < DRIVES; drive++)
+		for(int8_t j = 0; j < DRIVES; j++)
 		{
-			platform->SetMotorCurrent(drive, 0.0);
-			platform->Disable(drive);
+			platform->SetMotorCurrent(j, 0.0);
+			platform->Disable(j);
 		}
 	}
 
-	platform->Message(BOTH_MESSAGE, "Emergency Stop! Reset the controller to continue.");
+	platform->Message(HOST_MESSAGE, "Emergency Stop! Reset the controller to continue.");
+	webserver->HandleReply("Emergency Stop! Reset the controller to continue.", false);
 }
 
-/*
- * The first tool added becomes the one selected.  This will not happen in future releases.
- */
-
-void RepRap::AddTool(Tool* tool)
+void RepRap::AddTool(Tool* t)
 {
 	if(toolList == NULL)
 	{
-		toolList = tool;
-		currentTool = tool;
-		tool->Activate(currentTool);
+		toolList = t;
 		return;
 	}
 
-	toolList->AddTool(tool);
-}
-
-void RepRap::PrintTool(int toolNumber, char* reply)
-{
-	Tool* tool = toolList;
-
-	while(tool)
-	{
-		if(tool->Number() == toolNumber)
-		{
-			tool->Print(reply);
-			return;
-		}
-		tool = tool->Next();
-	}
-	platform->Message(HOST_MESSAGE, "Attempt to print details of non-existent tool.");
+	toolList->AddTool(t);
 }
 
 void RepRap::SelectTool(int toolNumber)
 {
-	Tool* tool = toolList;
+	Tool* t = toolList;
 
-	while(tool)
+	while(t)
 	{
-		if(tool->Number() == toolNumber)
+		if(t->Number() == toolNumber)
 		{
-			tool->Activate(currentTool);
-			currentTool = tool;
+			t->Activate(currentTool);
+			currentTool = t;
 			return;
 		}
-		tool = tool->Next();
+		t = t->Next();
 	}
 
-	// Selecting a non-existent tool is valid.  It sets them all to standby.
-
-	if(currentTool != NULL)
-		StandbyTool(currentTool->Number());
-	currentTool = NULL;
+	platform->Message(HOST_MESSAGE, "Attempt to select and activate a non-existent tool.\n");
 }
 
 void RepRap::StandbyTool(int toolNumber)
 {
-	Tool* tool = toolList;
+	Tool* t = toolList;
 
-	while(tool)
+	while(t)
 	{
-		if(tool->Number() == toolNumber)
+		if(t->Number() == toolNumber)
 		{
-			tool->Standby();
-			if(currentTool == tool)
+			t->Standby();
+			if(currentTool == t)
 				currentTool = NULL;
 			return;
 		}
-		tool = tool->Next();
+		t = t->Next();
 	}
 
-	snprintf(scratchString, STRING_LENGTH, "Attempt to standby a non-existent tool: %d.\n", toolNumber);
-	platform->Message(HOST_MESSAGE, scratchString);
+	platform->Message(HOST_MESSAGE, "Attempt to standby a non-existent tool.\n");
 }
 
-Tool* RepRap::GetTool(int toolNumber)
+void RepRap::SetToolVariables(int toolNumber, float x, float y, float z, float* standbyTemperatures, float* activeTemperatures)
 {
-	Tool* tool = toolList;
+	Tool* t = toolList;
 
-	while(tool)
+	while(t)
 	{
-		if(tool->Number() == toolNumber)
-			return tool;
-		tool = tool->Next();
-	}
-
-	return NULL; // Not an error
-}
-
-void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures)
-{
-	Tool* tool = toolList;
-
-	while(tool)
-	{
-		if(tool->Number() == toolNumber)
+		if(t->Number() == toolNumber)
 		{
-			tool->SetVariables(standbyTemperatures, activeTemperatures);
+			t->SetVariables(x, y, z, standbyTemperatures, activeTemperatures);
 			return;
 		}
-		tool = tool->Next();
+		t = t->Next();
 	}
+	platform->Message(HOST_MESSAGE, "Attempt to set-up a non-existent tool.\n");
+}
 
-	snprintf(scratchString, STRING_LENGTH, "Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
-	platform->Message(HOST_MESSAGE, scratchString);
+void RepRap::GetCurrentToolOffset(float& x, float& y, float& z)
+{
+	if(currentTool == NULL)
+	{
+		platform->Message(HOST_MESSAGE, "Attempt to get offset when no tool selected.\n");
+		x = 0.0;
+		y = 0.0;
+		z = 0.0;
+		return;
+	}
+	currentTool->GetOffset(x, y, z);
 }
 
 
+void RepRap::Tick()
+{
+	if (active)
+	{
+		WDT_Restart(WDT);			// kick the watchdog
+		if (!resetting)
+		{
+			platform->Tick();
+			++ticksInSpinState;
+			if (ticksInSpinState >= 20000)	// if we stall for 20 seconds, save diagnostic data and reset
+			{
+				resetting = true;
+				for(uint8_t i = 0; i < HEATERS; i++)
+				{
+					platform->SetHeater(i, 0.0);
+				}
+				for(uint8_t i = 0; i < DRIVES; i++)
+				{
+					platform->Disable(i);
+					// We can't set motor currents to 0 here because that requires interrupts to be working, and we are in an ISR
+				}
 
+				platform->SoftwareReset(SoftwareResetReason::stuckInSpin + spinState);
+			}
+		}
+	}
+}
+
+// Process a M111 command
+// 0 = debug off
+// 1 = debug on
+// other = print stats and run code-specific tests
+void RepRap::SetDebug(int d)
+
+{
+	switch(d)
+	{
+	case 0:
+		debug = false;
+		platform->Message(HOST_MESSAGE, "Debugging off\n");
+		webserver->HandleReply("Debugging off\n", false);
+		break;
+
+	case 1:
+		debug = true;
+		platform->Message(HOST_MESSAGE, "Debugging enabled\n");
+		webserver->HandleReply("Debugging enabled\n", false);
+		break;
+
+	case 2:
+		// Print stats
+		platform->PrintMemoryUsage();
+		break;
+
+	default:
+		// Do any tests we were asked to do
+		platform->SetDebug(d);
+		break;
+	}
+}
 
 
 //*************************************************************************************************
 
 // Utilities and storage not part of any class
 
-
 char scratchString[STRING_LENGTH];
+
+// For debug use
+void debugPrintf(const char* fmt, ...)
+{
+	va_list p;
+	va_start(p, fmt);
+	vsnprintf(scratchString, ARRAY_SIZE(scratchString), fmt, p);
+	va_end(p);
+	scratchString[ARRAY_UPB(scratchString)] = 0;
+	reprap.GetPlatform()->Message(DEBUG_MESSAGE, scratchString);
+}
+
+#if 0	// no longer used, we use snprinf or sncatf instead
+
+// Float to a string.
+
+static long precision[] = {0,10,100,1000,10000,100000,1000000,10000000,100000000};
+
+char* ftoa(char *a, const float& f, int prec)
+{
+  if(a == NULL)
+    a = scratchString;
+  char *ret = a;
+  long whole = (long)f;
+  if(!whole && f < 0.0)
+  {
+	  a[0] = '-';
+	  a++;
+  }
+  snprintf(a, STRING_LENGTH, "%d", whole);
+  while (*a != '\0') a++;
+  *a++ = '.';
+  long decimal = abs((long)((f - (float)whole) * precision[prec]));
+  snprintf(a, STRING_LENGTH, "%0*d", prec, decimal);
+  return ret;
+}
+#endif
+
+// This behaves like snprintf but appends to an existing string
+// The second parameter is the length of the entire destination buffer, not the length remaining
+int sncatf(char *dst, size_t len, const char* fmt, ...)
+{
+	size_t n = strnlen(dst, len);
+	if (n + 1 < len)
+	{
+		va_list p;
+		va_start(p, fmt);
+		int ret = vsnprintf(dst + n, len - n, fmt, p);
+		va_end(p);
+		return ret;
+	}
+	return 0;
+}
 
 // String testing
 

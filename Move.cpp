@@ -94,13 +94,11 @@ void Move::Init()
 	  liveCoordinates[i] = 0.0;
   }
 
-  int8_t slow = platform->SlowestDrive();
-  lastMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow),
-		  platform->Acceleration(slow), false);
+  lastMove->Init(ep, platform->HomeFeedRate(Z_AXIS), platform->InstantDv(Z_AXIS), false, zMove);  // Typically Z is the slowest Axis
   lastMove->Release();
-  liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
+  liveCoordinates[DRIVES] = platform->HomeFeedRate(Z_AXIS);
 
-  //SetStepHypotenuse();
+  SetStepHypotenuse();
 
   currentFeedrate = -1.0;
 
@@ -114,15 +112,16 @@ void Move::Init()
 
   for(uint8_t point = 0; point < NUMBER_OF_PROBE_POINTS; point++)
   {
-	  xBedProbePoints[point] = (0.3 + 0.6*(float)(point%2))*platform->AxisLength(X_AXIS);
-	  yBedProbePoints[point] = (0.0 + 0.9*(float)(point/2))*platform->AxisLength(Y_AXIS);
+	  xBedProbePoints[point] = (0.3 + 0.6*(float)(point%2))*platform->AxisMaximum(X_AXIS);
+	  yBedProbePoints[point] = (0.0 + 0.9*(float)(point/2))*platform->AxisMaximum(Y_AXIS);
 	  zBedProbePoints[point] = 0.0;
 	  probePointSet[point] = unset;
   }
 
-  xRectangle = 1.0/(0.8*platform->AxisLength(X_AXIS));
+  xRectangle = 1.0/(0.8*platform->AxisMaximum(X_AXIS));
   yRectangle = xRectangle;
-  identityBedTransform = true;
+
+  secondDegreeCompensation = false;
 
   lastTime = platform->Time();
   longWait = lastTime;
@@ -144,8 +143,8 @@ void Move::Spin()
     
   DoLookAhead();
   
-  // If there's space in the DDA ring, and there is a completed
-  // move in the look-ahead ring, transfer it.
+  // If there's space in the DDA ring, and there are completed
+  // moves in the look-ahead ring, transfer them.
  
   if(!DDARingFull())
   {
@@ -173,136 +172,55 @@ void Move::Spin()
   {
 	Transform(nextMove);
 
-    currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
-
-    bool noMove = true;
     for(int8_t drive = 0; drive < DRIVES; drive++)
-    {
     	nextMachineEndPoints[drive] = LookAhead::EndPointToMachine(drive, nextMove[drive]);
-    	if(drive < AXES)
-    	{
-    		if(nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
-    		    noMove = false;
-    		normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
-    	} else
-    	{
-    		if(nextMachineEndPoints[drive] != 0)
-    		    noMove = false;
-    		normalisedDirectionVector[drive] = nextMove[drive];
-    	}
-    }
+
+    int8_t movementType = GetMovementType(lastMove->MachineEndPoints(), nextMachineEndPoints);
 
     // Throw it away if there's no real movement.
     
-    if(noMove)
+    if(movementType == noMove)
     {
+       currentFeedrate = nextMove[DRIVES]; 		// Might be G1 with just an F field
        platform->ClassReport("Move", longWait);
        return;
     }
-    
-    // Compute the direction of motion, moved to the positive hyperquadrant
-
-    Absolute(normalisedDirectionVector, DRIVES);
-    if(Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
-    {
-    	platform->Message(HOST_MESSAGE, "\nAttempt to normailse zero-length move.\n");  // Should never get here - noMove above should catch it
-        platform->ClassReport("Move", longWait);
-        return;
-    }
-    
+     
     // Real move - record its feedrate with it, not here.
-
-     currentFeedrate = -1.0;
-
-     // Set the feedrate maximum and minimum, and the acceleration
-
-     float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
-     float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
-     float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
-
-     if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, checkEndStopsOnNextMove))
-    	platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+    currentFeedrate = -1.0;
+    
+    // Promote minimum feedrates
+    
+    if(movementType & xyMove)
+      nextMove[DRIVES] = max<float>(nextMove[DRIVES], platform->InstantDv(X_AXIS));
+    else if(movementType & eMove)
+      nextMove[DRIVES] = max<float>(nextMove[DRIVES], platform->InstantDv(AXES));
+    else
+      nextMove[DRIVES] = max<float>(nextMove[DRIVES], platform->InstantDv(Z_AXIS));
+      
+    // Restrict maximum feedrates; assumes xy overrides e overrides z FIXME??
+    
+    if(movementType & xyMove)
+      nextMove[DRIVES] = min<float>(nextMove[DRIVES], platform->MaxFeedrate(X_AXIS));  // Assumes X and Y are equal.  FIXME?
+    else if(movementType & eMove)
+      nextMove[DRIVES] = min<float>(nextMove[DRIVES], platform->MaxFeedrate(AXES)); // Picks up the value for the first extruder.  FIXME?
+    else // Must be z
+      nextMove[DRIVES] = min<float>(nextMove[DRIVES], platform->MaxFeedrate(Z_AXIS));
+    
+    if(!LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], 0.0, checkEndStopsOnNextMove, movementType))
+      platform->Message(HOST_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
   }
   platform->ClassReport("Move", longWait);
-}
-
-
-
-/*
- * Take a unit positive-hyperquadrant vector, and return the factor needed to obtain
- * length of the vector as projected to touch box[].
- */
-
-float Move::VectorBoxIntersection(const float v[], const float box[], int8_t dimensions)
-{
-	// Generate a vector length that is guaranteed to exceed the size of the box
-
-	float biggerThanBoxDiagonal = 2.0*Magnitude(box, dimensions);
-	float magnitude = biggerThanBoxDiagonal;
-	float a;
-	for(int8_t d = 0; d < dimensions; d++)
-	{
-		if(biggerThanBoxDiagonal*v[d] > box[d])
-		{
-			a = box[d]/v[d];
-			if(a < magnitude)
-				magnitude = a;
-		}
-	}
-	return magnitude;
-}
-
-// Normalise a vector, and also return its previous magnitude
-// If the vector is of 0 length, return a negative magnitude
-
-float Move::Normalise(float v[], int8_t dimensions)
-{
-	float magnitude = Magnitude(v, dimensions);
-	if(magnitude <= 0.0)
-		return -1.0;
-	Scale(v, 1.0/magnitude, dimensions);
-	return magnitude;
-}
-
-// Return the magnitude of a vector
-
-float Move::Magnitude(const float v[], int8_t dimensions)
-{
-	float magnitude = 0.0;
-	for(int8_t d = 0; d < dimensions; d++)
-		magnitude += v[d]*v[d];
-	magnitude = sqrt(magnitude);
-	return magnitude;
-}
-
-// Multiply a vector by a scalar
-
-void Move::Scale(float v[], float scale, int8_t dimensions)
-{
-	for(int8_t d = 0; d < dimensions; d++)
-		v[d] = scale*v[d];
-}
-
-// Move a vector into the positive hyperquadrant
-
-void Move::Absolute(float v[], int8_t dimensions)
-{
-	for(int8_t d = 0; d < dimensions; d++)
-		v[d] = abs(v[d]);
 }
 
 // These are the actual numbers we want in the positions, so don't transform them.
 
 void Move::SetPositions(float move[])
 {
+	//Transform(move);
 	for(uint8_t drive = 0; drive < DRIVES; drive++)
 		lastMove->SetDriveCoordinateAndZeroEndSpeed(move[drive], drive);
 	lastMove->SetFeedRate(move[DRIVES]);
-}
-
-void Move::SetFeedrate(float feedRate)
-{
-	lastMove->SetFeedRate(feedRate);
 }
 
 
@@ -338,13 +256,12 @@ void Move::Diagnostics()
     */
 }
 
-// Return the untransformed machine coordinates
 // This returns false if it is not possible
 // to use the result as the basis for the
 // next move because the look ahead ring
 // is full.  True otherwise.
 
-bool Move::GetCurrentMachinePosition(float m[])
+bool Move::GetCurrentState(float m[])
 {
   if(LookAheadRingFull())
     return false;
@@ -362,50 +279,95 @@ bool Move::GetCurrentMachinePosition(float m[])
   else
     m[DRIVES] = lastMove->FeedRate();
   currentFeedrate = -1.0;
+  InverseTransform(m);
   return true;
 }
 
-// Return the transformed machine coordinates
+// Classify a move between two points.
+// Is it (a combination of):
+//   A Z movement?
+//   An XY movement?
+//   Extruder movements?
+// It treats XY moves and Z moves as mutually exclusive, though all may happen together
+// of course.  The reason is that they all happen together as a result of the compensation
+// for the bed's plane, which means that a move is MAINLY and XY move, or MAINLY a Z move. It
+// is the main type of move that is returned.
 
-bool Move::GetCurrentUserPosition(float m[])
+int8_t Move::GetMovementType(const long p0[], const long p1[]) const
 {
-	if(!GetCurrentMachinePosition(m))
-		return false;
-	InverseTransform(m);
-	return true;
+  int8_t result = noMove;
+  long dxy = 0;
+  long dz = 0;
+  long d;
+
+  for(int8_t drive = 0; drive < DRIVES; drive++)
+  {
+	  if(drive < AXES)
+	  {
+		  d = llabs(p1[drive] - p0[drive]);
+		  if(drive == Z_AXIS)
+			  dz = d;
+		  else if(d > dxy)
+			  dxy = d;
+	  } else
+	  {
+		  if( p1[drive] )
+			  result |= eMove;
+	  }
+  }
+  dxy *= (long)roundf(platform->DriveStepsPerUnit(Z_AXIS)/platform->DriveStepsPerUnit(X_AXIS));
+  if(dxy > dz)
+	  result |= xyMove;
+  else if(dz)
+	  result |= zMove;
+
+  return result;
 }
 
+void Move::SetStepHypotenuse()
+{
+	 // The stepDistances arrays are look-up tables of the Euclidean distance
+	  // between the start and end of a step.  If the step is just along one axis,
+	  // it's just that axis's step length.  If it's more, it is a Pythagoran
+	  // sum of all the axis steps that take part.
 
-//void Move::SetStepHypotenuse()
-//{
-//	  // The stepDistances array is a look-up table of the Euclidean distance
-//	  // between the start and end of a step.  If the step is just along one axis,
-//	  // it's just that axis's step length.  If it's more, it is a Pythagoran
-//	  // sum of all the axis steps that take part.
-//
-//	  float d, e;
-//	  int i, j;
-//
-//	  for(i = 0; i < (1<<DRIVES); i++)
-//	  {
-//	    d = 0.0;
-//	    for(j = 0; j < DRIVES; j++)
-//	    {
-//	       if(i & (1<<j))
-//	       {
-//	          e = 1.0/platform->DriveStepsPerUnit(j);
-//	          d += e*e;
-//	       }
-//	    }
-//	    stepDistances[i] = sqrt(d);
-//	  }
-//
-//	  // We don't want 0.  If no axes/extruders are moving these should never be used.
-//	  // But try to be safe.
-//
-//	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
-//}
+	  float d, e;
+	  int8_t i, j;
 
+	  for(i = 0; i < (1<<AXES); i++)
+	  {
+	    d = 0.0;
+	    for(j = 0; j < AXES; j++)
+	    {
+	       if(i & (1<<j))
+	       {
+	          e = 1.0/platform->DriveStepsPerUnit(j);
+	          d += e*e;
+	       }
+	    }
+	    stepDistances[i] = sqrt(d);
+	  }
+
+	  for(i = 0; i < (1<<(DRIVES-AXES)); i++)
+	  {
+	    d = 0.0;
+	    for(j = 0; j < (DRIVES-AXES); j++)
+	    {
+	       if(i & (1<<j))
+	       {
+	          e = 1.0/platform->DriveStepsPerUnit(AXES + j);
+	          d += e*e;
+	       }
+	    }
+	    extruderStepDistances[i] = sqrt(d);
+	  }
+
+	  // We don't want 0.  If no axes/extruders are moving these should never be used.
+	  // But try to be safe.
+
+	  stepDistances[0] = 1.0/platform->DriveStepsPerUnit(AXES); //FIXME this is not multi extruder safe (but we should never get here)
+	  extruderStepDistances[0] = stepDistances[0];
+}
 
 // Take an item from the look-ahead ring and add it to the DDA ring, if
 // possible.
@@ -430,7 +392,13 @@ bool Move::DDARingAdd(LookAhead* lookAhead)
     // out by LookAhead.
     
     float u, v;
-    ddaRingAddPointer->Init(lookAhead, u, v, false);
+    ddaRingAddPointer->Init(lookAhead, u, v);
+
+    // debug, left here but commented out, because I (dc42) have found it useful more than once
+    //sprintf(scratchString, "u=%f v=%f f=%f a=%f stopA=%ld startD=%ld, steps=%ld\n",
+    //		u, v, ddaRingAddPointer->feedRate, ddaRingAddPointer->acceleration, ddaRingAddPointer->stopAStep, ddaRingAddPointer->startDStep, ddaRingAddPointer->totalSteps);
+    //platform->Message(HOST_MESSAGE, scratchString);
+
     ddaRingAddPointer = ddaRingAddPointer->Next();
     ReleaseDDARingLock();
     return true;
@@ -469,8 +437,6 @@ void Move::DoLookAhead()
   LookAhead* n1;
   LookAhead* n2;
   
-  float u, v;
-  
   // If there are a reasonable number of moves in there (LOOK_AHEAD), or if we are
   // doing single moves with no other move immediately following on, run up and down
   // the moves using the DDA Init() function to reduce the start or the end speed
@@ -491,9 +457,9 @@ void Move::DoLookAhead()
       {
         if(n1->Processed() & vCosineSet)
         {
-          u = n0->V();
-          v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v, false) & change)
+          float u = n0->V();
+          float v = n1->V();
+          if(lookAheadDDA->Init(n1, u, v) & change)
           {
             n0->SetV(u);
             n1->SetV(v); 
@@ -513,9 +479,9 @@ void Move::DoLookAhead()
       {
         if(n1->Processed() & vCosineSet)
         {
-          u = n0->V();
-          v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v, false) & change)
+          float u = n0->V();
+          float v = n1->V();
+          if(lookAheadDDA->Init(n1, u, v) & change)
           {
             n0->SetV(u);
             n1->SetV(v); 
@@ -526,7 +492,7 @@ void Move::DoLookAhead()
       n2 = n1;
       n1 = n0;
       n0 = n0->Previous();      
-    }while(n0 != lookAheadRingGetPointer);
+    } while(n0 != lookAheadRingGetPointer);
     n0->SetProcessed(complete);
   }
 
@@ -534,7 +500,7 @@ void Move::DoLookAhead()
   // according to the cosine of the angle between them.
   
   if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
-  {
+  {  
     n1 = lookAheadRingGetPointer;
     n0 = n1->Previous();
     n2 = n1->Next();
@@ -542,12 +508,21 @@ void Move::DoLookAhead()
     {
       if(n1->Processed() == unprocessed)
       {
-        //float c = fmin(n1->FeedRate(), n2->FeedRate());
-    	float c = n1->V();
-        float m = fmin(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
+        float c = min<float>(n1->FeedRate(), n2->FeedRate());
         c = c*n1->Cosine();
-        if(c < m)
-        	c = m;
+        if(c < platform->InstantDv(Z_AXIS))  // Z is typically the slowest.
+        {
+          int8_t mt = n1->GetMovementType();
+
+          // Assumes xy overrides z overrides e
+
+          if(mt & xyMove)
+            c = platform->InstantDv(X_AXIS);
+          else if (mt & zMove)
+            c = platform->InstantDv(Z_AXIS);
+          else
+            c = platform->InstantDv((AXES+gCodes->GetSelectedHead())); // value for current extruder
+        }
         n1->SetV(c);
         n1->SetProcessed(vCosineSet);
       } 
@@ -555,13 +530,13 @@ void Move::DoLookAhead()
       n1 = n2;
       n2 = n2->Next();
     }
-
-    // If we are just doing one isolated move, set its end velocity to an appropriate minimum speed.
-
+    
+    // If we are just doing one isolated move, set its end velocity to InstantDv(Z_AXIS).
+    
     if(addNoMoreMoves || !gCodes->HaveIncomingData())
     {
-    	n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
-    	n1->SetProcessed(complete);
+      n1->SetV(platform->InstantDv(Z_AXIS));
+      n1->SetProcessed(complete);
     }
   }
 }
@@ -578,10 +553,7 @@ void Move::Interrupt()
     
     dda = DDARingGet();    
     if(dda != NULL)
-    {
-      dda->Start();  // Yes - got it.  So fire it up.
-      dda->Step();   // And take the first step.
-    }
+      dda->Start(true);  // Yes - got it.  So fire it up.
     return;   
   }
   
@@ -600,18 +572,14 @@ void Move::Interrupt()
   dda = NULL;
 }
 
-// Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
-
-bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, bool ce)
+// creates a new lookahead object adds it to the lookahead ring, returns false if its full
+bool Move::LookAheadRingAdd(const long ep[], float feedRate, float vv, bool ce, int8_t mt)
 {
     if(LookAheadRingFull())
       return false;
-    if(!(lookAheadRingAddPointer->Processed() & released)) // Should never happen...
-    {
-      platform->Message(HOST_MESSAGE, "Attempt to alter a non-released lookahead ring entry!\n");
-      return false;
-    }
-    lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ce);
+    if(!(lookAheadRingAddPointer->Processed() & released))
+      platform->Message(HOST_MESSAGE, "Attempt to alter a non-released lookahead ring entry!\n"); // Should never happen...
+    lookAheadRingAddPointer->Init(ep, feedRate, vv, ce, mt);
     lastMove = lookAheadRingAddPointer;
     lookAheadRingAddPointer = lookAheadRingAddPointer->Next();
     lookAheadRingCount++;
@@ -632,98 +600,51 @@ LookAhead* Move::LookAheadRingGet()
   return result;
 }
 
+// Note that we don't set the tan values to 0 here.  This means that the bed probe
+// values will be a fraction of a millimetre out in X and Y, which, as the bed should
+// be nearly flat (and the probe doesn't coincide with the nozzle anyway), won't matter.
+// But it means that the tan values can be set for the machine
+// at the start in the configuration file and be retained, without having to know and reset
+// them after every Z probe of the bed.
 
-// Do the bed transform AFTER the axis transform
-
-void Move::BedTransform(float xyzPoint[])
+void Move::SetIdentityTransform()
 {
-	if(identityBedTransform)
-		return;
-
-	switch(NumberOfProbePoints())
-	{
-	case 0:
-		return;
-
-	case 3:
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC;
-		break;
-
-	case 4:
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
-		break;
-
-	case 5:
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + TriangleZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
-		break;
-
-	default:
-		platform->Message(HOST_MESSAGE, "BedTransform: wrong number of sample points.");
-	}
+	aX = 0.0;
+	aY = 0.0;
+	aC = 0.0;
+	secondDegreeCompensation = false;
 }
 
-// Invert the bed transform BEFORE the axis transform
-
-void Move::InverseBedTransform(float xyzPoint[])
-{
-	if(identityBedTransform)
-		return;
-
-	switch(NumberOfProbePoints())
-	{
-	case 0:
-		return;
-
-	case 3:
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - (aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC);
-		break;
-
-	case 4:
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
-		break;
-
-	case 5:
-		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - TriangleZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
-		break;
-
-	default:
-		platform->Message(HOST_MESSAGE, "InverseBedTransform: wrong number of sample points.");
-	}
-}
-
-// Do the Axis transform BEFORE the bed transform
-
-void Move::AxisTransform(float xyzPoint[])
+void Move::Transform(float xyzPoint[]) const
 {
 	xyzPoint[X_AXIS] = xyzPoint[X_AXIS] + tanXY*xyzPoint[Y_AXIS] + tanXZ*xyzPoint[Z_AXIS];
 	xyzPoint[Y_AXIS] = xyzPoint[Y_AXIS] + tanYZ*xyzPoint[Z_AXIS];
+	if(secondDegreeCompensation)
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
+	else
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] + aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC;
 }
 
-// Invert the Axis transform AFTER the bed transform
-
-void Move::InverseAxisTransform(float xyzPoint[])
+void Move::InverseTransform(float xyzPoint[]) const
 {
+	if(secondDegreeCompensation)
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - SecondDegreeTransformZ(xyzPoint[X_AXIS], xyzPoint[Y_AXIS]);
+	else
+		xyzPoint[Z_AXIS] = xyzPoint[Z_AXIS] - (aX*xyzPoint[X_AXIS] + aY*xyzPoint[Y_AXIS] + aC);
 	xyzPoint[Y_AXIS] = xyzPoint[Y_AXIS] - tanYZ*xyzPoint[Z_AXIS];
 	xyzPoint[X_AXIS] = xyzPoint[X_AXIS] - (tanXY*xyzPoint[Y_AXIS] + tanXZ*xyzPoint[Z_AXIS]);
 }
 
 
-
-void Move::Transform(float xyzPoint[])
-{
-	AxisTransform(xyzPoint);
-	BedTransform(xyzPoint);
-}
-
-void Move::InverseTransform(float xyzPoint[])
-{
-	InverseBedTransform(xyzPoint);
-	InverseAxisTransform(xyzPoint);
-}
-
-
 void Move::SetAxisCompensation(int8_t axis, float tangent)
 {
+	float currentPositions[DRIVES+1];
+	if(!GetCurrentState(currentPositions))
+	{
+		platform->Message(HOST_MESSAGE, "Setting bed equation - can't get position!");
+		return;
+	}
+
 	switch(axis)
 	{
 	case X_AXIS:
@@ -738,119 +659,71 @@ void Move::SetAxisCompensation(int8_t axis, float tangent)
 	default:
 		platform->Message(HOST_MESSAGE, "SetAxisCompensation: dud axis.\n");
 	}
+	Transform(currentPositions);
+	SetPositions(currentPositions);
 }
 
-void Move::BarycentricCoordinates(int8_t p1, int8_t p2, int8_t p3, float x, float y, float& l1, float& l2, float& l3)
+void Move::SetProbedBedEquation()
 {
-	float y23 = yBedProbePoints[p2] - yBedProbePoints[p3];
-	float x3 = x - xBedProbePoints[p3];
-	float x32 = xBedProbePoints[p3] - xBedProbePoints[p2];
-	float y3 = y - yBedProbePoints[p3];
-	float x13 = xBedProbePoints[p1] - xBedProbePoints[p3];
-	float y13 = yBedProbePoints[p1] - yBedProbePoints[p3];
-	float iDet = 1.0/(y23*x13+x32*y13);
-	l1 = (y23*x3 + x32*y3)*iDet;
-	l2 = (-y13*x3 + x13*y3)*iDet;
-	l3 = 1.0 - l1 - l2;
-}
-
-/*
- * Interpolate on a triangular grid.  The triangle corners are indexed:
- *
- *   ^  [1]      [2]
- *   |
- *   Y      [4]
- *   |
- *   |  [0]      [3]
- *      -----X---->
- *
- */
-float Move::TriangleZ(float x, float y)
-{
-	float l1, l2, l3;
-	int8_t j;
-	for(int8_t i = 0; i < 4; i++)
+	float currentPositions[DRIVES+1];
+	if(!GetCurrentState(currentPositions))
 	{
-		j = (i+1)%4;
-		BarycentricCoordinates(i, j, 4, x, y, l1, l2, l3);
-		if(l1 > TRIANGLE_0 && l2 > TRIANGLE_0 && l3 > TRIANGLE_0 )
-			return l1*zBedProbePoints[i] + l2*zBedProbePoints[j] + l3*zBedProbePoints[4];
+		platform->Message(HOST_MESSAGE, "Setting bed equation - can't get position!");
+		return;
 	}
-	platform->Message(HOST_MESSAGE, "Triangle interpolation: point outside all triangles!");
-	return 0.0;
-}
 
-void Move::SetProbedBedEquation(char* reply)
-{
-	float x10, y10, z10;
-	float x20, y20, z20;
-
-	switch(NumberOfProbePoints())
+	if(NumberOfProbePoints() >= 3)
 	{
-	case 3:
-		/*
-		 * Transform to a plane
-		 */
-		float a, b, c, d;   // Implicit plane equation - what we need to do a proper job
-
-		x10 = xBedProbePoints[1] - xBedProbePoints[0];
-		y10 = yBedProbePoints[1] - yBedProbePoints[0];
-		z10 = zBedProbePoints[1] - zBedProbePoints[0];
-		x20 = xBedProbePoints[2] - xBedProbePoints[0];
-		y20 = yBedProbePoints[2] - yBedProbePoints[0];
-		z20 = zBedProbePoints[2] - zBedProbePoints[0];
-		a = y10*z20 - z10*y20;
-		b = z10*x20 - x10*z20;
-		c = x10*y20 - y10*x20;
-		d = -(xBedProbePoints[1]*a + yBedProbePoints[1]*b + zBedProbePoints[1]*c);
-		aX = -a/c;
-		aY = -b/c;
-		aC = -d/c;
-		identityBedTransform = false;
-		break;
-
-	case 4:
-		/*
-		 * Transform to a ruled-surface quadratic.  The corner points for interpolation are indexed:
-		 *
-		 *   ^  [1]      [2]
-		 *   |
-		 *   Y
-		 *   |
-		 *   |  [0]      [3]
-		 *      -----X---->
-		 *
-		 *   These are the scaling factors to apply to x and y coordinates to get them into the
-		 *   unit interval [0, 1].
-		 */
-		xRectangle = 1.0/(xBedProbePoints[3] - xBedProbePoints[0]);
-		yRectangle = 1.0/(yBedProbePoints[1] - yBedProbePoints[0]);
-		identityBedTransform = false;
-		break;
-
-	case 5:
-		for(int8_t i = 0; i < 4; i++)
+		secondDegreeCompensation = (NumberOfProbePoints() == 4);
+		if(secondDegreeCompensation)
 		{
-			x10 = xBedProbePoints[i] - xBedProbePoints[4];
-			y10 = yBedProbePoints[i] - yBedProbePoints[4];
-			z10 = zBedProbePoints[i] - zBedProbePoints[4];
-			xBedProbePoints[i] = xBedProbePoints[4] + 2.0*x10;
-			yBedProbePoints[i] = yBedProbePoints[4] + 2.0*y10;
-			zBedProbePoints[i] = zBedProbePoints[4] + 2.0*z10;
+			/*
+			 * Transform to a ruled-surface quadratic.  The corner points for interpolation are indexed:
+			 *
+			 *   ^  [1]      [2]
+			 *   |
+			 *   Y
+			 *   |
+			 *   |  [0]      [3]
+			 *      -----X---->
+			 *
+			 *   These are the scaling factors to apply to x and y coordinates to get them into the
+			 *   unit interval [0, 1].
+			 */
+			xRectangle = 1.0/(xBedProbePoints[3] - xBedProbePoints[0]);
+			yRectangle = 1.0/(yBedProbePoints[1] - yBedProbePoints[0]);
+//debugPrintf("xr=%f, yr=%f\n", xRectangle, yRectangle);
+			Transform(currentPositions);
+			SetPositions(currentPositions);
+			return;
 		}
-		identityBedTransform = false;
-		break;
-
-	default:
-		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
-	}
-
-	snprintf(reply, STRING_LENGTH, "Bed equation fits points ");
-	for(int8_t point = 0; point < NumberOfProbePoints(); point++)
+	} else
 	{
-		snprintf(scratchString, STRING_LENGTH, "[%.1f, %.1f, %.3f] ", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
-		strncat(reply, scratchString, STRING_LENGTH);
+		platform->Message(HOST_MESSAGE, "Attempt to set bed compensation before all probe points have been recorded.");
+		return;
 	}
+
+	float xkj, ykj, zkj;
+	float xlj, ylj, zlj;
+	float a, b, c, d;   // Implicit plane equation - what we need to do a proper job
+
+	xkj = xBedProbePoints[1] - xBedProbePoints[0];
+	ykj = yBedProbePoints[1] - yBedProbePoints[0];
+	zkj = zBedProbePoints[1] - zBedProbePoints[0];
+	xlj = xBedProbePoints[2] - xBedProbePoints[0];
+	ylj = yBedProbePoints[2] - yBedProbePoints[0];
+	zlj = zBedProbePoints[2] - zBedProbePoints[0];
+	a = ykj*zlj - zkj*ylj;
+	b = zkj*xlj - xkj*zlj;
+	c = xkj*ylj - ykj*xlj;
+	d = -(xBedProbePoints[1]*a + yBedProbePoints[1]*b + zBedProbePoints[1]*c);
+//debugPrintf("a=%f, b=%f, c=%f, d=%f\n", a, b, c, d);
+	aX = -a/c;
+	aY = -b/c;
+	aC = -d/c;
+//debugPrintf("aX=%f, aY=%f, aC=%f\n", aX, aY, aC);
+	Transform(currentPositions);
+	SetPositions(currentPositions);
 }
 
 // FIXME
@@ -904,10 +777,35 @@ are passed by reference.
 The return value is indicates if the move is a trapezium or triangle, and if
 the u and u values need to be changed.
 
+Every drive has an acceleration associated with it, so when more than one drive is
+moving there have to be rules of precedence that say which acceleration (and which
+instantDv value) to use.
+
+The rules are these:
+
+  if X and/or Y are moving
+    Use X acceleration
+  else if Z is moving
+  	  Use Z acceleration
+  else
+    Use the acceleration for the extruder that's moving.
+
+In the case of multiple extruders moving at once, their minimum acceleration (and its
+associated instantDv) are used.  The variables axesMoving and extrudersMoving track what's 
+going on.  The bits in the int8_t axesMoving are ORed:
+
+  msb -> 00000ZYX <- lsb
+  
+a 1 meaning that that axis is moving.  The bits of extrudersMoving contain a similar
+pattern for the moving extruders.
+    
+Note that all this assumes that X and Y accelerations are equal, though in fact there is a 
+value stored for each.
+
 In the case of only extruders moving, the distance moved is taken to be the Pythagoran distance in
 the configuration space of the extruders.
 
-TODO: Worry about having more than eight drives
+TODO: Worry about having more than eight extruders; X and Y behaving radically differently...
 
 */
 
@@ -917,12 +815,14 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 	// At which DDA step should we stop accelerating?  myLookAheadEntry->FeedRate() gives
 	// the desired feedrate.
 
-	float d = 0.5*(myLookAheadEntry->FeedRate()*myLookAheadEntry->FeedRate() - u*u)/acceleration; // d = (v1^2 - v0^2)/2a
+	feedRate = myLookAheadEntry->FeedRate();
+
+	float d = 0.5*(feedRate*feedRate - u*u)/acceleration; // d = (v1^2 - v0^2)/2a
 	stopAStep = (long)roundf((d*totalSteps)/distance);
 
 	// At which DDA step should we start decelerating?
 
-	d = 0.5*(v*v - myLookAheadEntry->FeedRate()*myLookAheadEntry->FeedRate())/acceleration;  // This should be 0 or negative...
+	d = 0.5*(v*v - feedRate*feedRate)/acceleration;  // This should be 0 or negative...
 	startDStep = totalSteps + (long)roundf((d*totalSteps)/distance);
 
 	// If acceleration stop is at or after deceleration start, then the distance moved
@@ -936,8 +836,6 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		// immediately start decelerating.
 
 		float dCross = 0.5*(0.5*(v*v - u*u)/acceleration + distance);
-
-		// dc42's better version
 
 		if(dCross < 0.0 || dCross > distance)
 		{
@@ -969,66 +867,79 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 		stopAStep = (long)((dCross*totalSteps)/distance);
 		startDStep = stopAStep + 1;
 	}
-/*
-// 78 -> 96 #1
-	else if(totalSteps > 5 && stopAStep <= 1 && startDStep >= totalSteps - 1)
-	{
-		// If we try to get to speed in a single step, the error from the
-		// Euler integration can create silly speeds.
 
-		result = change;
-		u = myLookAheadEntry->FeedRate();
-		v = u;
-		stopAStep = 0;
-		startDStep = totalSteps;
-	}
-*/
 	return result;
 }
 
 
-MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
+void DDA::SetXYAcceleration() // Slight hack - assumes dY = dX
+{
+	acceleration = platform->Acceleration(X_AXIS);
+	instantDv = platform->InstantDv(X_AXIS);
+	timeStep = 1.0/platform->DriveStepsPerUnit(X_AXIS);
+}
+
+void DDA::SetEAcceleration(float eDistance)
+{
+    acceleration = FLT_MAX; // Slight hack
+    distance = eDistance;
+    for(int8_t drive = AXES; drive < DRIVES; drive++)
+    {
+      if(delta[drive])
+      {
+        if(platform->Acceleration(drive) < acceleration)
+        {
+          acceleration = platform->Acceleration(drive);
+          instantDv = platform->InstantDv(drive);
+          timeStep = 1.0/platform->DriveStepsPerUnit(drive);
+        }
+      }
+    }
+}
+
+// Initialise this DDA taking the previous move into account
+// u = final velocity of the previous move
+// v = final velocity of this move
+MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 {
   int8_t drive;
   active = false;
   myLookAheadEntry = lookAhead;
   MovementProfile result = moving;
   totalSteps = -1;
-  distance = 0.0;
+  distance = 0.0; // X+Y+Z
+  float eDistance = 0.0;
   float d;
-  long* targetPosition = myLookAheadEntry->MachineCoordinates();
+  const long* targetPosition = myLookAheadEntry->MachineEndPoints();
   v = myLookAheadEntry->V();
-  long* positionNow = myLookAheadEntry->Previous()->MachineCoordinates();
+  const long* positionNow = myLookAheadEntry->Previous()->MachineEndPoints();
   u = myLookAheadEntry->Previous()->V();
   checkEndStops = myLookAheadEntry->CheckEndStops();
-  int8_t bigDirection;
 
   // How far are we going, both in steps and in mm?
   
   for(drive = 0; drive < DRIVES; drive++)
   {
-    if(drive < AXES) // X, Y, & Z
-      delta[drive] = targetPosition[drive] - positionNow[drive];  // XYZ Absolute
-    else
-      delta[drive] = targetPosition[drive];  // Es Relative
-
-    d = myLookAheadEntry->MachineToEndPoint(drive, delta[drive]);
-    distance += d*d;
-    
-    if(delta[drive] >= 0)
-      directions[drive] = FORWARDS;
-    else
+    if(drive < AXES) // XY, Z
     {
-      directions[drive] = BACKWARDS;
-      delta[drive] = -delta[drive];
+      delta[drive] = targetPosition[drive] - positionNow[drive];  //Absolute
+      d = myLookAheadEntry->MachineToEndPoint(drive, delta[drive]);
+      distance += d*d;
+    } else
+    {  // E
+      delta[drive] = targetPosition[drive];  // Relative
+      d = myLookAheadEntry->MachineToEndPoint(drive, delta[drive]);
+      eDistance += d*d;
     }
+    
+    directions[drive] = (delta[drive] >= 0) ? FORWARDS: BACKWARDS;
+    delta[drive] = abs(delta[drive]);  
     
     // Keep track of the biggest drive move in totalSteps
     
     if(delta[drive] > totalSteps)
     {
       totalSteps = delta[drive];
-      bigDirection = drive;
     }
   }
   
@@ -1037,7 +948,9 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   if(totalSteps <= 0)
   {
 	if(reprap.Debug())
+	{
 		platform->Message(HOST_MESSAGE, "DDA.Init(): Null movement.\n");
+	}
     myLookAheadEntry->Release();
     return result;
   }
@@ -1046,22 +959,88 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   
   counter[0] = -totalSteps/2;
   for(drive = 1; drive < DRIVES; drive++)
+  {
     counter[drive] = counter[0];
+  }
   
   // Acceleration and velocity calculations
   
   distance = sqrt(distance);
+  eDistance = sqrt(eDistance);
   
   // Decide the appropriate acceleration and instantDv values
   // timeStep is set here to the distance of the
-  // biggest-move axis step.  It will be divided
+  // corresponding axis step.  It will be divided
   // by a velocity later.
 
-  acceleration = lookAhead->Acceleration();
-  instantDv = lookAhead->MinSpeed();
-  //***FIXME: next line should be timeStep = distance/(float)totalSteps;
-  //timeStep = 1.0/platform->DriveStepsPerUnit(bigDirection);
-  timeStep = distance/(float)totalSteps;
+  int8_t mt = myLookAheadEntry->GetMovementType();
+	  // acceleration calculation.  Usually this is OK.  But check that we are not asking
+	  // the extruder to accelerate, decelerate, or move too fast.  The common place
+	  // for this to happen is when it is moving back from a previous retraction during
+	  // an XY move.
+
+  if(mt & xyMove) // X or Y involved?
+	  {
+	  // If XY (or Z) are moving, then the extruder won't be considered in the
+	  // acceleration calculation.  Usually this is OK.  But check that we are not asking
+	  // the extruder to accelerate, decelerate, or move too fast.  The common place
+	  // for this to happen is when it is moving back from a previous retraction during
+	  // an XY move.
+	  if((mt & eMove) && eDistance > distance)
+	  {
+		  SetEAcceleration(eDistance);
+	  }
+	  else
+	  {
+		  SetXYAcceleration();
+	  }
+ } else if (mt & zMove) // Z involved?
+  {
+    acceleration = platform->Acceleration(Z_AXIS);
+    instantDv = platform->InstantDv(Z_AXIS);
+    timeStep = 1.0/platform->DriveStepsPerUnit(Z_AXIS);
+  } else // Must be extruders only
+  {
+	  SetEAcceleration(eDistance);
+  }
+
+  // If we are going from an XY move or extruder move to a Z move, u needs to be platform->InstantDv(Z_AXIS).
+
+  if((myLookAheadEntry->Previous()->GetMovementType() & (xyMove | eMove)) && (mt & zMove))
+  {
+	  u = platform->InstantDv(Z_AXIS);
+	  result = change;
+  }
+
+  // if we are going from a Z move to an XY move or E move, v needs to be platform->InstantDv(Z_AXIS),
+  // as does instantDv.
+
+  if((myLookAheadEntry->Previous()->GetMovementType() & zMove) && (mt & (xyMove | eMove)))
+  {
+	  v = platform->InstantDv(Z_AXIS);
+	  instantDv = v;
+	  result = change;
+  }
+ 
+  // If velocity requested is (almost) zero, set it to instantDv
+  
+  if(v < instantDv)
+  {
+	  v = instantDv;
+	  result = change;
+  }
+
+  // u here may be zero if we recently hit an endstop, in which case we need to set to to instantDv
+  if (u < instantDv)
+  {
+	  u = instantDv;
+	  result = change;
+  }
+
+  if(myLookAheadEntry->FeedRate() < instantDv)
+  {
+	  myLookAheadEntry->SetFeedRate(instantDv);
+  }
 
   result = AccelerationCalculation(u, v, result);
   
@@ -1069,13 +1048,13 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   
   velocity = u;
   
-  // Sanity check
+// Sanity check
   
   if(velocity <= 0.0)
   {
-    velocity = instantDv;
-    if(reprap.Debug())
-    	platform->Message(HOST_MESSAGE, "DDA.Init(): Zero or negative initial velocity!\n");
+	  velocity = 1.0;
+//    if(reprap.Debug())
+//    	platform->Message(HOST_MESSAGE, "DDA.Init(): Zero or negative initial velocity!\n");
   }
   
   // How far have we gone?
@@ -1086,26 +1065,16 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v, bool debug)
   // velocity to get time.
   
   timeStep = timeStep/velocity;
-  //timeStep = sqrt(2.0*timeStep/acceleration);
   
-  if(debug)
-  {
-	  myLookAheadEntry->PrintMove();
-
-	  snprintf(scratchString, STRING_LENGTH, "DDA startV: %.2f, distance: %.1f, steps: %d, stopA: %d, startD: %d, timestep: %.5f\n",
-			  velocity, distance, totalSteps, stopAStep, startDStep, timeStep);
-	  platform->Message(HOST_MESSAGE, scratchString);
-  }
-
   return result;
 }
 
-void DDA::Start()
+void DDA::Start(bool noTest)
 {
   for(int8_t drive = 0; drive < DRIVES; drive++)
     platform->SetDirection(drive, directions[drive]);
-
-  platform->SetInterrupt(timeStep); // seconds
+  if(noTest)
+    platform->SetInterrupt(timeStep); // seconds
   active = true;  
 }
 
@@ -1117,9 +1086,10 @@ void DDA::Step()
   if(!move->active)
 	  return;
 
-  int drivesMoving = 0;
+  uint8_t axesMoving = 0;
+  uint8_t extrudersMoving = 0;
   
-  for(int8_t drive = 0; drive < DRIVES; drive++)
+  for(size_t drive = 0; drive < DRIVES; drive++)
   {
     counter[drive] += delta[drive];
     if(counter[drive] > 0)
@@ -1128,64 +1098,65 @@ void DDA::Step()
 
       counter[drive] -= totalSteps;
       
-      drivesMoving |= 1<<drive;
-
+      if(drive < AXES)
+        axesMoving |= 1<<drive;
+      else
+        extrudersMoving |= 1<<(drive - AXES);
+        
       // Hit anything?
   
       if(checkEndStops)
       {
-        EndStopHit esh = platform->Stopped(drive);
-        if(esh == lowHit)
+        switch(platform->Stopped(drive))
         {
+        case lowHit:
           move->HitLowStop(drive, myLookAheadEntry, this);
           active = false;
-        }
-        if(esh == highHit)
-        {
+          break;
+        case highHit:
           move->HitHighStop(drive, myLookAheadEntry, this);
           active = false;
+          break;
+        case lowNear:
+          velocity = instantDv;		// slow down because we are getting close
+          break;
+        default:
+          break;
         }
-      }
+      }        
     }
   }
   
   // May have hit a stop, so test active here
   
-  if(active) 
+  if(active)
   {
-	  timeStep = distance/(totalSteps * velocity);
-      //timeStep = move->stepDistances[drivesMoving]/velocity;
+    if(axesMoving)
+//      timeStep = move->stepDistances[axesMoving]/velocity;
+      timeStep = distance/(totalSteps * velocity);	// dc42 use the average distance per step
+    else
+      timeStep = move->extruderStepDistances[extrudersMoving]/velocity;
       
     // Simple Euler integration to get velocities.
     // Maybe one day do a Runge-Kutta?
-	//  char s[50];
-	  if(stepCount < stopAStep)
-	  {
-		  velocity += acceleration*timeStep;
-		  if (velocity > myLookAheadEntry->FeedRate())
-		  {
-			  velocity = myLookAheadEntry->FeedRate();
-		  }
-		  //snprintf(s, 50, "V: %.4f, D: %.4f\n", velocity, move->stepDistances[drivesMoving]);
-		 // platform->Message(HOST_MESSAGE, s);
-	  }
-	  if(stepCount >= startDStep)
-	  {
-		  velocity -= acceleration*timeStep;
-		  if (velocity < instantDv)
-		  {
-			  velocity = instantDv;
-		  }
-		 // snprintf(s, 50, "V: %.4f, D: %.4f\n", velocity, move->stepDistances[drivesMoving]);
-		  //platform->Message(HOST_MESSAGE, s);
-	  }
-    
-    // Euler is only approximate.
-/*
-// 78 -> 96 #2
-    if(velocity < 0.0) //instantDv)
-      velocity = instantDv;
-*/
+  
+    if(stepCount < stopAStep)
+    {
+      velocity += acceleration*timeStep;
+      if (velocity > feedRate)
+      {
+    	  velocity = feedRate;
+      }
+    }
+    else if(stepCount >= startDStep)
+    {
+      velocity -= acceleration*timeStep;
+      if(velocity < instantDv)
+      {
+    	  velocity = instantDv;
+      }
+    }
+      
     stepCount++;
     active = stepCount < totalSteps;
     
@@ -1211,25 +1182,11 @@ LookAhead::LookAhead(Move* m, Platform* p, LookAhead* n)
   next = n;
 }
 
-void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, bool ce)
+void LookAhead::Init(const long ep[], float f, float vv, bool ce, int8_t mt)
 {
-  v = fRate;
-  requestedFeedrate = fRate;
-  minSpeed = minS;
-  maxSpeed = maxS;
-  acceleration = acc;
-
-  if(v < minSpeed)
-  {
-	  requestedFeedrate = minSpeed;
-	  v = minSpeed;
-  }
-  if(v > maxSpeed)
-  {
-	  requestedFeedrate = maxSpeed;
-	  v = maxSpeed;
-  }
-
+  v = vv;
+  movementType = mt;
+  feedRate = f;
   for(int8_t i = 0; i < DRIVES; i++)
     endPoint[i] = ep[i];
   
@@ -1247,13 +1204,15 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
   if(reprap.GetGCodes()->HaveIncomingData())
     processed = unprocessed;
   else
-    processed = complete|vCosineSet;
+    processed = complete|vCosineSet|upPass;
 }
 
 
 // This returns the cosine of the angle between
 // the movement up to this, and the movement
-// away from this.  Uses lazy evaluation.
+// away from this.  Note that it
+// includes Z movements, though Z values will almost always 
+// not change.  Uses lazy evaluation.
 
 float LookAhead::Cosine()
 {
@@ -1265,19 +1224,19 @@ float LookAhead::Cosine()
   float b2 = 0.0;
   float m1;
   float m2;
-  for(int8_t drive = 0; drive < DRIVES; drive++)
+  for(int8_t i = 0; i < AXES; i++)
   {
-	m1 = MachineToEndPoint(drive);
-    m2 = Next()->MachineToEndPoint(drive) - m1;
-    m1 = m1 - Previous()->MachineToEndPoint(drive);
+	m1 = MachineToEndPoint(i);
+    m2 = Next()->MachineToEndPoint(i) - m1;
+    m1 = m1 - Previous()->MachineToEndPoint(i);
     a2 += m1*m1;
     b2 += m2*m2;
     cosine += m1*m2;
   }
   
-  if(a2 <= 0.0 || b2 <= 0.0) // Avoid division by 0.0
+  if(a2 <= 0.0 || b2 <= 0.0)
   {
-	cosine = 0.0;
+	cosine = 0.0;		// one of the moves is just an extruder move (probably a retraction), so orthogonal (in 4D space!) to XYZ moves
     return cosine;
   }
  
@@ -1295,19 +1254,6 @@ float LookAhead::MachineToEndPoint(int8_t drive, long coord)
 long LookAhead::EndPointToMachine(int8_t drive, float coord)
 {
 	return  (long)roundf(coord*reprap.GetPlatform()->DriveStepsPerUnit(drive));
-}
-
-/*
- * For diagnostics
- */
-
-void LookAhead::PrintMove()
-{
-	snprintf(scratchString, STRING_LENGTH, "\nX,Y,Z: %.1f %.1f %.1f, min v: %.2f, max v: %.1f, acc: %.1f, feed: %.1f, u: %.3f, v: %.3f\n",
-			MachineToEndPoint(X_AXIS), MachineToEndPoint(Y_AXIS), MachineToEndPoint(Z_AXIS),
-			MinSpeed(), MaxSpeed(), Acceleration(), FeedRate(), Previous()->V(), V()
-	);
-	platform->Message(HOST_MESSAGE, scratchString);
 }
 
 
