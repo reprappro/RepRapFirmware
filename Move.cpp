@@ -66,9 +66,9 @@ void Move::Init()
 {
   long ep[DRIVES];
   
-  for(int8_t i = 0; i < DRIVES; i++)
+  for(int8_t drive = 0; drive < DRIVES; drive++)
   {
-    platform->SetDirection(i, FORWARDS);
+    platform->SetDirection(drive, FORWARDS);
   }
   
   // Empty the rings
@@ -92,14 +92,20 @@ void Move::Init()
   
   lastMove = lookAheadRingAddPointer->Previous();
   
-  for(unsigned int i = 0; i < DRIVES; i++)
+  for(uint8_t drive = 0; drive < DRIVES; drive++)
   {
-	  ep[i] = 0;
-	  liveCoordinates[i] = 0.0;
+	  ep[drive] = 0;
+	  liveCoordinates[drive] = 0.0;
+  }
+  float zeroExtruderPos[DRIVES - AXES];
+  for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+  {
+	  rawExtruderPos[extruder] = 0.0;
+	  zeroExtruderPos[extruder] = 0.0;
   }
 
   int8_t slow = platform->SlowestDrive();
-  lastMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), false);
+  lastMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), 0, zeroExtruderPos);
   lastMove->Release();
   liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
 
@@ -129,11 +135,13 @@ void Move::Init()
   lastTime = platform->Time();
   longWait = lastTime;
 
-  for(uint8_t drive = AXES; drive < DRIVES; drive++)
+  for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
   {
-    canExtrude[drive - AXES] = false;
-    canRetract[drive - AXES] = false;
+    canExtrude[extruder] = false;
+    canRetract[extruder] = false;
+    extrusionFactors[extruder] = 1.0;
   }
+  speedFactor = 1.0;
 
   state = running;
   active = true;  
@@ -193,6 +201,17 @@ void Move::Spin()
 	EndstopChecks endStopsToCheck;
 	if (gCodes->ReadMove(nextMove, endStopsToCheck) && state != cancelled)
 	{
+		// zpl-2014-10-21: Apply all print modification factors here if this is no homing move
+		if (endStopsToCheck == 0)
+		{
+			nextMove[DRIVES] *= speedFactor;
+		}
+		for(uint8_t drive = AXES; drive < DRIVES; drive++)
+		{
+			rawEDistances[drive - AXES] = nextMove[drive];
+			nextMove[drive] *= extrusionFactors[drive - AXES];
+		}
+
 		Transform(nextMove);
 
 		currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
@@ -247,7 +266,7 @@ void Move::Spin()
 		float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
 		float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
 
-		if (LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
+		if (LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck, rawEDistances))
 		{
 			// Tell GCodes class we're about to perform a new move
 			reprap.GetGCodes()->MoveQueued();
@@ -427,9 +446,9 @@ bool Move::GetCurrentMachinePosition(float m[])
 		if(LookAheadRingFull())
 			return false;
 
-		for(int8_t i = 0; i < DRIVES; i++)
+		for(int8_t drive = 0; drive < DRIVES; drive++)
 		{
-			m[i] = lastMove->MachineToEndPoint(i);
+			m[drive] = lastMove->MachineToEndPoint(drive);
 		}
 		if(currentFeedrate >= 0.0)
 		{
@@ -518,122 +537,111 @@ DDA* Move::DDARingGet()
 
 void Move::DoLookAhead()
 {
-  if(LookAheadRingEmpty())
-    return;
-  
-  LookAhead* n0;
-  LookAhead* n1;
-  
-  // If there are a reasonable number of moves in there (LOOK_AHEAD), or if we are
-  // doing single moves with no other move immediately following on, run up and down
-  // the moves using the DDA Init() function to reduce the start or the end speed
-  // or both to the maximum that can be achieved because of the requirements of
-  // the adjacent moves. 
-    
-  if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > LOOK_AHEAD)
-  { 
-    
-    // Run up the moves
-    
-    n1 = lookAheadRingGetPointer;
-    n0 = n1->Previous();
-    while (n1 != lookAheadRingAddPointer)
-    {
-      if(!(n0->Processed() & complete))
-      {
-        if(n0->Processed() & vCosineSet)
-        {
-          float u = n0->V();
-          float v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v) & change)
-          {
-            n0->SetV(u);
-            n1->SetV(v); 
-          }
-        }
-      }
-      n0 = n1;
-      n1 = n1->Next();
-    }
-    
-    // Now run down
-    
-    do
-    {
-      if(!(n1->Processed() & complete))
-      {
-        if(n1->Processed() & vCosineSet)
-        {
-          float u = n0->V();
-          float v = n1->V();
-          if(lookAheadDDA->Init(n1, u, v) & change)
-          {
-            n0->SetV(u);
-            n1->SetV(v);
-          }
-          n1->SetProcessed(complete);
-        }
-      }
-      n1 = n0;
-      n0 = n0->Previous();
-    } while (n0 != lookAheadRingGetPointer);
-    n0->SetProcessed(complete);
-  }
+	if(LookAheadRingEmpty())
+		return;
 
-  // If there are any new unprocessed moves in there, set their end speeds
-  // according to the cosine of the angle between them.
-  
-  if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
-  {
-	n0 = n1->Previous();
-	n1 = lookAheadRingGetPointer;
-	LookAhead* n2 = n1->Next();
-    while(n2 != lookAheadRingAddPointer)
-    {
-      if(n1->Processed() == unprocessed)
-      {
-    	float c = n1->V();
-        float m = min<float>(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
-        c = c*n1->Cosine();
-        if(c < m)
-        {
-        	c = m;
-        }
-        n1->SetV(c);
-        n1->SetProcessed(vCosineSet);
-      } 
-      n0 = n1;
-      n1 = n2;
-      n2 = n2->Next();
-    }
+	LookAhead* n0;
+	LookAhead* n1;
+	LookAhead* n2;
 
-    // If we are just doing one isolated move, set its end velocity to an appropriate minimum speed.
+	// If there are a reasonable number of moves in there (LOOK_AHEAD), or if we are
+	// doing single moves with no other move immediately following on, run up and down
+	// the moves using the DDA Init() function to reduce the start or the end speed
+	// or both to the maximum that can be achieved because of the requirements of
+	// the adjacent moves.
 
-    if(addNoMoreMoves || !gCodes->HaveIncomingData())
-    {
-    	n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
-    	n1->SetProcessed(complete);
-    }
-  }
+	if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > LOOK_AHEAD)
+	{
+
+		// Run up the moves
+
+		n1 = lookAheadRingGetPointer;
+		n0 = n1->Previous();
+		while (n1 != lookAheadRingAddPointer)
+		{
+			if(!(n0->Processed() & complete))
+			{
+				if(n0->Processed() & vCosineSet)
+				{
+					float u = n0->V();
+					float v = n1->V();
+					if(lookAheadDDA->Init(n1, u, v) & change)
+					{
+						n0->SetV(u);
+						n1->SetV(v);
+					}
+				}
+			}
+			n0 = n1;
+			n1 = n1->Next();
+		}
+
+		// Now run down
+
+		do
+		{
+			if(!(n1->Processed() & complete))
+			{
+				if(n1->Processed() & vCosineSet)
+				{
+					float u = n0->V();
+					float v = n1->V();
+					if(lookAheadDDA->Init(n1, u, v) & change)
+					{
+						n0->SetV(u);
+						n1->SetV(v);
+					}
+
+					n1->SetProcessed(complete);
+				}
+			}
+			n1 = n0;
+			n0 = n0->Previous();
+		} while (n0 != lookAheadRingGetPointer);
+		n0->SetProcessed(complete);
+	}
+
+	// If there are any new unprocessed moves in there, set their end speeds
+	// according to the cosine of the angle between them.
+
+	if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
+	{
+		n0 = n1->Previous();
+		n1 = lookAheadRingGetPointer;
+		n2 = n1->Next();
+		while(n2 != lookAheadRingAddPointer)
+		{
+			if(n1->Processed() == unprocessed)
+			{
+				float c = n1->V();
+				float m = min<float>(n1->MinSpeed(), n2->MinSpeed());  // FIXME we use min as one move's max may not be able to cope with the min for the other.  But should this be max?
+				c = c*n1->Cosine();
+				if(c < m)
+				{
+					c = m;
+				}
+				n1->SetV(c);
+				n1->SetProcessed(vCosineSet);
+			}
+			n0 = n1;
+			n1 = n2;
+			n2 = n2->Next();
+		}
+
+		// If we are just doing one isolated move, set its end velocity to an appropriate minimum speed.
+
+		if(addNoMoreMoves || !gCodes->HaveIncomingData())
+		{
+			n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
+			n1->SetProcessed(complete);
+		}
+	}
 }
 
 // This is the function that's called by the timer interrupt to step the motors.
 
 void Move::Interrupt()
 {
-	// Have we cancelled all pending moves?
-
-	if (state == cancelled && dda == NULL)
-	{
-		dda = DDARingGet();
-		if (dda != NULL)
-		{
-			dda->Release();
-			dda = NULL;
-		}
-		return;
-	}
-
 	// Have we got a live DDA?
 
 	if(dda == NULL)
@@ -651,7 +659,15 @@ void Move::Interrupt()
 		dda = DDARingGet();
 		if(dda != NULL)
 		{
-			dda->Start(); // Yes - got it.  So fire it up if the print is still running.
+			if (state == cancelled)
+			{
+				dda->Release();		// Yes - but don't use it. All pending moves have been cancelled.
+				dda = NULL;
+			}
+			else
+			{
+				dda->Start();		// Yes - got it.  So fire it up if the print is still running.
+			}
 		}
 		return;
 	}
@@ -674,7 +690,7 @@ void Move::Interrupt()
 
 // Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
 
-bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, EndstopChecks ce)
+bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, EndstopChecks ce, float extrDiffs[])
 {
     if(LookAheadRingFull())
       return false;
@@ -683,7 +699,7 @@ bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, 
       platform->Message(BOTH_ERROR_MESSAGE, "Attempt to alter a non-released lookahead ring entry!\n");
       return false;
     }
-    lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ce);
+    lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ce, extrDiffs);
     lastMove = lookAheadRingAddPointer;
     lookAheadRingAddPointer = lookAheadRingAddPointer->Next();
     lookAheadRingCount++;
@@ -1208,8 +1224,7 @@ void DDA::Step()
     if(counter[drive] > 0)
     {
       // zpl-2014-10-03: My fork contains an alternative cold extrusion/retraction check due to code queuing, so
-      // step E drives only if this is actually possible. Yet behave as if moves were always performed, so absolute
-      // E moves are handled properly just in case extrusion with absolute positions is resumed sometime later.
+      // step E drives only if this is actually possible.
 
       if (drive < AXES || eMoveAllowed[drive - AXES])
       {
@@ -1278,7 +1293,7 @@ void DDA::Step()
   
   if(!active)
   {
-	for(int8_t drive = 0; drive < DRIVES; drive++)
+	for(uint8_t drive = 0; drive < DRIVES; drive++)
 	{
 	  if (drive < AXES)
 	  {
@@ -1287,6 +1302,7 @@ void DDA::Step()
 	  else
 	  {
 		move->liveCoordinates[drive] += myLookAheadEntry->MachineToEndPoint(drive); // Es relative
+		move->rawExtruderPos[drive - AXES] += myLookAheadEntry->RawExtruderDiff(drive - AXES);
 	  }
 	}
 	move->liveCoordinates[DRIVES] = myLookAheadEntry->FeedRate();
@@ -1315,7 +1331,7 @@ LookAhead::LookAhead(Move* m, Platform* p, LookAhead* n)
   next = n;
 }
 
-void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, EndstopChecks ce)
+void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, EndstopChecks ce, float extrDiffs[])
 {
   v = fRate;
   requestedFeedrate = fRate;
@@ -1334,13 +1350,18 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
 	  v = maxSpeed;
   }
 
-  for(int8_t i = 0; i < DRIVES; i++)
+  for(int8_t drive = 0; drive < DRIVES; drive++)
   {
-    endPoint[i] = ep[i];
+	  endPoint[drive] = ep[drive];
   }
   
   endStopsToCheck = ce;
   
+  for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+  {
+	  rawExDiff[extruder] = extrDiffs[extruder];
+  }
+
   // Cosines are lazily evaluated; flag this as unevaluated
   
   cosine = 2.0;
@@ -1408,6 +1429,18 @@ void LookAhead::MoveAborted(float done)
 	}
 	v = platform->InstantDv(platform->SlowestDrive());
 	cosine = 2.0;		// not sure this is needed
+}
+
+// Returns the untransformed relative E move length (in mm)
+float LookAhead::RawExtruderDiff(uint8_t extruder) const
+{
+	return rawExDiff[extruder];
+}
+
+// Sets the untransformed relative E move length for a specified extruder
+void LookAhead::SetRawExtruderDiff(uint8_t extruder, float diff)
+{
+	rawExDiff[extruder] = diff;
 }
 
 /*

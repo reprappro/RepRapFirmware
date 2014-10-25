@@ -30,7 +30,7 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * Calling G28 and M1 resets homed axes
 
-* M0 does NOT turn off any drives, however M1 still does. Use my web interface fork (version 1.03+) to restart failed prints easily on demand
+* M0 does NEITHER turn off any drives NOR any heaters, however M1 still does. Use my web interface fork (version 1.06+) to restart failed prints easily on demand
 
 * Ability to specify which drives may be disabled by M18 and M84
 
@@ -46,6 +46,11 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * X-axis direction remains compatible with prior releases, meaning all stepper motor connectors on a Duet v0.6 are connected the same way round.
   This was changed once more with RRP's dev FW 0.90 and their official 0.78 FW, however my Ormerod 1 "default.g" file has been updated to compensate this
+
+* Total extruder positions since power up, last G92 or last M23 are reported to the web interface.
+  This includes raw extruder positions without the extrusion multipliers applied to them, to improve filament estimation (requires web interfacae version 1.06+ to work)
+
+* Current fan value is reported by M106 and included in the web interface status response
 
 * Bug fix: Actual extruder positions are reported instead of the internal ones from the GCodes class
 

@@ -1014,6 +1014,7 @@ void Webserver::HttpInterpreter::GetJsonUploadResponse(StringRef& response)
 void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t type)
 {
 	GCodes *gc = reprap.GetGCodes();
+	Move *move = reprap.GetMove();
 	float fractionPrinted = gc->FractionOfFilePrinted();
 	if (type == 1)
 	{
@@ -1069,7 +1070,7 @@ void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t 
 				liveCoordinates[i] += offset[i];
 			}
 		}
-		reprap.GetMove()->LiveCoordinates(liveCoordinates);
+		move->LiveCoordinates(liveCoordinates);
 		response.catf("],\"pos\":");		// announce the XYZ position
 		ch = '[';
 		for (int8_t drive = 0; drive < AXES; drive++)
@@ -1078,28 +1079,40 @@ void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t 
 			ch = ',';
 		}
 
-		// Send extruder total extrusion since power up, last G92 or last M23
-		response.catf("],\"extr\":");		// announce the extruder positions
+		// Send actual and theoretical extruder total extrusion since power up, last G92 or last M23
+		response.catf("],\"extr\":");		// announce actual extruder positions
 		ch = '[';
 		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
 		{
 			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
 			ch = ',';
 		}
+		float rawExtruderPos[DRIVES - AXES];
+		move->GetRawExtruderPositions(rawExtruderPos);
+		response.cat("],\"extr_raw\":");	// announce theoretical, file-based extruder positions
+		ch = '[';
+		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
+		{
+			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
+			ch = ',';
+		}
 		response.cat("]");
 
 		// Send the speed and extruder override factors
-		response.catf(",\"sfactor\":%.2f,\"efactor\":", gc->GetSpeedFactor() * 100.0);
-		const float *extrusionFactors = gc->GetExtrusionFactors();
-		for (unsigned int i = 0; i < reprap.GetExtrudersInUse(); ++i)
+		response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
+		for (uint8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)
 		{
-			response.catf("%c%.2f", (i == 0) ? '[' : ',', extrusionFactors[i] * 100.0);
+			response.catf("%c%.2f", (!extruder) ? '[' : ',', reprap.GetMove()->GetExtrusionFactor(extruder) * 100.0);
 		}
 		response.cat("]");
 
 		// Send the current tool number
 		int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
 		response.catf(",\"tool\":%d", toolNumber);
+
+		// Send current fan value
+		float fanValue = (gc->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
+		response.catf(",\"fanPercent\":%.2f", fanValue);
 	}
 	else
 	{

@@ -652,11 +652,12 @@ public:
 
   // Heat and temperature
   
-  float GetTemperature(size_t heater) const; // Result is in degrees Celsius
-  void SetHeater(size_t heater, float power); // power is a fraction in [0,1]
+  float GetTemperature(size_t heater) const;		// Result is in degrees Celsius
+  void SetHeater(size_t heater, float power);		// power is a fraction in [0,1]
   float HeatSampleTime() const;
   void SetHeatSampleTime(float st);
-  void CoolingFan(float speed);
+  float GetFanValue() const;						// Result is returned in per cent
+  void SetFanValue(float speed);					// Accepts values between 0..1 and 1..255
   float GetFanRPM();
   void SetPidParameters(size_t heater, const PidParameters& params);
   const PidParameters& GetPidParameters(size_t heater);
@@ -763,6 +764,7 @@ private:
   float heatSampleTime;
   float standbyTemperatures[HEATERS];
   float activeTemperatures[HEATERS];
+  float coolingFanValue;
   int8_t coolingFanPin;
   int8_t coolingFanRpmPin;
   float timeToHot;

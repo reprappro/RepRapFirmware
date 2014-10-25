@@ -359,8 +359,6 @@ void RepRap::EmergencyStop()
 			platform->Disable(drive);
 		}
 	}
-
-	platform->Message(BOTH_MESSAGE, "Emergency Stop! Reset the controller to continue.");
 }
 
 /*

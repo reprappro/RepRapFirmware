@@ -218,9 +218,9 @@ The most significant changes are:
 
 - FTP and Telnet support
 - Reliable low-level networking and implementation of the internal EMAC ISR
-- Internal G-Code queuing to execute non-movement codes just-in-time and not when commands are fed into the look-ahead (~20 moves too early)
+- Internal G-Code queuing to execute non-movement codes just-in-time and not ~20 moves too early (due to the look-ahead)
 - M25: SD-card prints are paused as soon as the current move finishes
-- M0 does no longer turn off the stepper motors to simplify print restarts (requires my web interface fork)
+- M0 does no longer disable any stepper motors or heaters to simplify print restarts (requires my web interface fork)
 - Implemented cold retracts, minimum temperature is 90C
 
 See the "Changes in ... fork" text files for complete lists of all the changes dc42 and zpl have contributed.

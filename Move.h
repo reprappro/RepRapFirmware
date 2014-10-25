@@ -68,7 +68,8 @@ protected:
 
 	LookAhead(Move* m, Platform* p, LookAhead* n);
 	void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
-			float maxSpeed, float acceleration, EndstopChecks ce);
+			float maxSpeed, float acceleration, EndstopChecks ce,
+			float extrDiffs[]);
 	LookAhead* Next() const;											// Next one in the ring
 	LookAhead* Previous() const;										// Previous one in the ring
 	const long* MachineCoordinates() const;								// Endpoints of a move in machine coordinates
@@ -80,11 +81,13 @@ protected:
 	float MaxSpeed() const;												// What is the fastest this move can be
 	float Acceleration() const;											// What is the acceleration available for this move
 	float V() const;													// The speed at the end of the move
+	float RawExtruderDiff(uint8_t extruder) const;
 	void SetV(float vv);												// Set the end speed
 	void SetFeedRate(float f);											// Set the desired feedrate
 	int8_t Processed() const;											// Where we are in the look-ahead prediction sequence
 	void SetProcessed(MovementState ms);								// Set where we are the the look ahead processing
 	void SetDriveCoordinate(float a, int8_t drive);						// Force an end point
+	void SetRawExtruderDiff(uint8_t extruder, float value);
 	EndstopChecks EndStopsToCheck() const;								// Which endstops we are checking on this move
 	void Release();														// This move has been processed and executed
 	void PrintMove();													// Print diagnostics
@@ -105,6 +108,7 @@ private:
     float minSpeed;					// The slowest that this move may run at
     float maxSpeed;					// The fastest this move may run at
     float acceleration;				// The fastest acceleration allowed
+    float rawExDiff[DRIVES - AXES];	// The original (relative) E difference
     volatile int8_t processed;		// The stage in the look ahead process that this move is at.
 };
 
@@ -151,7 +155,7 @@ private:
     float acceleration;						// The acceleration to use
     float instantDv;						// The lowest possible velocity
     float feedRate;
-    bool eMoveAllowed[DRIVES-AXES];		// Which extruder is allowed to move?
+    bool eMoveAllowed[DRIVES-AXES];			// Which extruder is allowed to move?
     volatile bool active;					// Is the DDA running?
 };
 
@@ -178,6 +182,7 @@ class Move
     bool GetCurrentUserPosition(float m[]); 	// Return the current position in transformed coords if possible.  Send false otherwise
 												// DANGER!!! the above function is mis-named because it has the side-effect of clearing currentFeedrate!!!
     void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
+    void GetRawExtruderPositions(float e[]) const;	// Get the original extruder positions without the extusion multiplier applied
     void ResetExtruderPositions();				// Resets the extruder positions to zero
     void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
     void InterruptTime();						// Test function - not used
@@ -220,6 +225,10 @@ class Move
     		int8_t dimensions);
     float VectorBoxIntersection(const float v[],	// Compute the length that a vector would have to have to...
     		const float box[], int8_t dimensions);	// ...just touch the surface of a hyperbox.
+    float GetExtrusionFactor(uint8_t extruder) const;
+    void SetExtrusionFactor(uint8_t extruder, float factor);
+    float GetSpeedFactor() const;					// Factor by which we changed the speed factor since the last move
+    void SetSpeedFactor(float factor);
 
   private:
 
@@ -244,7 +253,8 @@ class Move
     bool LookAheadRingFull() const;						// Any more room?
     bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
             float minSpeed, float maxSpeed,
-            float acceleration, EndstopChecks ce);
+            float acceleration, EndstopChecks ce,
+            float extrDiffs[]);
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
 
     Platform* platform;									// The RepRap machine
@@ -270,6 +280,8 @@ class Move
     bool active;									// Are we live and running?
     float currentFeedrate;							// Err... the current feed rate...
     volatile float liveCoordinates[DRIVES + 1];		// The last endpoint that the machine moved to
+    volatile float rawExtruderPos[DRIVES - AXES];	// The raw and unmodified extruder positions
+    float rawEDistances[DRIVES - AXES];				// The raw and untransformed E distances of the next move
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
     float normalisedDirectionVector[DRIVES];		// Used to hold a unit-length vector in the direction of motion
     long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
@@ -290,6 +302,8 @@ class Move
 
     // Additional Move information
 
+    float extrusionFactors[DRIVES - AXES];			// Extrusion factors (normally 1.0)
+    float speedFactor;								// Speed factor, changed feedrates are multiplied by this
     bool canExtrude[DRIVES-AXES];					// Can we perform extruding moves with this drive?
     bool canRetract[DRIVES-AXES];					// Can we perform retraction moves with this drive?
     enum Status { running, paused, cancelled } state;
@@ -493,6 +507,14 @@ inline void Move::LiveCoordinates(float m[]) const
 	InverseTransform(m);
 }
 
+inline void Move::GetRawExtruderPositions(float e[]) const
+{
+	for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+	{
+		e[extruder] = rawExtruderPos[extruder];
+	}
+}
+
 
 // These are the actual numbers that we want to be the coordinates, so
 // don't transform them.
@@ -512,6 +534,7 @@ inline void Move::ResetExtruderPositions()
 	for(uint8_t drive = AXES; drive < DRIVES; drive++)
 	{
 		liveCoordinates[drive] = 0.0;
+		rawExtruderPos[drive - AXES] = 0.0;
 	}
 }
 
@@ -721,6 +744,26 @@ inline float Move::AxisCompensation(int8_t axis)
 			platform->Message(BOTH_MESSAGE, "Axis compensation requested for non-existent axis.");
 	}
 	return 0.0;
+}
+
+inline float Move::GetExtrusionFactor(uint8_t extruder) const
+{
+	return extrusionFactors[extruder];
+}
+
+inline void Move::SetExtrusionFactor(uint8_t extruder, float factor)
+{
+	extrusionFactors[extruder] = factor;
+}
+
+inline float Move::GetSpeedFactor() const
+{
+	return speedFactor;
+}
+
+inline void Move::SetSpeedFactor(float factor)
+{
+	speedFactor = factor;
 }
 
 #endif

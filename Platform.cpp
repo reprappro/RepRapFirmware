@@ -227,6 +227,7 @@ void Platform::Init()
 	heatSampleTime = HEAT_SAMPLE_TIME;
 	standbyTemperatures = STANDBY_TEMPERATURES;
 	activeTemperatures = ACTIVE_TEMPERATURES;
+	coolingFanValue = 0.0;
 	coolingFanPin = COOLING_FAN_PIN;
 	coolingFanRpmPin = COOLING_FAN_RPM_PIN;
 	timeToHot = TIME_TO_HOT;
@@ -1061,6 +1062,13 @@ float Platform::MotorCurrent(byte drive)
 	return (float)pot * maxStepperDigipotVoltage / (0.256 * 8.0 * senseResistor);
 }
 
+// Get current cooling fan speed on a scale between 0 and 1
+
+float Platform::GetFanValue() const
+{
+	return coolingFanValue;
+}
+
 // This is a bit of a compromise - old RepRaps used fan speeds in the range
 // [0, 255], which is very hardware dependent.  It makes much more sense
 // to specify speeds in [0.0, 1.0].  This looks at the value supplied (which
@@ -1068,7 +1076,7 @@ float Platform::MotorCurrent(byte drive)
 // do the right thing whichever the user has done.  This will only not work
 // for an old-style fan speed of 1/255...
 
-void Platform::CoolingFan(float speed)
+void Platform::SetFanValue(float speed)
 {
 	if(coolingFanPin >= 0)
 	{
@@ -1077,10 +1085,12 @@ void Platform::CoolingFan(float speed)
 		if(speed <= 1.0)
 		{
 			p = (byte)(255.0 * max<float>(0.0, speed));
+			coolingFanValue = speed;
 		}
 		else
 		{
 			p = (byte)speed;
+			coolingFanValue = speed / 255.0;
 		}
 
 		// The cooling fan output pin gets inverted if HEAT_ON == 0

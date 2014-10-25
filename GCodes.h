@@ -133,9 +133,7 @@ class GCodes
     bool HaveIncomingData() const;										// Is there something that we have to do?
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
     void SetAxisIsHomed(uint8_t axis) { axisIsHomed[axis] = true; }		// Tell us that the axis is now homes
-    float GetSpeedFactor() const { return speedFactor * 60.0; }			// Return the current speed factor
-    const float *GetExtrusionFactors() const { return extrusionFactors; } // Return the current extrusion factors
-
+    bool CoolingInverted() const;										// Is the current fan value inverted?
     void MoveQueued();													// Called by the Move class to announce a new move
     bool CanMove() const;												// Check if a new DDA can be started (called by ISR)
     void MoveCompleted();												// Called by the DDA class to indicate that a move has been completed (called by ISR)
@@ -209,7 +207,7 @@ class GCodes
     FileData fileStack[STACK];
     int8_t stackPointer;						// Push and Pop stack pointer
     char axisLetters[AXES]; 					// 'X', 'Y', 'Z'
-    float lastExtruderPosition[DRIVES - AXES]; 				// Just needed for relative moves; i.e. not X, Y and Z
+    float lastExtruderPosition[DRIVES - AXES];	// Extruder position of the last move fed into the Move class
 	float record[DRIVES+1];						// Temporary store for move positions
 	float moveToDo[DRIVES+1];					// Where to go set by G1 etc
 	bool activeDrive[DRIVES+1];					// Is this drive involved in a move?
@@ -237,9 +235,6 @@ class GCodes
     bool axisIsHomed[3];						// These record which of the axes have been homed
     bool waitingForMoveToComplete;
     bool coolingInverted;
-    float speedFactor;							// speed factor, including the conversion from mm/min to mm/sec, normally 1/60
-    float speedFactorChange;					// factor by which we changed the speed factor since the last move
-    float extrusionFactors[DRIVES - AXES];		// extrusion factors (normally 1.0)
     int8_t toolChangeSequence;					// Steps through the tool change procedure
     CodeQueue *internalCodeQueue;				// Linked list of all the queued codes
     unsigned int totalMoves;					// Total number of moves that have been fed into the look-ahead
@@ -350,5 +345,10 @@ inline bool GCodes::RunConfigurationGCodes()
 //{
 //  return selectedHead;
 //}
+
+inline bool GCodes::CoolingInverted() const
+{
+	return coolingInverted;
+}
 
 #endif

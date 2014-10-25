@@ -506,7 +506,7 @@ void Network::Spin()
 
 void Network::Interrupt()
 {
-	if (isEnabled && !inLwip && state != NetworkInactive)
+	if (!inLwip && state != NetworkInactive)
 	{
 		++inLwip;
 		ethernet_timers_update();
@@ -542,6 +542,7 @@ void Network::Disable()
 		readingData = false;
 		ethernet_set_rx_callback(NULL);
 		state = NetworkInactive;
+		isEnabled = false;
 	}
 }
 
