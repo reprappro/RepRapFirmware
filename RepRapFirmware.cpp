@@ -319,6 +319,7 @@ void RepRap::Diagnostics()
   move->Diagnostics();
   heat->Diagnostics();
   gCodes->Diagnostics();
+  network->Diagnostics();
   webserver->Diagnostics();
 }
 

@@ -120,7 +120,6 @@ const unsigned int numZProbeReadingsAveraged = 8;	// we average this number of r
 #define AXIS_MAXIMA {230, 200, 200} 			// mm
 #define AXIS_MINIMA {0, 0, 0}					// mm
 #define HOME_FEEDRATES {50.0, 50.0, 100.0/60.0}	// mm/sec (dc42 increased Z because we slow down z-homing when approaching the target height)
-#define HEAD_OFFSETS {0.0, 0.0, 0.0}			// mm
 
 #define X_AXIS 0  								// The index of the X axis in the arrays
 #define Y_AXIS 1  								// The index of the Y axis
@@ -231,7 +230,7 @@ const size_t messageStringLength = 1024;		// max length of a message chunk sent 
 enum EndStopHit
 {
   noStop = 0,		// no endstop hit
-  lowHit = 1,									// low switch hit, or Z-probe in use and above threshold
+  lowHit = 1,		// low switch hit, or Z-probe in use and above threshold
   highHit = 2,		// high stop hit
   lowNear = 3		// approaching Z-probe threshold
 };
@@ -638,7 +637,6 @@ public:
   int GetZProbeType() const;
   void SetZProbeAxes(const bool axes[AXES]);
   void GetZProbeAxes(bool (&axes)[AXES]);
-  void SetZProbing(bool starting);
   bool GetZProbeParameters(struct ZProbeParameters& params) const;
   bool SetZProbeParameters(const struct ZProbeParameters& params);
   bool MustHomeXYBeforeZ() const;
@@ -663,6 +661,13 @@ public:
   const PidParameters& GetPidParameters(size_t heater);
   float TimeToHot() const;
   void SetTimeToHot(float t);
+
+  // Flash operations
+  void ResetNvData();
+  void ReadNvData();
+  void WriteNvData();
+
+  void SetAutoSave(bool enabled);
 
 //-------------------------------------------------------------------------------------------------------
   
@@ -698,6 +703,7 @@ private:
 
   static const uint32_t nvAddress = 0;				// address in flash where we store the nonvolatile data
   FlashData nvData;
+  bool autoSaveEnabled;
 
   float lastTime;
   float longWait;
@@ -748,12 +754,10 @@ private:
 
   void InitZProbe();
   void UpdateNetworkAddress(byte dst[4], const byte src[4]);
-  void WriteNvData();
 
   float axisMaxima[AXES];
   float axisMinima[AXES];
   float homeFeedrates[AXES];
-  float headOffsets[AXES]; // FIXME - needs a 2D array
   
 // HEATERS - Bed is assumed to be the first
 
@@ -1109,7 +1113,7 @@ inline void Platform::SetMACAddress(uint8_t mac[])
 			changed = true;
 		}
 	}
-	if (changed)
+	if (changed && autoSaveEnabled)
 	{
 		WriteNvData();
 	}

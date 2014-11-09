@@ -25,6 +25,8 @@
 
 #include "RepRapFirmware.h"
 
+const char axis_letters[AXES] = AXIS_LETTERS;
+
 const float secondsToMinutes = 1.0/60.0;
 
 GCodes::GCodes(Platform* p, Webserver* w)
@@ -50,7 +52,10 @@ void GCodes::Init()
 	Reset();
 	drivesRelative = true;
 	axesRelative = false;
-	axisLetters = AXIS_LETTERS;
+	for(uint8_t axis = 0; axis < AXES; axis++)
+	{
+		axisLetters[axis] = axis_letters[axis];
+	}
 	distanceScale = 1.0;
 	for (int8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
 	{
@@ -74,6 +79,11 @@ void GCodes::Init()
 	toolChangeSequence = 0;
 	coolingInverted = false;
 	internalCodeQueue = NULL;
+	releasedQueueItems = NULL;
+	for(uint8_t i=0; i<codeQueueLength; i++)
+	{
+		releasedQueueItems = new CodeQueueItem(releasedQueueItems);
+	}
 }
 
 // This is called from Init and when doing an emergency stop
@@ -215,9 +225,10 @@ void GCodes::Spin()
 			// Check if the last queued code is complete and remove its entry
 			if (internalCodeQueue->IsExecuting())
 			{
-				CodeQueue *temp = internalCodeQueue;
+				CodeQueueItem *temp = internalCodeQueue;
 				internalCodeQueue = internalCodeQueue->Next();
-				delete temp;
+				temp->SetNext(releasedQueueItems);
+				releasedQueueItems = temp;
 
 				platform->ClassReport("GCodes", longWait);
 				return;
@@ -294,7 +305,7 @@ void GCodes::Diagnostics()
 	{
 		platform->AppendMessage(BOTH_MESSAGE, "Total moves: %d, moves completed: %d\n", totalMoves, movesCompleted);
 		unsigned int count = 0;
-		CodeQueue *item = internalCodeQueue;
+		CodeQueueItem *item = internalCodeQueue;
 		do {
 			count++;
 			platform->AppendMessage(BOTH_MESSAGE, "Queued '%s' for move %d\n", item->GetCommand(), item->ExecuteAtMove());
@@ -876,7 +887,6 @@ bool GCodes::DoSingleZProbeAtPoint()
 		if (DoCannedCycleMove(0))
 		{
 			cannedCycleMoveCount++;
-			platform->SetZProbing(true);	// do this here because we only want to call it once
 		}
 		return false;
 
@@ -889,7 +899,6 @@ bool GCodes::DoSingleZProbeAtPoint()
 		if (DoCannedCycleMove(1 << Z_AXIS))
 		{
 			cannedCycleMoveCount++;
-			platform->SetZProbing(false);
 		}
 		return false;
 
@@ -924,7 +933,6 @@ bool GCodes::DoSingleZProbe()
 	switch (cannedCycleMoveCount)
 	{
 	case 0:
-		platform->SetZProbing(true);	// we only want to call this once
 		++cannedCycleMoveCount;
 		return false;
 
@@ -937,7 +945,6 @@ bool GCodes::DoSingleZProbe()
 		{
 			cannedCycleMoveCount++;
 			probeCount = 0;
-			platform->SetZProbing(false);
 		}
 		return false;
 
@@ -1022,16 +1029,25 @@ bool GCodes::SetBedEquationWithProbe(StringRef& reply)
 		return true;
 	}
 
+	// zpl 2014-11-02: When calling G32, ensure bed compensation parameters are initially reset
+	if (!settingBedEquationWithProbe)
+	{
+		reprap.GetMove()->SetIdentityTransform();
+		settingBedEquationWithProbe = true;
+	}
+
 	if (DoSingleZProbeAtPoint())
 	{
 		probeCount++;
 	}
+
 	if (probeCount >= reprap.GetMove()->NumberOfXYProbePoints())
 	{
 		probeCount = 0;
 		zProbesSet = true;
 		reprap.GetMove()->SetZProbing(false);
 		reprap.GetMove()->SetProbedBedEquation(reply);
+		settingBedEquationWithProbe = false;
 		return true;
 	}
 	return false;
@@ -1259,7 +1275,7 @@ void GCodes::DeleteFile(const char* fileName)
 {
 	if(!platform->GetMassStorage()->Delete(platform->GetGCodeDir(), fileName))
 	{
-		platform->Message(BOTH_ERROR_MESSAGE, "Unsuccessful attempt to delete file \"%s\"\n", fileName);
+		platform->Message(BOTH_ERROR_MESSAGE, "Could not delete file \"%s\"\n", fileName);
 	}
 }
 
@@ -1565,7 +1581,6 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 	{
 		platform->Message(BOTH_ERROR_MESSAGE, "Dud MAC address: %s\n", gb->Buffer());
 	}
-//	platform->Message(HOST_MESSAGE, "MAC: %x:%x:%x:%x:%x:%x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 void GCodes::HandleReply(bool error, const GCodeBuffer *gb, const char* reply, char gMOrT, int code, bool resend)
@@ -1799,34 +1814,39 @@ void GCodes::SetToolHeaters(Tool *tool, float temperature)
 	tool->SetVariables(standby, active);
 }
 
-// Can we queue this code for delayed execution?
+// Here we must check for codes calling AllMovesAreFinishedAndMoveBufferIsLoaded() and for common codes having
+// direct impact on the look-ahead. We can't queue these codes, because otherwise some moves may get messed up.
+
 bool GCodes::CanQueueCode(GCodeBuffer *gb) const
 {
 	bool runNow = false;
 
-	// Check for unbuffered G-Codes
+	// Check for G-Codes
 	if (gb->Seen('G'))
 	{
 		const int code = gb->GetIValue();
 		runNow |= (code == 0 || code == 1);				// Controlled move
+		runNow |= (code == 4);							// Dwell
 		runNow |= (code == 20 || code == 21);			// Set units
 		runNow |= (code >= 28 && code <= 32);			// Homing and bed probing
 		runNow |= (code >= 90 && code <= 92);			// Positioning
 	}
-	// Check for unbuffered M-Codes
+	// Check for M-Codes
 	else if (gb->Seen('M'))
 	{
 		const int code = gb->GetIValue();
+		runNow |= ((code == 0 || code == 1) &&			// Stop, Sleep
+					!reprap.GetMove()->IsPaused());		// (Cancel paused print)
 		runNow |= (code == 18 || code == 84);			// Disable drives
 		runNow |= (code == 25 && gb == serialGCode);	// Pause print (for serial interface only)
-		runNow |= (code == 82 || code == 83);			// Relative or absolute E moves
-		runNow |= (code >= 120 && code <= 121);			// Stack operations
-		runNow |= (code == 208);						// Offset axes
+		runNow |= (code >= 80 && code <= 83);			// ATX control, relative or absolute E moves
+		runNow |= (code == 98 || code == 99);			// Call macro, Return from macro
+		runNow |= (code >= 120 && code <= 121);			// Stack operations (Push, Pop)
 	}
 	// Check for T-Codes
 	else if (gb->Seen('T'))
 	{
-		runNow = true;							// Must select the right tool before setting up new moves
+		runNow = true;									// Must select the right tool before setting up new moves
 	}
 
 	return !runNow;
@@ -1844,7 +1864,7 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		return true;
 	}
 
-	// Execute unbuffered codes only if they don't mess around with queued look-ahead entries
+	// Execute queued codes only if they don't mess around with current look-ahead entries
 	bool canQueue = CanQueueCode(gb);
 	if (!canQueue && totalMoves != movesCompleted)
 	{
@@ -1887,12 +1907,14 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 	else
 	{
 		// Allocate a new queue item for each code
-		CodeQueue *newItem = new CodeQueue(gb->Buffer(), totalMoves);
-		if (newItem == NULL)
+		if (releasedQueueItems == NULL)
 		{
-			platform->Message(BOTH_ERROR_MESSAGE, "Out of memory while allocating element for code queue!\n");
-			return ActOnCode(gb, true);
+			// If there is no free item available, return false until we get one
+			return false;
 		}
+		CodeQueueItem *newItem = releasedQueueItems;
+		releasedQueueItems = releasedQueueItems->Next();
+		newItem->Init(gb->Buffer(), totalMoves);
 
 		// And append it to the queue so it's executed once all moves have finished
 		if (internalCodeQueue == NULL)
@@ -1901,7 +1923,7 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		}
 		else
 		{
-			CodeQueue *lastItem = internalCodeQueue, *next;
+			CodeQueueItem *lastItem = internalCodeQueue, *next;
 			while ((next = lastItem->Next()) != NULL)
 			{
 				lastItem = next;
@@ -1951,6 +1973,9 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		break;
 
 	case 4: // Dwell
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
 		result = DoDwell(gb);
 		break;
 
@@ -1996,7 +2021,6 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 			// We can only do bed levelling if X and Y have already been homed
 			reply.copy("Must home X and Y before bed probing\n");
 			error = true;
-			result = true;
 		}
 		else
 		{
@@ -2045,18 +2069,16 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	{
 	case 0: // Stop
 	case 1: // Sleep
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
 		{
-			if (reprap.GetMove()->IsPaused())
+			// zpl 2014-11-01: M0 only turns off all drives and heaters if the print is NOT paused
+			if (code == 1 || !reprap.GetMove()->IsPaused())
 			{
-				CancelPrint();
-				reprap.GetMove()->Cancel();
+				DisableDrives();
+				reprap.GetHeat()->SwitchOffAll();
 			}
-
-			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-				return false;
-
-			CancelPrint();
-			fileToPrint.Close();
 
 			Tool* tool = reprap.GetCurrentTool();
 			if(tool != NULL)
@@ -2064,23 +2086,19 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				reprap.StandbyTool(tool->Number());
 			}
 
-			// zpl 2014-18-10: Although RRP says M0 is supposed to turn off all drives and heaters,
-			// I think M1 is sufficient for this purpose. Leave M0 for a normal reset.
-			if (code == 1)
-			{
-				DisableDrives();
-				reprap.GetHeat()->SwitchOffAll();
-			}
+			CancelPrint();
+			reprap.GetMove()->Cancel();
+			fileToPrint.Close();
 
 			break;
 		}
 
 	case 18: // Motors off
 	case 84:
-		{
-			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-				return false;
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
 
+		{
 			bool seen = false;
 			for(uint8_t axis=0; axis<AXES; axis++)
 			{
@@ -2100,7 +2118,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				for(uint8_t i=0; i<eCount; i++)
 				{
 					seen = true;
-					if (eDrive[i] >= DRIVES-AXES)
+					if (eDrive[i] < 0 || eDrive[i] >= DRIVES-AXES)
 					{
 						reply.printf("Invalid extruder number specified: %ld\n", eDrive[i]);
 						error = true;
@@ -2186,15 +2204,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 25: // Pause the print
 		if (FractionOfFilePrinted() < 0.0)
 		{
+			reply.copy("Cannot pause print, because no file is being printed!\n");
 			error = true;
-			reply.copy("Cannot pause print, because no print is in progress!\n");
 		}
 		else
 		{
-			reprap.GetMove()->Pause();
-			fileToPrint.MoveFrom(fileBeingPrinted);
-			fileGCode->Pause();
-			queuedGCode->Pause();
+			if (!reprap.GetMove()->IsPaused())
+			{
+				reprap.GetMove()->Pause();
+				fileToPrint.MoveFrom(fileBeingPrinted);
+				fileGCode->Pause();
+				queuedGCode->Pause();
+			}
+
+			result = AllMovesAreFinishedAndMoveBufferIsLoaded();
 		}
 		break;
 
@@ -2226,7 +2249,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 29: // End of file being written; should be intercepted before getting here
-		platform->Message(BOTH_MESSAGE, "GCode end-of-file being interpreted.\n");
+		reply.copy("GCode end-of-file being interpreted.\n");
 		break;
 
 	case 30:	// Delete file
@@ -2263,6 +2286,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
+	// For case 84, see case 18
+
 	case 85: // Set inactive time
 		// TODO: put some code in here...
 		break;
@@ -2287,7 +2312,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				gb->GetFloatArray(eVals, eCount);
 				if(eCount > DRIVES-AXES)
 				{
-					platform->Message(BOTH_ERROR_MESSAGE, "Setting steps/mm - wrong number of E drives: %s\n", gb->Buffer());
+					reply.printf("Setting steps/mm - wrong number of E drives: %s\n", gb->Buffer());
+					error = true;
 				}
 				else
 				{
@@ -2316,14 +2342,14 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 98:
+	case 98: // Call Macro/Subprogram
 		if (gb->Seen('P'))
 		{
 			result = DoFileMacro(gb->GetString());
 		}
 		break;
 
-	case 99:
+	case 99: // Return from Macro/Subprogram
 		result = FileMacroCyclesReturn();
 		break;
 
@@ -2540,11 +2566,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 126: // Valve open
-		platform->Message(BOTH_MESSAGE, "M126 - valves not yet implemented\n");
+		reply.copy("M126 - valves not yet implemented\n");
 		break;
 
 	case 127: // Valve closed
-		platform->Message(BOTH_MESSAGE, "M127 - valves not yet implemented\n");
+		reply.copy("M127 - valves not yet implemented\n");
 		break;
 
 	case 135: // Set PID sample interval
@@ -2577,7 +2603,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 141: // Chamber temperature
-		platform->Message(BOTH_MESSAGE, "M141 - heated chamber not yet implemented\n");
+		reply.copy("M141 - heated chamber not yet implemented\n");
 		break;
 
 //    case 160: //number of mixing filament drives  TODO: With tools defined, is this needed?
@@ -2617,9 +2643,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				float eVals[DRIVES-AXES];
 				int eCount = DRIVES-AXES;
 				gb->GetFloatArray(eVals, eCount);
-				if(eCount != DRIVES-AXES)
+				if(eCount > DRIVES-AXES)
 				{
-					platform->Message(BOTH_ERROR_MESSAGE, "Setting accelerations - wrong number of E drives: %s\n", gb->Buffer());
+					reply.printf("Setting accelerations - wrong number of E drives: %s\n", gb->Buffer());
+					error = true;
 				}
 				else
 				{
@@ -2666,9 +2693,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				float eVals[DRIVES-AXES];
 				int eCount = DRIVES-AXES;
 				gb->GetFloatArray(eVals, eCount);
-				if(eCount != DRIVES-AXES)
+				if(eCount > DRIVES-AXES)
 				{
-					platform->Message(BOTH_ERROR_MESSAGE, "Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
+					reply.printf("Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
+					error = true;
 				}
 				else
 				{
@@ -2850,6 +2878,22 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 	case 305: // Set/report specific heater parameters
 		SetHeaterParameters(gb, reply);
+		break;
+
+	case 500: // Store parameters in EEPROM
+		reprap.GetPlatform()->WriteNvData();
+		break;
+
+	case 501: // Load parameters from EEPROM
+		reprap.GetPlatform()->ReadNvData();
+		if (gb->Seen('S'))
+		{
+			reprap.GetPlatform()->SetAutoSave(gb->GetIValue() > 0);
+		}
+		break;
+
+	case 502: // Revert to default "factory settings"
+		reprap.GetPlatform()->ResetNvData();
 		break;
 
 	case 503: // List variable settings
@@ -3124,7 +3168,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				float eVals[DRIVES-AXES];
 				int eCount = DRIVES-AXES;
 				gb->GetFloatArray(eVals, eCount);
-				if(eCount != DRIVES-AXES)
+				if(eCount > DRIVES-AXES)
 				{
 					reply.printf("Setting feedrates - wrong number of E drives: %s\n", gb->Buffer());
 				}
@@ -3231,7 +3275,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				float eVals[DRIVES-AXES];
 				int eCount = DRIVES-AXES;
 				gb->GetFloatArray(eVals, eCount);
-				if(eCount != DRIVES-AXES)
+				if(eCount > DRIVES-AXES)
 				{
 					reply.printf("Setting motor currents - wrong number of E drives: %s\n", gb->Buffer());
 				}
@@ -3414,9 +3458,10 @@ void GCodes::CancelPrint()
 {
 	while (internalCodeQueue != NULL)
 	{
-		CodeQueue *item = internalCodeQueue;
+		CodeQueueItem *item = internalCodeQueue;
 		internalCodeQueue = item->Next();
-		delete item;
+		item->SetNext(releasedQueueItems);
+		releasedQueueItems = item;
 	}
 	totalMoves = movesCompleted = 0;
 	moveAvailable = false;
@@ -3482,65 +3527,63 @@ void GCodes::MoveCompleted()
 
 // This class is used to ensure commands are executed in the right order and independently from the look-ahead queue.
 
-CodeQueue::CodeQueue(const char *cmd, unsigned int executeAtMove)
-	: moveToExecute(executeAtMove), next(NULL), executing(false)
+CodeQueueItem::CodeQueueItem(CodeQueueItem *n)
 {
+	next = n;
+}
+
+void CodeQueueItem::Init(const char *cmd, unsigned int executeAtMove)
+{
+	moveToExecute = executeAtMove;
+	next = NULL;
+	executing = false;
+
 	commandLength = strlen(cmd);
-	if (!commandLength || commandLength > GCODE_LENGTH)
+	if (commandLength > GCODE_LENGTH)
 	{
-		if (commandLength)
-		{
-			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Invalid string passed to CodeBuffer constructor\n");
-		}
-		command = "";
+		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Invalid string passed to CodeBuffer constructor\n");
+		command[0] = 0;
+		commandLength = 0;
 	}
 	else
 	{
-		command = (char*)malloc((commandLength + 1) * sizeof(char));
 		strncpy(command, cmd, commandLength);
 		command[commandLength] = 0;
 	}
 }
 
-CodeQueue::~CodeQueue()
-{
-	if (commandLength)
-	{
-		free(command);
-	}
-}
-
-void CodeQueue::SetNext(CodeQueue *n)
+void CodeQueueItem::SetNext(CodeQueueItem *n)
 {
 	next = n;
 }
 
-CodeQueue *CodeQueue::Next() const
+CodeQueueItem *CodeQueueItem::Next() const
 {
 	return next;
 }
 
-unsigned int CodeQueue::ExecuteAtMove() const
+unsigned int CodeQueueItem::ExecuteAtMove() const
 {
 	return moveToExecute;
 }
 
-const char *CodeQueue::GetCommand() const
+const char *CodeQueueItem::GetCommand() const
 {
 	return command;
 }
 
-unsigned int CodeQueue::GetCommandLength() const
+size_t CodeQueueItem::GetCommandLength() const
 {
 	return commandLength;
 }
 
-void CodeQueue::Execute()
+
+void CodeQueueItem::Execute()
 {
 	executing = true;
 }
 
-bool CodeQueue::IsExecuting() const
+bool CodeQueueItem::IsExecuting() const
 {
 	return executing;
 }

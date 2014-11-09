@@ -139,7 +139,7 @@ void Webserver::Spin()
 	if (webserverActive && httpInterpreter->FlushUploadData() && ftpInterpreter->FlushUploadData())
 	{
 		Network *net = reprap.GetNetwork();
-		RequestState *req = net->GetRequest(readingConnection);
+		NetworkTransaction *req = net->GetRequest(readingConnection);
 		if (req != NULL)
 		{
 			// Process incoming request
@@ -170,7 +170,7 @@ void Webserver::Spin()
 						break;
 				}
 
-				RequestStatus status = req->GetStatus();
+				TransactionStatus status = req->GetStatus();
 
 				// For protocols other than HTTP it is important to send a HELO message
 				if (status == connected)
@@ -183,7 +183,7 @@ void Webserver::Spin()
 						net->CloseRequest();
 					}
 				}
-				// Graceful disconnects are handled here, because prior RequestStates might still contain valid
+				// Graceful disconnects are handled here, because prior NetworkTransactions might still contain valid
 				// data. That's why it's a bad idea to close these connections immediately in the Network class.
 				else if (status == disconnected)
 				{
@@ -221,7 +221,7 @@ void Webserver::Spin()
 					{
 						if (req->Read(c))
 						{
-							// Each ProtocolInterpreter must take care of the current RequestState and remove
+							// Each ProtocolInterpreter must take care of the current NetworkTransaction and remove
 							// it from the ready transactions by either calling SendAndClose() or CloseRequest().
 							if (interpreter->CharFromClient(c))
 							{
@@ -242,7 +242,7 @@ void Webserver::Spin()
 			}
 			else if (req->LostConnection())
 			{
-				platform->Message(HOST_MESSAGE, "Webserver: Skipping zombie request\n");
+				platform->Message(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
 				net->CloseRequest();
 			}
 		}
@@ -461,7 +461,7 @@ void Webserver::StoreGcodeData(const char* data, size_t len)
 	}
 }
 
-// Handle disconnects here
+// Handle immediate disconnects here (cs will be freed after this call)
 void Webserver::ConnectionLost(const ConnectionState *cs)
 {
 	// Inform protcol handlers that this connection has been lost
@@ -722,7 +722,7 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 	}
 
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 	req->Write("HTTP/1.1 200 OK\n");
 
 	const char* contentType;
@@ -771,7 +771,7 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 {
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 	bool keepOpen = false;
 	bool mayKeepOpen;
 	bool found;
@@ -817,7 +817,8 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 	req->Write("Content-Type: application/json\n");
 	req->Printf("Content-Length: %u\n", jsonResponse.strlen());
 	req->Printf("Connection: %s\n\n", keepOpen ? "keep-alive" : "close");
-	req->Write(jsonResponse.Pointer());
+	req->Write(jsonResponse);
+
 	net->SendAndClose(NULL, keepOpen);
 }
 
@@ -1623,7 +1624,7 @@ bool Webserver::HttpInterpreter::RejectMessage(const char* response, unsigned in
 	platform->Message(HOST_MESSAGE, "Webserver: rejecting message with: %s\n", response);
 
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 	req->Printf("HTTP/1.1 %u %s\nConnection: close\n\n", code, response);
 	net->SendAndClose(NULL);
 
@@ -1653,7 +1654,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 	}
 
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 
 	switch (state)
 	{
@@ -1693,7 +1694,7 @@ void Webserver::FtpInterpreter::ConnectionLost(uint16_t local_port)
 		net->CloseDataPort();
 
 		// Send response
-		if (net->MakeFTPRequest())
+		if (net->AcquireFTPTransaction())
 		{
 			if (state == doingPasvIO)
 			{
@@ -2054,17 +2055,17 @@ void Webserver::FtpInterpreter::ProcessLine()
 			{
 				// send response via main port
 				strncpy(ftpResponse, "150 Here comes the directory listing.\r\n", ftpResponseLength);
-				RequestState *ftp_req = net->GetRequest();
+				NetworkTransaction *ftp_req = net->GetRequest();
 				ftp_req->Write(ftpResponse);
 				net->SendAndClose(NULL, true);
 
 				// send file list via data port
-				if (net->MakeDataRequest())
+				if (net->AcquireDataTransaction())
 				{
 					FileInfo file_info;
 					if (platform->GetMassStorage()->FindFirst(currentDir, file_info))
 					{
-						RequestState *data_req = net->GetRequest();
+						NetworkTransaction *data_req = net->GetRequest();
 						char line[300];
 
 						do {
@@ -2075,27 +2076,8 @@ void Webserver::FtpInterpreter::ProcessLine()
 									dirChar, file_info.size, platform->GetMassStorage()->GetMonthName(file_info.month),
 									file_info.day, file_info.year, file_info.fileName);
 
-							// We may have to send the FTP file list in multiple chunks, so check
-							// if there's enough room left to write the current line.
-							if (!data_req->Write(line))
-							{
-								if (net->CanMakeRequest())
-								{
-									net->SendAndClose(NULL, true);
-
-									net->MakeDataRequest();
-									data_req = net->GetRequest();
-									data_req->Write(line);
-								}
-								else
-								{
-//									debugPrintf("Webserver: FTP file list was truncated\n");
-									// Note: If f_closedir() was implemented in FatFs, we'd have to call
-									// FindNext() here until it returns false.
-									break;
-								}
-							}
-
+							// Fortunately we don't need to bother with output buffer chunks any more...
+							data_req->Write(line);
 						} while (platform->GetMassStorage()->FindNext(file_info));
 					}
 
@@ -2160,7 +2142,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 					snprintf(ftpResponse, ftpResponseLength, "Opening data connection for %s (%lu bytes).", filename, fs->Length());
 					SendReply(150, ftpResponse);
 
-					if (net->MakeDataRequest())
+					if (net->AcquireDataTransaction())
 					{
 						// send the file via data port
 						net->SendAndClose(fs, false);
@@ -2214,7 +2196,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 void Webserver::FtpInterpreter::SendReply(int code, const char *message, bool keepConnection)
 {
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 	req->Printf("%d %s\r\n", code, message);
 	net->SendAndClose(NULL, keepConnection);
 }
@@ -2222,7 +2204,7 @@ void Webserver::FtpInterpreter::SendReply(int code, const char *message, bool ke
 void Webserver::FtpInterpreter::SendFeatures()
 {
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 	req->Write("211-Features:\r\n");
 	req->Write("PASV\r\n");		// support PASV mode
 	req->Write("211 End\r\n");
@@ -2344,7 +2326,7 @@ Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws) : Pr
 void Webserver::TelnetInterpreter::ConnectionEstablished()
 {
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 	req->Write("RepRapPro Ormerod Telnet Interface\r\n\r\n");
 	req->Write("Please enter your password:\r\n");
 	req->Write("> ");
@@ -2407,7 +2389,7 @@ void Webserver::TelnetInterpreter::ResetState()
 void Webserver::TelnetInterpreter::ProcessLine()
 {
 	Network *net = reprap.GetNetwork();
-	RequestState *req = net->GetRequest();
+	NetworkTransaction *req = net->GetRequest();
 
 	switch (state)
 	{
@@ -2447,9 +2429,9 @@ void Webserver::TelnetInterpreter::ProcessLine()
 void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
 {
 	Network *net = reprap.GetNetwork();
-	if (state >= authenticated && net->MakeTelnetRequest(strlen(reply)))
+	if (state >= authenticated && net->AcquireTelnetTransaction())
 	{
-		RequestState *req = net->GetRequest();
+		NetworkTransaction *req = net->GetRequest();
 
 		// Whenever a new line is read, we also need to send a carriage return
 		bool append_line;

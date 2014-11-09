@@ -20,8 +20,10 @@
  ****************************************************************************************************/
 
 #include "RepRapFirmware.h"
-#include "DueFlashStorage.h"
+#include "DueFlashStorage.h"						// comment this out if you don't want to build with Flash support
+#if LWIP_STATS
 #include "lwip/src/include/lwip/stats.h"
+#endif
 
 extern char _end;
 extern "C" char *sbrk(int i);
@@ -32,6 +34,45 @@ static uint32_t fanInterruptCount = 0;				// accessed only in ISR, so no need to
 const uint32_t fanMaxInterruptCount = 32;			// number of fan interrupts that we average over
 static volatile uint32_t fanLastResetTime = 0;		// time (microseconds) at which we last reset the interrupt count, accessed inside and outside ISR
 static volatile uint32_t fanInterval = 0;			// written by ISR, read outside the ISR
+
+// Default values for the arrays.
+
+// Drives
+
+const int8_t step_pins[DRIVES] = STEP_PINS;
+const int8_t direction_pins[DRIVES] = DIRECTION_PINS;
+const bool directions_[DRIVES] = DIRECTIONS;
+const int8_t enable_pins[DRIVES] = ENABLE_PINS;
+const bool disable_drives[DRIVES] = DISABLE_DRIVES;
+const int8_t low_stop_pins[DRIVES] = LOW_STOP_PINS;
+const int8_t high_stop_pins[DRIVES] = HIGH_STOP_PINS;
+const int8_t pot_wipes[DRIVES] = POT_WIPES;
+const float max_feedrates[DRIVES] = MAX_FEEDRATES;
+const float accelerations_[DRIVES] = ACCELERATIONS;
+const float drive_steps_per_unit[DRIVES] = DRIVE_STEPS_PER_UNIT;
+const float instant_dvs[DRIVES] = INSTANT_DVS;
+
+// Axes
+
+const float axis_maxima[AXES] = AXIS_MAXIMA;
+const float axis_minima[AXES] = AXIS_MINIMA;
+const float home_feedrates[AXES] = HOME_FEEDRATES;
+const bool z_probe_axes[AXES] = Z_PROBE_AXES;
+
+// Heaters
+
+const int8_t temp_sense_pins[HEATERS] = TEMP_SENSE_PINS;
+const int8_t heat_on_pins[HEATERS] = HEAT_ON_PINS;
+const float standby_temperatures[HEATERS] = STANDBY_TEMPERATURES;
+const float active_temperatures[HEATERS] = ACTIVE_TEMPERATURES;
+
+// Network
+
+const uint8_t ip_address[4] = IP_ADDRESS;
+const uint8_t net_mask[4] = NET_MASK;
+const uint8_t gate_way[4] = GATE_WAY;
+const uint8_t mac_address[6] = MAC_ADDRESS;
+
 
 // Arduino initialise and loop functions
 // Put nothing in these other than calls to the RepRap equivalents
@@ -98,7 +139,7 @@ bool PidParameters::operator==(const PidParameters& other) const
 
 Platform::Platform() :
 		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
-		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer))
+		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer)), autoSaveEnabled(false)
 {
 	line = new Line();
 
@@ -119,6 +160,7 @@ void Platform::Init()
 	digitalWriteNonDue(atxPowerPin, LOW);		// ensure ATX power is off by default
 	pinModeNonDue(atxPowerPin, OUTPUT);
 
+#ifdef DUEFLASHSTORAGE_H
 	DueFlashStorage::init();
 	// We really want to use static_assert here, but the ancient version of gcc used by Arduino doesn't support it
 	//static_assert(sizeof(nvData) <= 1024, "NVData too large");
@@ -130,43 +172,9 @@ void Platform::Init()
 		extern void BadStaticAssert();
 		BadStaticAssert();
 	}
-	DueFlashStorage::read(nvAddress, &nvData, sizeof(nvData));
-	if (nvData.magic != FlashData::magicValue)
-	{
-		// Nonvolatile data has not been initialized since the firmware was last written, so set up default values
-		nvData.compatibility = me;
-		nvData.ipAddress = IP_ADDRESS;
-		nvData.netMask = NET_MASK;
-		nvData.gateWay = GATE_WAY;
-		nvData.macAddress = MAC_ADDRESS;
+#endif
 
-		nvData.zProbeType = 0;	// Default is to use the switch
-		nvData.zProbeAxes = Z_PROBE_AXES;
-		nvData.switchZProbeParameters.Init(0.0);
-		nvData.irZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
-		nvData.alternateZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
-
-		for (size_t i = 0; i < HEATERS; ++i)
-		{
-			PidParameters& pp = nvData.pidParams[i];
-			pp.thermistorSeriesR = defaultThermistorSeriesRs[i];
-			pp.SetThermistorR25AndBeta(defaultThermistor25RS[i], defaultThermistorBetas[i]);
-			pp.kI = defaultPidKis[i];
-			pp.kD = defaultPidKds[i];
-			pp.kP = defaultPidKps[i];
-			pp.kT = defaultPidKts[i];
-			pp.kS = defaultPidKss[i];
-			pp.fullBand = defaultFullBands[i];
-			pp.pidMin = defaultPidMins[i];
-			pp.pidMax = defaultPidMaxes[i];
-			pp.adcLowOffset = pp.adcHighOffset = 0.0;
-		}
-
-		nvData.resetReason = 0;
-		GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
-		nvData.magic = FlashData::magicValue;
-		WriteNvData();
-	}
+	ResetNvData();
 
 	line->Init();
 	messageIndent = 0;
@@ -188,18 +196,22 @@ void Platform::Init()
 
 	// DRIVES
 
-	stepPins = STEP_PINS;
-	directionPins = DIRECTION_PINS;
-	directions = DIRECTIONS;
-	enablePins = ENABLE_PINS;
-	disableDrives = DISABLE_DRIVES;
-	lowStopPins = LOW_STOP_PINS;
-	highStopPins = HIGH_STOP_PINS;
-	maxFeedrates = MAX_FEEDRATES;
-	accelerations = ACCELERATIONS;
-	driveStepsPerUnit = DRIVE_STEPS_PER_UNIT;
-	instantDvs = INSTANT_DVS;
-	potWipes = POT_WIPES;
+	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		stepPins[drive] = step_pins[drive];
+		directionPins[drive] = direction_pins[drive];
+		directions[drive] = directions_[drive];
+		enablePins[drive] = enable_pins[drive];
+		disableDrives[drive] = disable_drives[drive];
+		lowStopPins[drive] = low_stop_pins[drive];
+		highStopPins[drive] = high_stop_pins[drive];
+		maxFeedrates[drive] = max_feedrates[drive];
+		accelerations[drive] = accelerations_[drive];
+		driveStepsPerUnit[drive] = drive_steps_per_unit[drive];
+		instantDvs[drive] = instant_dvs[drive];
+		potWipes[drive] = pot_wipes[drive];
+	}
+
 	senseResistor = SENSE_RESISTOR;
 	maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
 	//numMixingDrives = NUM_MIXING_DRIVES;
@@ -213,20 +225,26 @@ void Platform::Init()
 
 	// AXES
 
-	axisMaxima = AXIS_MAXIMA;
-	axisMinima = AXIS_MINIMA;
-	homeFeedrates = HOME_FEEDRATES;
-	headOffsets = HEAD_OFFSETS;
+	for (uint8_t axis = 0; axis < AXES; axis++)
+	{
+		axisMaxima[axis] = axis_maxima[axis];
+		axisMinima[axis] = axis_minima[axis];
+		homeFeedrates[axis] = home_feedrates[axis];
+	}
 
 	SetSlowestDrive();
 
 	// HEATERS - Bed is assumed to be the first
 
-	tempSensePins = TEMP_SENSE_PINS;
-	heatOnPins = HEAT_ON_PINS;
+	for (uint8_t heater = 0; heater < HEATERS; heater++)
+	{
+		tempSensePins[heater] = temp_sense_pins[heater];
+		heatOnPins[heater] = heat_on_pins[heater];
+		standbyTemperatures[heater] = standby_temperatures[heater];
+		activeTemperatures[heater] = active_temperatures[heater];
+	}
+
 	heatSampleTime = HEAT_SAMPLE_TIME;
-	standbyTemperatures = STANDBY_TEMPERATURES;
-	activeTemperatures = ACTIVE_TEMPERATURES;
 	coolingFanValue = 0.0;
 	coolingFanPin = COOLING_FAN_PIN;
 	coolingFanRpmPin = COOLING_FAN_RPM_PIN;
@@ -321,13 +339,11 @@ void Platform::InitZProbe()
 		zProbeModulationPin = (nvData.zProbeType == 3) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
 		pinModeNonDue(zProbeModulationPin, OUTPUT);
 		digitalWriteNonDue(zProbeModulationPin, HIGH);		// enable the IR LED
-		SetZProbing(false);
 	}
 	else if (nvData.zProbeType == 4)
 	{
 		pinModeNonDue(zProbeModulationPin, OUTPUT);
 		digitalWriteNonDue(zProbeModulationPin, LOW);		// enable the alternate sensor
-		SetZProbing(false);
 	}
 }
 
@@ -392,7 +408,11 @@ void Platform::SetZProbeAxes(const bool axes[AXES])
 	{
 		nvData.zProbeAxes[axis] = axes[axis];
 	}
-	WriteNvData();
+
+	if (autoSaveEnabled)
+	{
+		WriteNvData();
+	}
 }
 
 void Platform::GetZProbeAxes(bool (&axes)[AXES])
@@ -426,7 +446,10 @@ void Platform::SetZProbeType(int pt)
 	if (newZProbeType != nvData.zProbeType)
 	{
 		nvData.zProbeType = newZProbeType;
-		WriteNvData();
+		if (autoSaveEnabled)
+		{
+			WriteNvData();
+		}
 	}
 	InitZProbe();
 }
@@ -459,7 +482,10 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 		if (nvData.switchZProbeParameters != params)
 		{
 			nvData.switchZProbeParameters = params;
-			WriteNvData();
+			if (autoSaveEnabled)
+			{
+				WriteNvData();
+			}
 		}
 		return true;
 	case 1:
@@ -468,14 +494,20 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 		if (nvData.irZProbeParameters != params)
 		{
 			nvData.irZProbeParameters = params;
-			WriteNvData();
+			if (autoSaveEnabled)
+			{
+				WriteNvData();
+			}
 		}
 		return true;
 	case 4:
 		if (nvData.alternateZProbeParameters != params)
 		{
 			nvData.alternateZProbeParameters = params;
-			WriteNvData();
+			if (autoSaveEnabled)
+			{
+				WriteNvData();
+			}
 		}
 		return true;
 	default:
@@ -489,13 +521,83 @@ bool Platform::MustHomeXYBeforeZ() const
 	return nvData.zProbeType != 0;
 }
 
-void Platform::WriteNvData()
+void Platform::ResetNvData()
 {
-	DueFlashStorage::write(nvAddress, &nvData, sizeof(nvData));
+	nvData.compatibility = me;
+	for(uint8_t seg = 0; seg < 4; seg++)
+	{
+		nvData.ipAddress[seg] = ip_address[seg];
+		nvData.netMask[seg] = net_mask[seg];
+		nvData.gateWay[seg] = gate_way[seg];
+	}
+	for(uint8_t mac_seg = 0; mac_seg < 6; mac_seg++)
+	{
+		nvData.macAddress[mac_seg] = mac_address[mac_seg];
+	}
+
+	nvData.zProbeType = 0;	// Default is to use the switch
+	for(uint8_t axis = 0; axis < AXES; axis++)
+	{
+		nvData.zProbeAxes[axis] = z_probe_axes[axis];
+	}
+	nvData.switchZProbeParameters.Init(0.0);
+	nvData.irZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
+	nvData.alternateZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
+
+	for (size_t i = 0; i < HEATERS; ++i)
+	{
+		PidParameters& pp = nvData.pidParams[i];
+		pp.thermistorSeriesR = defaultThermistorSeriesRs[i];
+		pp.SetThermistorR25AndBeta(defaultThermistor25RS[i], defaultThermistorBetas[i]);
+		pp.kI = defaultPidKis[i];
+		pp.kD = defaultPidKds[i];
+		pp.kP = defaultPidKps[i];
+		pp.kT = defaultPidKts[i];
+		pp.kS = defaultPidKss[i];
+		pp.fullBand = defaultFullBands[i];
+		pp.pidMin = defaultPidMins[i];
+		pp.pidMax = defaultPidMaxes[i];
+		pp.adcLowOffset = pp.adcHighOffset = 0.0;
+	}
+
+	nvData.resetReason = 0;
+	GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
+#ifdef DUEFLASHSTORAGE_H
+	nvData.magic = FlashData::magicValue;
+#endif
 }
 
-void Platform::SetZProbing(bool starting)
+void Platform::ReadNvData()
 {
+#ifdef DUEFLASHSTORAGE_H
+	DueFlashStorage::read(nvAddress, &nvData, sizeof(nvData));
+	if (nvData.magic != FlashData::magicValue)
+	{
+		// Nonvolatile data has not been initialized since the firmware was last written, so set up default values
+		ResetNvData();
+		WriteNvData();
+	}
+#else
+	Message(BOTH_ERROR_MESSAGE, "Cannot load non-volatile data, because Flash support has been disabled!");
+#endif
+}
+
+void Platform::WriteNvData()
+{
+#ifdef DUEFLASHSTORAGE_H
+	DueFlashStorage::write(nvAddress, &nvData, sizeof(nvData));
+#else
+	Message(BOTH_ERROR_MESSAGE, "Cannot write non-volatile data, because Flash support has been disabled!");
+#endif
+}
+
+void Platform::SetAutoSave(bool enabled)
+{
+#ifdef DUEFLASHSTORAGE_H
+	autoSaveEnabled = enabled;
+#else
+	Message(BOTH_ERROR_MESSAGE, "Cannot enable auto-save, because Flash support has been disabled!");
+#endif
 }
 
 // Note: the use of floating point time will cause the resolution to degrade over time.
@@ -540,7 +642,10 @@ void Platform::SetEmulating(Compatibility c)
 	if (c != nvData.compatibility)
 	{
 		nvData.compatibility = c;
-		WriteNvData();
+		if (autoSaveEnabled)
+		{
+			WriteNvData();
+		}
 	}
 }
 
@@ -555,7 +660,7 @@ void Platform::UpdateNetworkAddress(byte dst[4], const byte src[4])
 			changed = true;
 		}
 	}
-	if (changed)
+	if (changed && autoSaveEnabled)
 	{
 		WriteNvData();
 	}
@@ -589,7 +694,6 @@ void Platform::Spin()
 	line->Spin();
 
 	ClassReport("Platform", longWait);
-
 }
 
 void Platform::SoftwareReset(uint16_t reason)
@@ -608,6 +712,8 @@ void Platform::SoftwareReset(uint16_t reason)
 
 	if (reason != 0 || reason != nvData.resetReason)
 	{
+		// zpl-2014-11-03: Here we must ensure that no changed values are saved, so load last-known values first
+		ReadNvData();
 		nvData.resetReason = reason;
 		GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
 		WriteNvData();
@@ -948,7 +1054,10 @@ void Platform::SetPidParameters(size_t heater, const PidParameters& params)
 	if (heater < HEATERS && params != nvData.pidParams[heater])
 	{
 		nvData.pidParams[heater] = params;
-		WriteNvData();
+		if (autoSaveEnabled)
+		{
+			WriteNvData();
+		}
 	}
 }
 const PidParameters& Platform::GetPidParameters(size_t heater)

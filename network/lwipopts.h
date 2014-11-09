@@ -83,12 +83,12 @@
 
 /* MEM_SIZE: the size of the heap memory. If the application will send
 a lot of data that needs to be copied, this should be set high. */
-#define MEM_SIZE                (2048)
+#define MEM_SIZE                (1024)
 
 /* MEMP_NUM_PBUF: the number of memp struct pbufs. If the application
    sends a lot of data out of ROM (or other static memory), this
    should be set high. */
-#define MEMP_NUM_PBUF           16
+#define MEMP_NUM_PBUF           8
 
 /* Number of raw connection PCBs */
 #define MEMP_NUM_RAW_PCB        0
@@ -101,7 +101,7 @@ a lot of data that needs to be copied, this should be set high. */
 #define MEMP_NUM_UDP_PCB        1
 
 /* MEMP_NUM_TCP_PCB: the number of simultaneously active TCP connections. */
-#define MEMP_NUM_TCP_PCB        8
+#define MEMP_NUM_TCP_PCB        64
 /* MEMP_NUM_TCP_PCB_LISTEN: the number of listening TCP connections. */
 #define MEMP_NUM_TCP_PCB_LISTEN 4
 /* MEMP_NUM_TCP_SEG: the number of simultaneously queued TCP segments. */
@@ -118,7 +118,7 @@ a lot of data that needs to be copied, this should be set high. */
 
 /* ---------- Pbuf options ---------- */
 /* PBUF_POOL_SIZE: the number of buffers in the pbuf pool. */
-#define PBUF_POOL_SIZE          (8)
+#define PBUF_POOL_SIZE          (6)
 /* PBUF_POOL_BUFSIZE: the size of each pbuf in the pbuf pool. DO NOT DEFINE IT HERE, the correct value needs to be calculated from TCP_MSS. */
 
 /** ETH_PAD_SIZE: number of bytes added before the ethernet header to ensure

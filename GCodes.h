@@ -84,14 +84,17 @@ class GCodeBuffer
 // We don't want ordinary commands to be executed too early, so we must buffer non-moving commands
 // and execute them in-time in GCodes::Spin while regular moves are fed into the look-ahead queue.
 
-class CodeQueue
+const unsigned int codeQueueLength = 16;
+const unsigned int maxCodeLength = 128;
+
+class CodeQueueItem
 {
 	public:
 
-		CodeQueue(const char *cmd, unsigned int executeAtMove);
-		~CodeQueue();
-		void SetNext(CodeQueue *n);
-		CodeQueue *Next() const;
+		CodeQueueItem(CodeQueueItem *n);
+		void Init(const char *cmd, unsigned int executeAtMove);
+		void SetNext(CodeQueueItem *n);
+		CodeQueueItem *Next() const;
 
 		unsigned int ExecuteAtMove() const;
 		const char *GetCommand() const;
@@ -102,10 +105,10 @@ class CodeQueue
 
 	private:
 
-		char *command;
+		char command[maxCodeLength];
 		size_t commandLength;
 		unsigned int moveToExecute;
-		CodeQueue *next;
+		CodeQueueItem *next;
 		bool executing;
 };
 
@@ -230,13 +233,15 @@ class GCodes
     int8_t cannedCycleMoveCount;				// Counts through internal (i.e. not macro) canned cycle moves
     bool cannedCycleMoveQueued;					// True if a canned cycle move has been set
     bool zProbesSet;							// True if all Z probing is done and we can set the bed equation
+    bool settingBedEquationWithProbe;			// True if we're executing G32 without a macro
     float longWait;								// Timer for things that happen occasionally (seconds)
     bool limitAxes;								// Don't think outside the box.
     bool axisIsHomed[3];						// These record which of the axes have been homed
     bool waitingForMoveToComplete;
     bool coolingInverted;
     int8_t toolChangeSequence;					// Steps through the tool change procedure
-    CodeQueue *internalCodeQueue;				// Linked list of all the queued codes
+    CodeQueueItem *internalCodeQueue;			// Linked list of all the queued codes
+    CodeQueueItem *releasedQueueItems;			// Linked list of all released queue items
     unsigned int totalMoves;					// Total number of moves that have been fed into the look-ahead
     volatile unsigned int movesCompleted;		// Number of moves that have been completed (changed by ISR)
 };

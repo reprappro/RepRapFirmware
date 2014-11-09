@@ -163,6 +163,7 @@ void Move::Spin()
 	DoLookAhead();
 
 	// Check extrusion capabilities of each extruder drive
+	// TODO: move this somewhere else?
 
 	Tool *tool;
 	for(uint8_t drive = AXES; drive < DRIVES; drive++)
@@ -195,8 +196,7 @@ void Move::Spin()
 		return;
 	}
 
-	// If there's a G Code move available, add it to the look-ahead
-	// ring for processing.
+	// If there's a G Code move available, add it to the look-ahead ring for processing.
 
 	EndstopChecks endStopsToCheck;
 	if (gCodes->ReadMove(nextMove, endStopsToCheck) && state != cancelled)
@@ -288,6 +288,7 @@ void Move::Spin()
 		// We've skipped all incoming moves, so reset our state again
 		state = running;
 	}
+
 	platform->ClassReport("Move", longWait);
 }
 
@@ -606,8 +607,8 @@ void Move::DoLookAhead()
 
 	if(addNoMoreMoves || !gCodes->HaveIncomingData() || lookAheadRingCount > 1)
 	{
-		n0 = n1->Previous();
 		n1 = lookAheadRingGetPointer;
+		n0 = n1->Previous();
 		n2 = n1->Next();
 		while(n2 != lookAheadRingAddPointer)
 		{

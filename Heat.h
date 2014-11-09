@@ -134,7 +134,7 @@ inline float PID::GetStandbyTemperature() const
 
 inline float PID::GetTemperature() const
 {
-  return temperature;
+  return (temperatureFault ? ABS_ZERO : temperature);
 }
 
 inline void PID::Activate()
