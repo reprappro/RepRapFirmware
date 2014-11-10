@@ -570,13 +570,13 @@ public:
   
   Line* GetLine() const;
   void SetIPAddress(byte ip[]);
-  const byte* IPAddress() const;
+  const unsigned char* IPAddress() const;
   void SetNetMask(byte nm[]);
-  const byte* NetMask() const;
+  const unsigned char* NetMask() const;
   void SetGateWay(byte gw[]);
-  const byte* GateWay() const;
+  const unsigned char* GateWay() const;
   void SetMACAddress(uint8_t mac[]);
-  const uint8_t* MACAddress() const;
+  const unsigned char* MACAddress() const;
   
   friend class FileStore;
   
@@ -1087,17 +1087,17 @@ inline void Platform::SetTimeToHot(float t)
 	timeToHot = t;
 }
 
-inline const byte* Platform::IPAddress() const
+inline const unsigned char* Platform::IPAddress() const
 {
 	return nvData.ipAddress;
 }
 
-inline const byte* Platform::NetMask() const
+inline const unsigned char* Platform::NetMask() const
 {
 	return nvData.netMask;
 }
 
-inline const byte* Platform::GateWay() const
+inline const unsigned char* Platform::GateWay() const
 {
 	return nvData.gateWay;
 }
@@ -1119,7 +1119,7 @@ inline void Platform::SetMACAddress(uint8_t mac[])
 	}
 }
 
-inline const byte* Platform::MACAddress() const
+inline const unsigned char* Platform::MACAddress() const
 {
 	return nvData.macAddress;
 }

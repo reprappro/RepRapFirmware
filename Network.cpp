@@ -690,7 +690,7 @@ void Network::ReceiveInput(pbuf *pb, ConnectionState* cs)
 // Otherwise, we are only interested in packets received from the specified connection. If we find one than
 // we move it to the head of the ready list, so that a subsequent call with a null connection parameter
 // will return the same one.
-NetworkTransaction *Network::GetRequest(const ConnectionState *cs)
+NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 {
 	++inLwip;
 	NetworkTransaction *rs = readyTransactions;
@@ -800,7 +800,7 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 
 // We have no data to read nor to write and we want to keep the current connection alive if possible.
 // That way we can speed up freeing the current NetworkTransaction.
-void Network::CloseRequest()
+void Network::CloseTransaction()
 {
 	// Free the current NetworkTransaction's data (if any)
 	++inLwip;
@@ -827,9 +827,9 @@ void Network::CloseRequest()
 }
 
 
-// The current NetworkTransactionmust be processed again, e.g. because we're still waiting for another
+// The current NetworkTransaction must be processed again, e.g. because we're still waiting for another
 // data connection.
-void Network::RepeatRequest()
+void Network::RepeatTransaction()
 {
 	++inLwip;
 	NetworkTransaction *r = readyTransactions;

@@ -140,10 +140,10 @@ public:
 	void ConnectionClosed(ConnectionState* cs, bool closeConnection);
 	void ConnectionClosedGracefully(ConnectionState *cs);
 
-	NetworkTransaction *GetRequest(const ConnectionState *cs = NULL);
+	NetworkTransaction *GetTransaction(const ConnectionState *cs = NULL);
 	void SendAndClose(FileStore *f, bool keepConnectionOpen = false);
-	void CloseRequest();
-	void RepeatRequest();
+	void CloseTransaction();
+	void RepeatTransaction();
 
 	void OpenDataPort(uint16_t port);
 	bool CloseDataPort();

@@ -139,7 +139,7 @@ void Webserver::Spin()
 	if (webserverActive && httpInterpreter->FlushUploadData() && ftpInterpreter->FlushUploadData())
 	{
 		Network *net = reprap.GetNetwork();
-		NetworkTransaction *req = net->GetRequest(readingConnection);
+		NetworkTransaction *req = net->GetTransaction(readingConnection);
 		if (req != NULL)
 		{
 			// Process incoming request
@@ -178,9 +178,9 @@ void Webserver::Spin()
 					interpreter->ConnectionEstablished();
 
 					// Close this request unless ConnectionEstablished() has already used it for sending
-					if (req == net->GetRequest(readingConnection))
+					if (req == net->GetTransaction(readingConnection))
 					{
-						net->CloseRequest();
+						net->CloseTransaction();
 					}
 				}
 				// Graceful disconnects are handled here, because prior NetworkTransactions might still contain valid
@@ -188,7 +188,7 @@ void Webserver::Spin()
 				else if (status == disconnected)
 				{
 					// CloseRequest() will call the disconnect events and close the connection
-					net->CloseRequest();
+					net->CloseTransaction();
 				}
 				// Fast upload for FTP connections
 				else if (is_data_port)
@@ -203,7 +203,7 @@ void Webserver::Spin()
 						}
 						else
 						{
-							net->CloseRequest();
+							net->CloseTransaction();
 						}
 					}
 					else
@@ -243,7 +243,7 @@ void Webserver::Spin()
 			else if (req->LostConnection())
 			{
 				platform->Message(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
-				net->CloseRequest();
+				net->CloseTransaction();
 			}
 		}
 
@@ -722,7 +722,7 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 	}
 
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 	req->Write("HTTP/1.1 200 OK\n");
 
 	const char* contentType;
@@ -771,7 +771,7 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 {
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 	bool keepOpen = false;
 	bool mayKeepOpen;
 	bool found;
@@ -1624,7 +1624,7 @@ bool Webserver::HttpInterpreter::RejectMessage(const char* response, unsigned in
 	platform->Message(HOST_MESSAGE, "Webserver: rejecting message with: %s\n", response);
 
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 	req->Printf("HTTP/1.1 %u %s\nConnection: close\n\n", code, response);
 	net->SendAndClose(NULL);
 
@@ -1654,7 +1654,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 	}
 
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 
 	switch (state)
 	{
@@ -2041,7 +2041,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			}
 			else
 			{
-				net->RepeatRequest();
+				net->RepeatTransaction();
 			}
 
 			break;
@@ -2055,7 +2055,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			{
 				// send response via main port
 				strncpy(ftpResponse, "150 Here comes the directory listing.\r\n", ftpResponseLength);
-				NetworkTransaction *ftp_req = net->GetRequest();
+				NetworkTransaction *ftp_req = net->GetTransaction();
 				ftp_req->Write(ftpResponse);
 				net->SendAndClose(NULL, true);
 
@@ -2065,7 +2065,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 					FileInfo file_info;
 					if (platform->GetMassStorage()->FindFirst(currentDir, file_info))
 					{
-						NetworkTransaction *data_req = net->GetRequest();
+						NetworkTransaction *data_req = net->GetTransaction();
 						char line[300];
 
 						do {
@@ -2196,7 +2196,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 void Webserver::FtpInterpreter::SendReply(int code, const char *message, bool keepConnection)
 {
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 	req->Printf("%d %s\r\n", code, message);
 	net->SendAndClose(NULL, keepConnection);
 }
@@ -2204,7 +2204,7 @@ void Webserver::FtpInterpreter::SendReply(int code, const char *message, bool ke
 void Webserver::FtpInterpreter::SendFeatures()
 {
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 	req->Write("211-Features:\r\n");
 	req->Write("PASV\r\n");		// support PASV mode
 	req->Write("211 End\r\n");
@@ -2326,7 +2326,7 @@ Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws) : Pr
 void Webserver::TelnetInterpreter::ConnectionEstablished()
 {
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 	req->Write("RepRapPro Ormerod Telnet Interface\r\n\r\n");
 	req->Write("Please enter your password:\r\n");
 	req->Write("> ");
@@ -2389,7 +2389,7 @@ void Webserver::TelnetInterpreter::ResetState()
 void Webserver::TelnetInterpreter::ProcessLine()
 {
 	Network *net = reprap.GetNetwork();
-	NetworkTransaction *req = net->GetRequest();
+	NetworkTransaction *req = net->GetTransaction();
 
 	switch (state)
 	{
@@ -2420,7 +2420,7 @@ void Webserver::TelnetInterpreter::ProcessLine()
 			else
 			{
 				webserver->ProcessGcode(clientMessage);
-				net->CloseRequest();
+				net->CloseTransaction();
 			}
 			break;
 	}
@@ -2431,7 +2431,7 @@ void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
 	Network *net = reprap.GetNetwork();
 	if (state >= authenticated && net->AcquireTelnetTransaction())
 	{
-		NetworkTransaction *req = net->GetRequest();
+		NetworkTransaction *req = net->GetTransaction();
 
 		// Whenever a new line is read, we also need to send a carriage return
 		bool append_line;
