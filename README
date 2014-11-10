@@ -85,12 +85,12 @@ to values #defined in Platform.h).
 
 Network:
 
-This class implements a basic TCP interface for the Webserver classes using lwip.
+This class implements a basic TCP interface for the Webserver classes using LWIP.
 
 Webserver:
 
 This class talks to the network (via Platform) and implements a simple webserver to give an interactive
-interface to the RepRap machine.  It uses the Knockout and Jquery Javascript libraries to achieve this.
+interface to the RepRap machine. It uses the Knockout and Jquery Javascript libraries to achieve this.
 In addition, FTP and Telnet servers are provided for easier SD card file management and G-Code handling.
 
 
@@ -220,8 +220,9 @@ The most significant changes are:
 - Reliable low-level networking and implementation of the internal EMAC ISR
 - Internal G-Code queuing to execute non-movement codes just-in-time and not ~20 moves too early (due to the look-ahead)
 - M25: SD-card prints are paused as soon as the current move finishes
-- M0 does no longer disable any stepper motors or heaters to simplify print restarts (requires my web interface fork)
+- M0 does no longer disable any stepper motors or heaters if the print is paused. This shall simplify print restarts (requires my web interface fork)
 - Implemented cold retracts, minimum temperature is 90C
+- Flash usage is optional; only one line needs to be commented out to disable it
 
 See the "Changes in ... fork" text files for complete lists of all the changes dc42 and zpl have contributed.
 
