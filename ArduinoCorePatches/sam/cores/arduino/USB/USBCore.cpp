@@ -169,14 +169,14 @@ uint32_t USBD_Recv(uint32_t ep)
 }
 
 //	Space in send EP
+// DC42 uncommented and modified this function to support the cabWrite function in file CDC.cpp
 uint32_t USBD_SendSpace(uint32_t ep)
 {
 	if (!UDD_ReadWriteAllowed(ep & 0xF))
 	{
-        	//printf("pb "); // UOTGHS->UOTGHS_DEVEPTISR[%d]=0x%X\n\r", ep, UOTGHS->UOTGHS_DEVEPTISR[ep]);
+		//printf("pb "); // UOTGHS->UOTGHS_DEVEPTISR[%d]=0x%X\n\r", ep, UOTGHS->UOTGHS_DEVEPTISR[ep]);
 		return 0;
 	}
-
 	return ((ep==0) ? EP0_SIZE : EPX_SIZE) - UDD_FifoByteCount(ep & 0xF);
 }
 

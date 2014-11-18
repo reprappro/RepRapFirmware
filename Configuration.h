@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.96c-zpl"
-#define DATE "2014-11-09"
+#define VERSION "0.96d-zpl"
+#define DATE "2014-11-18"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Other firmware that we might switch to be compatible with.
@@ -82,6 +82,8 @@ enum Compatibility
 #define HOME_Z_G "homez.g"
 #define HOME_ALL_G "homeall.g"
 #define SET_BED_EQUATION "bed.g"
+#define PAUSE_G "pause.g"
+#define RESUME_G "resume.g"
 
 #define WEB_DEBUG_TRUE 9
 #define WEB_DEBUG_FALSE 8

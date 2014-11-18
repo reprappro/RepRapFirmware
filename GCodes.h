@@ -138,7 +138,6 @@ class GCodes
     void SetAxisIsHomed(uint8_t axis) { axisIsHomed[axis] = true; }		// Tell us that the axis is now homes
     bool CoolingInverted() const;										// Is the current fan value inverted?
     void MoveQueued();													// Called by the Move class to announce a new move
-    bool CanMove() const;												// Check if a new DDA can be started (called by ISR)
     void MoveCompleted();												// Called by the DDA class to indicate that a move has been completed (called by ISR)
     
   private:
@@ -197,6 +196,7 @@ class GCodes
     GCodeBuffer* webGCode;						// The sources...
     GCodeBuffer* fileGCode;						// ...
     GCodeBuffer* serialGCode;					// ...
+    GCodeBuffer* auxGCode;						// ...
     GCodeBuffer* fileMacroGCode;				// ...
     GCodeBuffer* queuedGCode;					// ... of G Codes
     bool moveAvailable;							// Have we seen a move G Code and set it up?
@@ -221,6 +221,7 @@ class GCodes
     FileStore* fileBeingWritten;				// A file to write G Codes (or sometimes HTML) in
     FileStore* configFile;						// A file containing a macro
     bool doingFileMacro;						// Are we executing a macro file?
+    bool doResumeMacro;							// Are we executing the pause/resume macro file?
     float fractionOfFilePrinted;				// Only used to record the main file when a macro is being printed
     char* eofString;							// What's at the end of an HTML file?
     uint8_t eofStringCounter;					// Check the...
@@ -307,14 +308,14 @@ inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 
 inline float GCodes::FractionOfFilePrinted() const
 {
-	if (!fileBeingPrinted.IsLive())
-	{
-		return (internalCodeQueue == NULL ? -1.0 : 0.9999);
-	}
-
 	if (fractionOfFilePrinted < 0.0)
 	{
 		return fileBeingPrinted.FractionRead();
+	}
+
+	if (!fileBeingPrinted.IsLive())
+	{
+		return (internalCodeQueue == NULL ? -1.0 : 0.9999);
 	}
 
 	return fractionOfFilePrinted;
@@ -322,7 +323,10 @@ inline float GCodes::FractionOfFilePrinted() const
 
 inline bool GCodes::HaveIncomingData() const
 {
-	return fileBeingPrinted.IsLive() || webserver->GCodeAvailable() || (platform->GetLine()->Status() & byteAvailable);
+	return fileBeingPrinted.IsLive() ||
+			webserver->GCodeAvailable() ||
+			(platform->GetLine()->Status() & byteAvailable) ||
+			(platform->GetAux()->Status() & byteAvailable);
 }
 
 inline bool GCodes::NoHome() const

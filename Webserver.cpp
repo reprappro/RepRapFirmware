@@ -101,8 +101,8 @@ const float pasvPortTimeout = 10.0;	 					// seconds to wait for the FTP data po
 
 // Constructor and initialisation
 Webserver::Webserver(Platform* p) : platform(p), webserverActive(false), readingConnection(NULL),
-		fileInfoDetected(false), printStartTime(0.0),
-		gcodeReply(gcodeReplyBuffer, ARRAY_SIZE(gcodeReplyBuffer))
+		fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, gcodeReplyBufferLength),
+		seq(0), increaseSeq(false)
 {
 	httpInterpreter = new HttpInterpreter(p, this);
 	ftpInterpreter = new FtpInterpreter(p, this);
@@ -305,7 +305,7 @@ bool Webserver::CheckPassword(const char *pw) const
 // Get the actual amount of gcode buffer space we have
 unsigned int Webserver::GetGcodeBufferSpace() const
 {
-	return (gcodeReadIndex - gcodeWriteIndex - 1u) % gcodeBufLength;
+	return (gcodeReadIndex - gcodeWriteIndex - 1u) % gcodeBufferLength;
 }
 
 // Process a null-terminated gcode
@@ -355,7 +355,7 @@ void Webserver::ProcessGcode(const char* gc)
 			configFile->Close();
 			gcodeReply[i] = 0;
 
-			httpInterpreter->ReceivedGcodeReply();
+			increaseSeq = true;
 			telnetInterpreter->HandleGcodeReply(gcodeReply.Pointer());
 		}
 	}
@@ -381,9 +381,20 @@ char Webserver::ReadGCode()
 	else
 	{
 		c = gcodeBuffer[gcodeReadIndex];
-		gcodeReadIndex = (gcodeReadIndex + 1u) % gcodeBufLength;
+		gcodeReadIndex = (gcodeReadIndex + 1u) % gcodeBufferLength;
 	}
 	return c;
+}
+
+unsigned int Webserver::GetReplySeq()
+{
+	if (increaseSeq)
+	{
+		seq++;
+		increaseSeq = false;
+	}
+
+	return seq;
 }
 
 // Process a received string of gcodes
@@ -447,7 +458,7 @@ void Webserver::StoreGcodeData(const char* data, size_t len)
 	}
 	else
 	{
-		size_t remaining = gcodeBufLength - gcodeWriteIndex;
+		size_t remaining = gcodeBufferLength - gcodeWriteIndex;
 		if (len <= remaining)
 		{
 			memcpy(gcodeBuffer + gcodeWriteIndex, data, len);
@@ -457,7 +468,7 @@ void Webserver::StoreGcodeData(const char* data, size_t len)
 			memcpy(gcodeBuffer + gcodeWriteIndex, data, remaining);
 			memcpy(gcodeBuffer, data + remaining, len - remaining);
 		}
-		gcodeWriteIndex = (gcodeWriteIndex + len) % gcodeBufLength;
+		gcodeWriteIndex = (gcodeWriteIndex + len) % gcodeBufferLength;
 	}
 }
 
@@ -508,21 +519,23 @@ void Webserver::MessageStringToWebInterface(const char *s, bool error)
 	if (strlen(s) == 0 && !error)
 	{
 		gcodeReply.copy("ok");
+		telnetInterpreter->HandleGcodeReply("ok");
 	}
 	else
 	{
 		if (error)
 		{
 			gcodeReply.printf("Error: %s", s);
+			telnetInterpreter->HandleGcodeReply("Error: ", true);
+			telnetInterpreter->HandleGcodeReply(s);
 		}
 		else
 		{
 			gcodeReply.copy(s);
+			telnetInterpreter->HandleGcodeReply(s);
 		}
 	}
-
-	httpInterpreter->ReceivedGcodeReply();
-	telnetInterpreter->HandleGcodeReply(s);
+	increaseSeq = true;
 }
 
 void Webserver::AppendReplyToWebInterface(const char *s, bool error)
@@ -533,9 +546,9 @@ void Webserver::AppendReplyToWebInterface(const char *s, bool error)
 	}
 
 	gcodeReply.cat(s);
-	httpInterpreter->ReceivedGcodeReply();
 
-	telnetInterpreter->HandleGcodeReply(s);
+	increaseSeq = true;
+	telnetInterpreter->HandleGcodeReply(s, true);
 }
 
 
@@ -602,9 +615,9 @@ bool ProtocolInterpreter::FlushUploadData()
 {
 	if (uploadState == uploadOK && uploadLength != 0)
 	{
-		// Write some uploaded data to file, if possible one sector (512 bytes) at a time
+		// Write some uploaded data to file, if possible half a sector sector (256 bytes) at a time
 		// Limiting the amount of data we write improves throughput, probably by allowing lwip time to send ACKs etc.
-		unsigned int len = min<unsigned int>(uploadLength, 512);
+		unsigned int len = min<unsigned int>(uploadLength, 256);
 		if (!fileBeingUploaded.Write(uploadPointer, len))
 		{
 			platform->Message(HOST_MESSAGE, "Could not flush upload data!\n");
@@ -835,11 +848,11 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 
 	if (StringEquals(request, "status"))	// new style status request
 	{
-		GetStatusResponse(response, 1);
+		reprap.GetStatusResponse(response, 1);
 	}
 	else if (StringEquals(request, "poll"))		// old style status request
 	{
-		GetStatusResponse(response, 0);
+		reprap.GetStatusResponse(response, 0);
 	}
 	else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
 	{
@@ -997,7 +1010,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 	else if (StringEquals(request, "connect"))
 	{
 		CancelUpload();
-		GetStatusResponse(response, 1);
+		reprap.GetStatusResponse(response, 1);
 	}
 	else
 	{
@@ -1012,224 +1025,6 @@ void Webserver::HttpInterpreter::GetJsonUploadResponse(StringRef& response)
 	response.printf("{\"ubuff\":%u,\"err\":%d}", webUploadBufferSize, (uploadState == uploadOK) ? 0 : 1);
 }
 
-void Webserver::HttpInterpreter::GetStatusResponse(StringRef& response, uint8_t type)
-{
-	GCodes *gc = reprap.GetGCodes();
-	Move *move = reprap.GetMove();
-	float fractionPrinted = gc->FractionOfFilePrinted();
-	if (type == 1)
-	{
-		// New-style status request
-		// Send the printing/idle status
-		char ch = (reprap.IsStopped()) ? 'S' : (fractionPrinted >= 0.0) ? 'P' : 'I';
-		response.printf("{\"status\":\"%c\",\"heaters\":", ch);
-
-		// Send the heater actual temperatures
-		const Heat *heat = reprap.GetHeat();
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
-		{
-			response.catf("%c%.1f", ch, heat->GetTemperature(heater));
-			ch = ',';
-		}
-
-		// Send the heater active temperatures
-		response.catf("],\"active\":");
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
-		{
-			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
-			ch = ',';
-		}
-
-		// Send the heater standby temperatures
-		response.catf("],\"standby\":");
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
-		{
-			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
-			ch = ',';
-		}
-
-		// Send the heater statuses (0=off, 1=standby, 2=active)
-		response.cat("],\"hstat\":");
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
-		{
-			response.catf("%c%d", ch, (int)heat->GetStatus(heater));
-			ch = ',';
-		}
-
-		// Send XYZ positions
-		float liveCoordinates[DRIVES + 1];
-		const Tool* currentTool = reprap.GetCurrentTool();
-		if (currentTool != NULL)
-		{
-			const float *offset = currentTool->GetOffset();
-			for (size_t i = 0; i < AXES; ++i)
-			{
-				liveCoordinates[i] += offset[i];
-			}
-		}
-		move->LiveCoordinates(liveCoordinates);
-		response.catf("],\"pos\":");		// announce the XYZ position
-		ch = '[';
-		for (int8_t drive = 0; drive < AXES; drive++)
-		{
-			response.catf("%c%.2f", ch, liveCoordinates[drive]);
-			ch = ',';
-		}
-
-		// Send actual and theoretical extruder total extrusion since power up, last G92 or last M23
-		response.catf("],\"extr\":");		// announce actual extruder positions
-		ch = '[';
-		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
-		{
-			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
-			ch = ',';
-		}
-		float rawExtruderPos[DRIVES - AXES];
-		move->GetRawExtruderPositions(rawExtruderPos);
-		response.cat("],\"extr_raw\":");	// announce theoretical, file-based extruder positions
-		ch = '[';
-		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
-		{
-			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
-			ch = ',';
-		}
-		response.cat("]");
-
-		// Send the speed and extruder override factors
-		response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
-		for (uint8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)
-		{
-			response.catf("%c%.2f", (!extruder) ? '[' : ',', reprap.GetMove()->GetExtrusionFactor(extruder) * 100.0);
-		}
-		response.cat("]");
-
-		// Send the current tool number
-		int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
-		response.catf(",\"tool\":%d", toolNumber);
-
-		// Send current fan value
-		float fanValue = (gc->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
-		response.catf(",\"fanPercent\":%.2f", fanValue);
-	}
-	else
-	{
-		// The old (deprecated) poll response lists the status, then all the heater temperatures, then the XYZ positions, then all the extruder positions.
-		// These are all returned in a single vector called "poll".
-		// This is a poor choice of format because we can't easily tell which is which unless we already know the number of heaters and extruders.
-		// RRP reversed the order at version 0.65 to send the positions before the heaters, but we haven't yet done that.
-		char c = (fractionPrinted >= 0.0) ? 'P' : 'I';
-		response.printf("{\"poll\":[\"%c\",", c); // Printing
-		for (int8_t heater = 0; heater < HEATERS; heater++)
-		{
-			response.catf("\"%.1f\",", reprap.GetHeat()->GetTemperature(heater));
-		}
-		// Send XYZ and extruder positions
-		float liveCoordinates[DRIVES + 1];
-		reprap.GetMove()->LiveCoordinates(liveCoordinates);
-		for (int8_t drive = 0; drive < DRIVES; drive++)	// loop through extruders
-		{
-			char ch = (drive == DRIVES - 1) ? ']' : ',';	// append ] to the last one but , to the others
-			response.catf("\"%.2f\"%c", liveCoordinates[drive], ch);
-		}
-	}
-
-	// Send the Z probe value
-	int v0 = platform->ZProbe();
-	int v1, v2;
-	switch (platform->GetZProbeSecondaryValues(v1, v2))
-	{
-	case 1:
-		response.catf(",\"probe\":\"%d (%d)\"", v0, v1);
-		break;
-	case 2:
-		response.catf(",\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
-		break;
-	default:
-		response.catf(",\"probe\":\"%d\"", v0);
-		break;
-	}
-
-	// Send fan RPM value
-	response.catf(",\"fanRPM\":%d", (unsigned int)platform->GetFanRPM());
-
-	// Send the amount of buffer space available for gcodes
-	response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());
-
-	// Send the home state. To keep the messages short, we send 1 for homed and 0 for not homed, instead of true and false.
-	if (type != 0)
-	{
-		response.catf(",\"homed\":[%d,%d,%d]",
-				(gc->GetAxisIsHomed(0)) ? 1 : 0,
-				(gc->GetAxisIsHomed(1)) ? 1 : 0,
-				(gc->GetAxisIsHomed(2)) ? 1 : 0);
-	}
-	else
-	{
-		response.catf(",\"hx\":%d,\"hy\":%d,\"hz\":%d",
-				(gc->GetAxisIsHomed(0)) ? 1 : 0,
-				(gc->GetAxisIsHomed(1)) ? 1 : 0,
-				(gc->GetAxisIsHomed(2)) ? 1 : 0);
-	}
-
-	// Retrieve the gcode buffer from Webserver
-	const char *p = webserver->gcodeReply.Pointer();
-
-	// Send the response sequence number
-	response.catf(",\"seq\":%u", (unsigned int) seq);
-
-	// Send the fraction printed
-	response.catf(",\"fraction_printed\":%.4f", max<float>(0.0, fractionPrinted));
-
-	// Send the response to the last command. Do this last because it is long and may need to be truncated.
-	response.cat(",\"resp\":\"");
-	size_t jp = response.strlen();
-	while (*p != 0 && jp < response.Length() - 3)	// leave room for the final '"}\0'
-	{
-		char c = *p++;
-		char esc;
-		switch (c)
-		{
-		case '\r':
-			esc = 'r';
-			break;
-		case '\n':
-			esc = 'n';
-			break;
-		case '\t':
-			esc = 't';
-			break;
-		case '"':
-			esc = '"';
-			break;
-		case '\\':
-			esc = '\\';
-			break;
-		default:
-			esc = 0;
-			break;
-		}
-		if (esc)
-		{
-			if (jp == response.Length() - 4)
-			{
-				break;
-			}
-			response[jp++] = '\\';
-			response[jp++] = esc;
-		}
-		else
-		{
-			response[jp++] = c;
-		}
-	}
-	response[jp] = 0;
-	response.cat("\"}");
-}
-
 void Webserver::HttpInterpreter::ResetState()
 {
 	clientPointer = 0;
@@ -1238,33 +1033,6 @@ void Webserver::HttpInterpreter::ResetState()
 	numQualKeys = 0;
 	numHeaderKeys = 0;
 	commandWords[0] = clientMessage;
-}
-
-bool Webserver::HttpInterpreter::FlushUploadData()
-{
-	if (uploadState == uploadOK && uploadLength != 0)
-	{
-		// FIXME: This method will fail whenever more than 256 bytes are written at once
-		unsigned int len = min<unsigned int>(uploadLength, 256);
-		if (!fileBeingUploaded.Write(uploadPointer, len))
-		{
-			platform->Message(HOST_MESSAGE, "Could not flush upload data!\n");
-			uploadState = uploadError;
-		}
-
-		uploadPointer += len;
-		uploadLength -= len;
-
-		return (uploadLength == 0);
-	}
-
-	return true;
-}
-
-void Webserver::HttpInterpreter::ReceivedGcodeReply()
-{
-	// We need to increase seq whenever a new G-Code reply is available.
-	seq++;
 }
 
 // Process a character from the client
@@ -2426,7 +2194,7 @@ void Webserver::TelnetInterpreter::ProcessLine()
 	}
 }
 
-void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
+void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply, bool haveMore)
 {
 	Network *net = reprap.GetNetwork();
 	if (state >= authenticated && net->AcquireTelnetTransaction())
@@ -2434,7 +2202,7 @@ void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
 		NetworkTransaction *req = net->GetTransaction();
 
 		// Whenever a new line is read, we also need to send a carriage return
-		bool append_line;
+		bool append_line = false;
 		while (reply[0] != 0)
 		{
 			append_line = true;
@@ -2447,8 +2215,8 @@ void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
 			reply++;
 		}
 
-		// Only append a line break if reply didn't contain one
-		if (append_line)
+		// Only append a line break if reply didn't contain one and if we aren't expecting any more data
+		if (append_line && !haveMore)
 		{
 			req->Write("\r\n");
 		}

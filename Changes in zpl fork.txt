@@ -30,13 +30,16 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * When axes are being homed and axis drives are disabled, the according homing states are reset
 
-* M0 does not turn off any drives or heaters if the print is paused. Use my web interface fork (version 1.06+) to restart failed prints easily on demand
+* M0 does not turn off any drives or heaters and it does not deselect the current tool if the print was paused.
+  Use my web interface fork (version 1.08+) to restart failed prints easily on demand
 
 * Ability to specify which drives may be disabled by M18 and M84
 
 * Buffered G-codes are enqueued if moves are being performed to ensure all codes are executed just-in-time
 
 * When prints are paused, movement stops as soon as the current move has finished
+
+* When prints are either being stopped or resumed, macro files (pause.g or resume.g) are executed
 
 * default.g is executed if config.g cannot be found (same behaviour as with versions older than 0.90)
 
@@ -55,7 +58,11 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 * Implemented M500, M501 and M502 (EEPROM tools) and made Flash usage optional when building the firmware.
   Passing 'S1' to M501 will enable auto-save for non-volatile parameters, so backward compatibility with forks based on dc42's firmware can be maintained.
 
+* Implemented M32 (Select fiel and start SD print)
+
 * PIDs return ABS_ZERO as the current temperature if a heater fault occurs
+
+* Move class can perform isolated moves (without the look-ahead ring) when a print has been paused
 
 * Bug fix: Old-fashioned G32 call (without macro utilisation) initially resets bed compensation parameters
 

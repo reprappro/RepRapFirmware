@@ -25,6 +25,8 @@ Licence: GPL
 #define LOOK_AHEAD_RING_LENGTH 30
 #define LOOK_AHEAD 20				// Must be less than LOOK_AHEAD_RING_LENGTH
 
+#define ZERO_EXTRUDER_POSITIONS { 0.0, 0.0, 0.0, 0.0, 0.0 }
+
 enum MovementProfile
 {
   moving = 0,  // Ordinary trapezoidal-velocity-profile movement
@@ -53,6 +55,14 @@ enum PointCoordinateSet
 	zSet = 4
 };
 
+enum MoveStatus
+{
+	running,
+	pausing,
+	paused,
+	cancelled
+};
+
 /**
  * This class implements a look-ahead buffer for moves.  It allows colinear
  * moves not to decelerate between them, sets velocities at ends and beginnings
@@ -69,7 +79,7 @@ protected:
 	LookAhead(Move* m, Platform* p, LookAhead* n);
 	void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
 			float maxSpeed, float acceleration, EndstopChecks ce,
-			float extrDiffs[]);
+			const float extrDiffs[]);
 	LookAhead* Next() const;											// Next one in the ring
 	LookAhead* Previous() const;										// Previous one in the ring
 	const long* MachineCoordinates() const;								// Endpoints of a move in machine coordinates
@@ -156,6 +166,7 @@ private:
     float instantDv;						// The lowest possible velocity
     float feedRate;
     bool eMoveAllowed[DRIVES-AXES];			// Which extruder is allowed to move?
+    bool slowingDown;						// Do we need to decelerate during this move?
     volatile bool active;					// Is the DDA running?
 };
 
@@ -174,13 +185,13 @@ class Move
     void Exit();								// Shut down
 
     bool IsRunning() const;						// Are we running any moves?
-    void Pause();								// Pause any moves in progress
+    bool Pause();								// Pause any moves in progress
     bool IsPaused() const;						// Are all the moves paused?
-    void Resume();								// Resume paused moves
+    bool IsPausing() const;						// Are we still waiting for the last move to finish?
+    bool Resume();								// Resume paused moves
     void Cancel();								// Cancel any pending moves
 
-    bool GetCurrentUserPosition(float m[]); 	// Return the current position in transformed coords if possible.  Send false otherwise
-												// DANGER!!! the above function is mis-named because it has the side-effect of clearing currentFeedrate!!!
+    bool GetCurrentUserPosition(float m[]) const; 	// Return the current position in transformed coords if possible. Returns false otherwise
     void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
     void GetRawExtruderPositions(float e[]) const;	// Get the original extruder positions without the extusion multiplier applied
     void ResetExtruderPositions();				// Resets the extruder positions to zero
@@ -233,8 +244,7 @@ class Move
   private:
 
     void BedTransform(float move[]) const;			    // Take a position and apply the bed compensations
-    bool GetCurrentMachinePosition(float m[]);			// Get the current position in untransformed coords if possible. Return false otherwise
-    													// DANGER!!! the above function is mis-named because it has the side-effect of clearing currentFeedrate!!!
+    bool GetCurrentMachinePosition(float m[]) const;	// Get the current position in untransformed coords if possible. Return false otherwise
     void InverseBedTransform(float move[]) const;	    // Go from a bed-transformed point back to user coordinates
     void AxisTransform(float move[]) const;			    // Take a position and apply the axis-angle compensations
     void InverseAxisTransform(float move[]) const;	    // Go from an axis transformed point back to user coordinates
@@ -243,9 +253,10 @@ class Move
     		float& l2, float& l3) const;
     float TriangleZ(float x, float y) const;			// Interpolate onto a triangular grid
     bool DDARingAdd(LookAhead* lookAhead);				// Add a processed look-ahead entry to the DDA ring
-    DDA* DDARingGet();									// Get the next DDA ring entry to be run
+    DDA* DDARingGet();					// Get the next DDA ring entry to be run
     bool DDARingEmpty() const;
     bool NoLiveMovement() const;
+    void LiveMachineCoordinates(long m[]) const;		// Same as LiveCoordinates, but returns machine coordinates and no feedrate
     bool DDARingFull() const;
     bool GetDDARingLock();								// Lock the ring so only this function may access it
     void ReleaseDDARingLock();							// Release the DDA ring lock
@@ -256,6 +267,13 @@ class Move
             float acceleration, EndstopChecks ce,
             float extrDiffs[]);
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
+    bool SetUpIsolatedMove(long ep[], float requestedFeedRate,	// Set up a single look-ahead entry for only one move
+    		float minSpeed, float maxSpeed, float acceleration,
+			EndstopChecks ce);
+    bool SetUpIsolatedMove(float to[], float feedRate,
+    		bool axesOnly);
+    void SlowDown();									// Couldn't get down to instantDv quickly enough, need more moves
+    void DecelerationComplete();						// DDA has finished and we could decelerate to instantDv
 
     Platform* platform;									// The RepRap machine
     GCodes* gCodes;										// The G Codes processing class
@@ -265,6 +283,8 @@ class Move
     DDA* dda;
     DDA* ddaRingAddPointer;
     DDA* ddaRingGetPointer;
+    DDA* ddaIsolatedMove;
+    bool runIsolatedMove;
     volatile bool ddaRingLocked;
     
     // These implement the look-ahead ring
@@ -272,6 +292,7 @@ class Move
     LookAhead* lookAheadRingAddPointer;
     LookAhead* lookAheadRingGetPointer;
     LookAhead* lastMove;
+    LookAhead* isolatedMove;
     DDA* lookAheadDDA;
     int lookAheadRingCount;
 
@@ -280,6 +301,7 @@ class Move
     bool active;									// Are we live and running?
     float currentFeedrate;							// Err... the current feed rate...
     volatile float liveCoordinates[DRIVES + 1];		// The last endpoint that the machine moved to
+    float pauseCoordinates[DRIVES + 1];				// The endpoint we were at when the machine was paused
     volatile float rawExtruderPos[DRIVES - AXES];	// The raw and unmodified extruder positions
     float rawEDistances[DRIVES - AXES];				// The raw and untransformed E distances of the next move
     float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
@@ -306,7 +328,9 @@ class Move
     float speedFactor;								// Speed factor, changed feedrates are multiplied by this
     bool canExtrude[DRIVES-AXES];					// Can we perform extruding moves with this drive?
     bool canRetract[DRIVES-AXES];					// Can we perform retraction moves with this drive?
-    enum Status { running, paused, cancelled } state;
+
+    volatile bool slowingDown;
+    volatile MoveStatus state;
 };
 
 //********************************************************************************************************
@@ -320,7 +344,6 @@ inline LookAhead* LookAhead::Previous() const
 {
   return previous;
 }
-
 
 inline float LookAhead::MachineToEndPoint(int8_t drive) const
 {
@@ -365,7 +388,6 @@ inline float LookAhead::V() const
 inline void LookAhead::SetFeedRate(float f)
 {
 	requestedFeedrate = f;
-	v = f;
 }
 
 inline int8_t LookAhead::Processed() const
@@ -427,12 +449,42 @@ inline bool Move::IsRunning() const
 	return state == running;
 }
 
-inline void Move::Pause()
+// Note: This method should be called twice:
+// - Call it once to stop the current movement
+// - Call it again when there is no more live movement
+// Returns true on success and false if it needs to be called again
+
+inline bool Move::Pause()
 {
-	if (state != cancelled)
+	if (state == running)
+	{
+		// This will make the current move slow down to an appropriate end speed
+		state = pausing;
+	}
+	else if (state == pausing)
 	{
 		state = paused;
+
+		if (!GetDDARingLock())
+		{
+			return false;
+		}
+
+		for(uint8_t drive=0; drive<=DRIVES; drive++)
+		{
+			pauseCoordinates[drive] = liveCoordinates[drive];
+		}
+
+		if (ddaRingGetPointer != NULL)
+		{
+			// Our current move has almost stopped (velocity is instantDv), so make sure the next one accelerates nicely
+			float u = ddaRingGetPointer->instantDv, v = ddaRingGetPointer->feedRate;
+			ddaRingGetPointer->AccelerationCalculation(u, v, moving);
+		}
+		ReleaseDDARingLock();
 	}
+
+	return (state != cancelled);
 }
 
 inline bool Move::IsPaused() const
@@ -440,17 +492,73 @@ inline bool Move::IsPaused() const
 	return state == paused;
 }
 
-inline void Move::Resume()
+inline bool Move::IsPausing() const
+{
+	return state == pausing;
+}
+
+// Returns true when the class is ready to read moves again
+
+inline bool Move::Resume()
 {
 	if (state == paused)
 	{
-		state = running;
+		// Wait for isolated move to complete (if any)
+
+		if (!NoLiveMovement())
+		{
+			return false;
+		}
+
+		// Check if we're at the right XYZ coordinates to resume queued moves
+
+		bool needMove = false;
+		for(uint8_t axis=0; axis<AXES; axis++)
+		{
+			if (liveCoordinates[axis] != pauseCoordinates[axis])
+			{
+				needMove = true;
+				break;
+			}
+		}
+
+		// Yes - We're basically good to go again
+
+		if (!needMove)
+		{
+			for(uint8_t drive=0; drive<=DRIVES; drive++)
+			{
+				liveCoordinates[drive] = pauseCoordinates[drive];
+			}
+			currentFeedrate = lastMove->FeedRate();
+			state = running;
+			return true;
+		}
+
+		// No - Go back to the right coordinates first
+
+		// TODO: implement cosine calculation someday
+		float feedRate = (currentFeedrate > 0.0) ? currentFeedrate : liveCoordinates[DRIVES];
+		SetUpIsolatedMove(pauseCoordinates, feedRate, true);
+		return false;
 	}
+
+	return (state != cancelled);
 }
 
 inline void Move::Cancel()
 {
 	state = cancelled;
+}
+
+inline void Move::SlowDown()
+{
+	slowingDown = true;
+}
+
+inline void Move::DecelerationComplete()
+{
+	slowingDown = false;
 }
 
 inline bool Move::DDARingEmpty() const
@@ -460,8 +568,15 @@ inline bool Move::DDARingEmpty() const
 
 inline bool Move::NoLiveMovement() const
 {
-  // If a queued command is being executed, gCodes->CanMove() will return false
-  return (dda == NULL && (DDARingEmpty() || !gCodes->CanMove()));
+	return (dda == NULL) && (!slowingDown || state != pausing) && (state != running || DDARingEmpty());
+}
+
+inline void Move::LiveMachineCoordinates(long m[]) const
+{
+	for(uint8_t drive=0; drive<DRIVES; drive++)
+	{
+		m[drive] = LookAhead::EndPointToMachine(drive, liveCoordinates[drive]);
+	}
 }
 
 // Leave a gap of 2 as the last Get result may still be being processed
@@ -547,7 +662,7 @@ inline void Move::ResetExtruderPositions()
 inline bool Move::AllMovesAreFinished()
 {
   addNoMoreMoves = true;
-  return (LookAheadRingEmpty() || state == paused) && NoLiveMovement();
+  return (state == pausing || state == paused || LookAheadRingEmpty()) && NoLiveMovement();
 }
 
 inline void Move::AddMoreMoves()

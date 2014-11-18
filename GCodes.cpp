@@ -37,6 +37,7 @@ GCodes::GCodes(Platform* p, Webserver* w)
 	webGCode = new GCodeBuffer(platform, "web: ");
 	fileGCode = new GCodeBuffer(platform, "file: ");
 	serialGCode = new GCodeBuffer(platform, "serial: ");
+	auxGCode = new GCodeBuffer(platform, "aux: ");
 	fileMacroGCode = new GCodeBuffer(platform, "macro: ");
 	queuedGCode = new GCodeBuffer(platform, "queued: ");
 }
@@ -92,6 +93,7 @@ void GCodes::Reset()
 	webGCode->Init();
 	fileGCode->Init();
 	serialGCode->Init();
+	auxGCode->Init();
 	fileMacroGCode->Init();
 	queuedGCode->Init();
 	moveAvailable = false;
@@ -101,7 +103,7 @@ void GCodes::Reset()
 	fileToPrint.Close();
 	fileBeingWritten = NULL;
 	endStopsToCheck = 0;
-	doingFileMacro = false;
+	doingFileMacro = doResumeMacro = false;
 	fractionOfFilePrinted = -1.0;
 	dwellWaiting = false;
 	stackPointer = 0;
@@ -172,7 +174,7 @@ void GCodes::Spin()
 		return;
 	}
 
-	// Now the serial interface.
+	// Now the serial interfaces.
 
 	if (platform->GetLine()->Status() & byteAvailable)
 	{
@@ -214,6 +216,24 @@ void GCodes::Spin()
 			platform->ClassReport("GCodes", longWait);
 			return;
 		}
+	}
+
+	if (platform->GetAux()->Status() & byteAvailable)
+	{
+		int8_t i = 0;
+		do
+		{
+			char b;
+			platform->GetAux()->Read(b);
+			if (auxGCode->Put(b))	// add char to buffer and test whether the gcode is complete
+			{
+				auxGCode->SetFinished(ActOnCode(auxGCode, reprap.GetMove()->IsPaused()));
+				break;	// stop after receiving a complete gcode in case we haven't finished processing it
+			}
+			++i;
+		} while (i < 16 && (platform->GetAux()->Status() & byteAvailable));
+		platform->ClassReport("GCodes", longWait);
+		return;
 	}
 
 	// Then check if there are any queued codes left to be executed in-time
@@ -274,6 +294,14 @@ void GCodes::Spin()
 		return;
 	}
 
+	if (auxGCode->Active())
+	{
+		// Same goes for our auxiliary interface
+		auxGCode->SetFinished(ActOnCode(auxGCode, reprap.GetMove()->IsPaused()));
+		platform->ClassReport("GCodes", longWait);
+		return;
+	}
+
 	if (queuedGCode->Active())
 	{
 		queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
@@ -300,7 +328,8 @@ void GCodes::Spin()
 void GCodes::Diagnostics()
 {
 	platform->AppendMessage(BOTH_MESSAGE, "GCodes Diagnostics:\n");
-	platform->AppendMessage(BOTH_MESSAGE, "Internal code queue is %s\n", internalCodeQueue == NULL ? "empty." :"not empty:");
+	platform->AppendMessage(BOTH_MESSAGE, "Move available? %s\n", moveAvailable ? "yes" : "no");
+	platform->AppendMessage(BOTH_MESSAGE, "Internal code queue is %s\n", (internalCodeQueue == NULL) ? "empty." :"not empty:");
 	if (internalCodeQueue != NULL)
 	{
 		platform->AppendMessage(BOTH_MESSAGE, "Total moves: %d, moves completed: %d\n", totalMoves, movesCompleted);
@@ -321,8 +350,8 @@ void GCodes::Diagnostics()
 
 bool GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
 {
-	// Last one gone? Don't care if Move is paused; ActOnCode will sort out unwanted codes anyway
-	if(moveAvailable && !reprap.GetMove()->IsPaused())
+	// Last one gone?
+	if(moveAvailable)
 		return false;
 
 	// Wait for all the queued moves to stop so we get the actual last position and feedrate
@@ -542,7 +571,7 @@ int GCodes::SetUpMove(GCodeBuffer *gb)
 
 	// Load the move buffer with either the absolute movement required or the relative movement required
 	moveAvailable = LoadMoveBufferFromGCode(gb, false, (endStopsToCheck == 0) && limitAxes);
-	return (endStopsToCheck != 0) ? 2 : 1;
+	return (endStopsToCheck != 0 || reprap.GetMove()->IsPaused()) ? 2 : 1;
 }
 
 // The Move class calls this function to find what to do next.
@@ -575,7 +604,10 @@ bool GCodes::DoFileMacro(const char* fileName)
 			return false;
 		}
 
-		fractionOfFilePrinted = fileBeingPrinted.FractionRead();
+		if (reprap.GetMove()->IsRunning())
+		{
+			fractionOfFilePrinted = fileBeingPrinted.FractionRead();
+		}
 
 		FileStore *f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
 		if (f == NULL)
@@ -612,7 +644,11 @@ bool GCodes::DoFileMacro(const char* fileName)
 			return false;
 		}
 
-		fractionOfFilePrinted = -1.0;
+		if (reprap.GetMove()->IsRunning())
+		{
+			fractionOfFilePrinted = -1.0;
+		}
+
 		doingFileMacro = false;
 		fileMacroGCode->Init();
 		return true;
@@ -1585,6 +1621,18 @@ void GCodes::SetMACAddress(GCodeBuffer *gb)
 
 void GCodes::HandleReply(bool error, const GCodeBuffer *gb, const char* reply, char gMOrT, int code, bool resend)
 {
+	// Second UART device, may be used for auxiliary purposes
+	if (gb == auxGCode)
+	{
+		// Command was received from the aux interface (LCD display), so send the response only to the aux interface.
+		if (reply[0] != 0)
+		{
+			platform->GetAux()->Write(reply);
+			//platform->GetAux()->Write('\n');	// zpl fork of the firmware always gives replies with '\n' at the end
+		}
+		return;
+	}
+
 	// Deal with sending a reply to the web interface.
 	// The browser only fetches replies once a second or so. Therefore, when we send a web command in the middle of an SD card print,
 	// in order to be sure that we see the reply in the web interface, we must not send empty responses to the web interface unless
@@ -1596,14 +1644,9 @@ void GCodes::HandleReply(bool error, const GCodeBuffer *gb, const char* reply, c
 		platform->Message((error) ? WEB_ERROR_MESSAGE : WEB_MESSAGE, reply);
 	}
 
-	Compatibility c =  (gb == serialGCode) ? platform->Emulating() : me;
-	const char* response = "ok";
-	if (resend)
-	{
-		response = "rs ";
-	}
-
-	const char* s = 0;
+	const Compatibility c = (gb == serialGCode) ? platform->Emulating() : me;
+	const char* response = (resend) ? "rs " : "ok";
+	const char* emulationType = 0;
 
 	switch (c)
 	{
@@ -1652,21 +1695,21 @@ void GCodes::HandleReply(bool error, const GCodeBuffer *gb, const char* reply, c
 		return;
 
 	case teacup:
-		s = "teacup";
+		emulationType = "teacup";
 		break;
 	case sprinter:
-		s = "sprinter";
+		emulationType = "sprinter";
 		break;
 	case repetier:
-		s = "repetier";
+		emulationType = "repetier";
 		break;
 	default:
-		s = "unknown";
+		emulationType = "unknown";
 	}
 
-	if (s != 0)
+	if (emulationType != 0)
 	{
-		platform->Message(HOST_MESSAGE, "Emulation of %s is not yet supported.\n", s);	// don't send this one to the web as well, it concerns only the USB interface
+		platform->Message(HOST_MESSAGE, "Emulation of %s is not yet supported.\n", emulationType);	// don't send this one to the web as well, it concerns only the USB interface
 	}
 }
 
@@ -1838,9 +1881,12 @@ bool GCodes::CanQueueCode(GCodeBuffer *gb) const
 		runNow |= ((code == 0 || code == 1) &&			// Stop, Sleep
 					!reprap.GetMove()->IsPaused());		// (Cancel paused print)
 		runNow |= (code == 18 || code == 84);			// Disable drives
-		runNow |= (code == 25 && gb == serialGCode);	// Pause print (for serial interface only)
+		runNow |= (code == 25) &&						// Pause print
+				(gb == serialGCode || gb == auxGCode);	// (for serial interfaces only)
 		runNow |= (code >= 80 && code <= 83);			// ATX control, relative or absolute E moves
 		runNow |= (code == 98 || code == 99);			// Call macro, Return from macro
+		runNow |= (code == 109 || code == 190);			// Set temperatures and wait for them
+		runNow |= (code == 116);						// Wait for all temperatures
 		runNow |= (code >= 120 && code <= 121);			// Stack operations (Push, Pop)
 	}
 	// Check for T-Codes
@@ -1864,19 +1910,11 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		return true;
 	}
 
-	// Execute queued codes only if they don't mess around with current look-ahead entries
+	// Execute queued codes only if they aren't issued by the web interface during a running print
 	bool canQueue = CanQueueCode(gb);
-	if (!canQueue && totalMoves != movesCompleted)
+	if (!canQueue && totalMoves != movesCompleted && gb == webGCode)
 	{
-		// Execute them only if the machine is NOT paused
-		if (reprap.GetMove()->IsPaused())
-		{
-			platform->Message(BOTH_ERROR_MESSAGE, "Cannot execute '%s' while a print is paused.\n", gb->Buffer());
-			return true;
-		}
-
-		// And if they aren't issued by the web interface during a running print
-		if (gb == webGCode && FractionOfFilePrinted() >= 0.0 && !doingFileMacro)
+		if (FractionOfFilePrinted() >= 0.0 && !doingFileMacro)
 		{
 			platform->Message(WEB_ERROR_MESSAGE, "Cannot execute '%s' while a print is in progress.\n", gb->Buffer());
 			return true;
@@ -1955,6 +1993,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		{
 			// We have already set up this move, but it does endstop checks, so wait for it to complete.
 			// Otherwise, if the next move uses relative coordinates, it will be incorrectly calculated.
+			// Or we're just performing an isolated move while the Move class is paused.
 			result = AllMovesAreFinishedAndMoveBufferIsLoaded();
 			if (result)
 			{
@@ -2078,12 +2117,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				DisableDrives();
 				reprap.GetHeat()->SwitchOffAll();
-			}
 
-			Tool* tool = reprap.GetCurrentTool();
-			if(tool != NULL)
-			{
-				reprap.StandbyTool(tool->Number());
+				Tool* tool = reprap.GetCurrentTool();
+				if(tool != NULL)
+				{
+					reprap.StandbyTool(tool->Number());
+				}
 			}
 
 			CancelPrint();
@@ -2181,12 +2220,18 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 23: // Set file to print
+	case 32: // Select file and start SD print
 		QueueFileToPrint(gb->GetUnprecedentedString());
 		if (fileToPrint.IsLive() && platform->Emulating() == marlin)
 		{
 			reply.copy("File opened\nFile selected\n");
 		}
-		break;
+
+		if (code == 23)
+		{
+			break;
+		}
+		// no break otherwise
 
 	case 24: // Print/resume-printing the selected file
 		if (!fileToPrint.IsLive() && internalCodeQueue == NULL)
@@ -2195,29 +2240,61 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			error = true;
 			break;
 		}
-		reprap.GetMove()->Resume();
-		fileBeingPrinted.MoveFrom(fileToPrint);
-		fileGCode->Resume();
-		queuedGCode->Resume();
+
+		if (doResumeMacro)
+		{
+			if (!DoFileMacro("resume.g"))
+			{
+				result = false;
+				break;
+			}
+			doResumeMacro = false;
+		}
+
+		result = reprap.GetMove()->Resume();
+		if (result)
+		{
+			fileBeingPrinted.MoveFrom(fileToPrint);
+			fractionOfFilePrinted = -1.0;
+			fileGCode->Resume();
+			queuedGCode->Resume();
+		}
 		break;
 
 	case 25: // Pause the print
-		if (FractionOfFilePrinted() < 0.0)
+		if (!reprap.GetMove()->IsPausing())
 		{
-			reply.copy("Cannot pause print, because no file is being printed!\n");
-			error = true;
-		}
-		else
-		{
-			if (!reprap.GetMove()->IsPaused())
+			if (reprap.GetMove()->IsPaused())
 			{
-				reprap.GetMove()->Pause();
+				result = DoFileMacro(PAUSE_G);
+			}
+			else if (FractionOfFilePrinted() < 0.0)
+			{
+				reply.copy("Cannot pause print, because no file is being printed!\n");
+				error = true;
+			}
+			else
+			{
+				reprap.GetMove()->Pause();				// first call to make the movement stop
+				fractionOfFilePrinted = fileBeingPrinted.FractionRead();
 				fileToPrint.MoveFrom(fileBeingPrinted);
 				fileGCode->Pause();
 				queuedGCode->Pause();
+				result = false;
 			}
-
+		}
+		else
+		{
 			result = AllMovesAreFinishedAndMoveBufferIsLoaded();
+			if (result && reprap.GetMove()->Pause())	// second call to set the state to paused
+			{
+				doResumeMacro = true;
+				result = DoFileMacro(PAUSE_G);
+			}
+			else
+			{
+				result = false;
+			}
 		}
 		break;
 
@@ -2255,6 +2332,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 30:	// Delete file
 		DeleteFile(gb->GetUnprecedentedString());
 		break;
+
+	// For case 32, see case 24
 
 	case 80:	// ATX power on
 	case 81:	// ATX power off
@@ -2372,17 +2451,24 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 105: // Deprecated...
-		reply.copy("T:");
-		for(int8_t heater = 1; heater < HEATERS; heater++)
+	case 105: // Get Extruder Temperature / Get Status Message
+		if (gb->Seen('S') && gb->GetIValue() == 2)
 		{
-			Heat::HeaterStatus hs = reprap.GetHeat()->GetStatus(heater);
-			if(hs != Heat::HS_off && hs != Heat::HS_fault)
-			{
-				reply.catf("%.1f ", reprap.GetHeat()->GetTemperature(heater));
-			}
+			reprap.GetStatusResponse(reply, 2);				// send JSON-formatted status response
 		}
-		reply.catf("B: %.1f\n", reprap.GetHeat()->GetTemperature(HOT_BED));
+		else
+		{
+			reply.copy("T:");
+			for(int8_t heater = 1; heater < HEATERS; heater++)
+			{
+				Heat::HeaterStatus hs = reprap.GetHeat()->GetStatus(heater);
+				if(hs != Heat::HS_off && hs != Heat::HS_fault)
+				{
+					reply.catf("%.1f ", reprap.GetHeat()->GetTemperature(heater));
+				}
+			}
+			reply.catf("B: %.1f\n", reprap.GetHeat()->GetTemperature(HOT_BED));
+		}
 		break;
    
 	case 106: // Set/report fan values
@@ -2426,6 +2512,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 109: // Deprecated
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
 		if(gb->Seen('S'))
 		{
 			float temperature = gb->GetFValue();
@@ -2492,6 +2581,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 116: // Wait for everything, especially set temperatures
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
 		if (gb->Seen('P'))
 		{
 			// Wait for the heaters associated with the specified tool to be ready
@@ -2614,6 +2706,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 //		break;
 
 	case 190: // Deprecated...
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
+
 		if(gb->Seen('S'))
 		{
 			if(HOT_BED >= 0)
@@ -3463,8 +3558,10 @@ void GCodes::CancelPrint()
 		item->SetNext(releasedQueueItems);
 		releasedQueueItems = item;
 	}
+
 	totalMoves = movesCompleted = 0;
-	moveAvailable = false;
+	moveAvailable = doResumeMacro = false;
+	fractionOfFilePrinted = -1.0;
 
 	fileGCode->CancelPause();	// if we paused it and then asked to print a new file, cancel any pending command
 	queuedGCode->CancelPause();
@@ -3495,26 +3592,6 @@ bool GCodes::ToolHeatersAtSetTemperatures(const Tool *tool) const
 void GCodes::MoveQueued()
 {
 	totalMoves++;
-}
-
-// Check if a new DDA can be processed (may be called by ISR)
-bool GCodes::CanMove() const
-{
-	// Do we have any queued codes left?
-
-	if (internalCodeQueue == NULL)
-	{
-		return true; // No, go on
-	}
-
-	// Are we still waiting for a queued code to complete?
-
-	if (queuedGCode->Active())
-	{
-		return false; // Yes, so don't move until it has finished
-	}
-
-	return (internalCodeQueue->ExecuteAtMove() > movesCompleted);
 }
 
 // Called by the DDA class to indicate that a move has been completed (called by ISR)

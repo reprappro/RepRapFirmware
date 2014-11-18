@@ -1,0 +1,9 @@
+These patches contain a few modified Arduino source code files to achieve the following with the Duet firmware:
+
+- Utilisation of the internal watchdog (saftey-critical for machines with heaters)
+- Increased RX buffers for low-level networking
+- Implementation of Stream::canWrite to send data via UART or USB only if the buffers can accept data
+
+You need to use Arduino 1.5.8 to use these patches. They may work with older releases, but this has not been tested.
+
+If you want to merge these patches into another Arduino toolkit, search the files for "dc42" to see which lines changed.

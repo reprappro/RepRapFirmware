@@ -374,7 +374,7 @@ void init( void )
   }
 
   // Disable watchdog
-  //***** Commented out by DC
+  //***** Commented out by DC42 so we can use the watchdog in the Duet firmware
   //WDT_Disable(WDT);
 
   // Initialize C library

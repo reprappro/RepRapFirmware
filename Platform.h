@@ -256,9 +256,10 @@ namespace SoftwareResetReason
 	enum
 	{
 		user = 0,					// M999 command
+		inAuxOutput = 0x0800,		// this bit is or'ed in if we were in aux output at the time
 		stuckInSpin = 0x1000,		// we got stuck in a Spin() function for too long
-		inLwipSpin = 0x2000,		// we got stuck in a call to lwip for too long
-		inUsbOutput = 0x4000		// this bit is or'ed in if we were in USB otuput at the time
+		inLwipSpin = 0x2000,		// we got stuck in a call to LWIP for too long
+		inUsbOutput = 0x4000		// this bit is or'ed in if we were in USB output at the time
 	};
 }
 
@@ -269,7 +270,6 @@ namespace DiagnosticTest
 	{
 		TestWatchdog = 1001,			// test that we get a watchdog reset if the tick interrupt stops
 		TestSpinLockup = 1002			// test that we get a software reset if a Spin() function takes too long
-
 	};
 }
 
@@ -289,7 +289,7 @@ friend class RepRap;
 
 protected:
 
-	Line();
+	Line(Stream& p_iface);
 	void Init();
 	void Spin();
 	void InjectString(char* string);
@@ -307,9 +307,10 @@ private:
 	uint16_t outputGetIndex;
 	uint16_t outputNumChars;
 
-	uint8_t inUsbWrite;
+	uint8_t inWrite;
 	bool ignoringOutputLine;
 	unsigned int outputColumn;
+	Stream& iface;
 };
 
 class FileInfo
@@ -569,6 +570,7 @@ public:
   // Communications and data storage
   
   Line* GetLine() const;
+  Line* GetAux() const;
   void SetIPAddress(byte ip[]);
   const unsigned char* IPAddress() const;
   void SetNetMask(byte nm[]);
@@ -777,6 +779,7 @@ private:
 // Serial/USB
 
   Line* line;
+  Line* aux;
   uint8_t messageIndent;
 
 // Files
@@ -1127,6 +1130,11 @@ inline const unsigned char* Platform::MACAddress() const
 inline Line* Platform::GetLine() const
 {
 	return line;
+}
+
+inline Line* Platform::GetAux() const
+{
+	return aux;
 }
 
 inline void Platform::PushMessageIndent()

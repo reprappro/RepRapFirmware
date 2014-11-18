@@ -34,9 +34,10 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	heaterCount = hCount;
 	heaterFault = false;
 	mixing = false;
-	for(size_t i = 0; i < AXES; ++i)
+
+	for(size_t axis = 0; axis < AXES; axis++)
 	{
-		offset[i] = 0.0;
+		offset[axis] = 0.0;
 	}
 
 	if(driveCount > 0)
@@ -51,6 +52,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 		drives = new int[driveCount];
 		mix = new float[driveCount];
 		float r = 1.0/(float)driveCount;
+
 		for(int8_t drive = 0; drive < driveCount; drive++)
 		{
 			drives[drive] = d[drive];
@@ -70,6 +72,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 		heaters = new int[heaterCount];
 		activeTemperatures = new float[heaterCount];
 		standbyTemperatures = new float[heaterCount];
+
 		for(int8_t heater = 0; heater < heaterCount; heater++)
 		{
 			heaters[heater] = h[heater];

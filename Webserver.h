@@ -30,7 +30,8 @@ Licence: GPL
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
-const unsigned int gcodeBufLength = 512;		// size of our gcode ring buffer, preferably a power of 2
+const unsigned int gcodeBufferLength = 512;			// size of our gcode ring buffer, preferably a power of 2
+const unsigned int gcodeReplyBufferLength = 2048;	// size of our gcode reply buffer
 
 /* HTTP */
 
@@ -87,7 +88,7 @@ class ProtocolInterpreter
 		virtual void ResetState() = 0;
 
 	    virtual bool StoreUploadData(const char* data, unsigned int len);
-	    virtual bool FlushUploadData();
+	    bool FlushUploadData();
 	    void CancelUpload();
 		bool IsUploading() const { return uploadState != notUploading; }
 
@@ -138,6 +139,10 @@ class Webserver
     bool GCodeAvailable();
     char ReadGCode();
 
+    const StringRef& GetGcodeReply() const { return gcodeReply; }
+    unsigned int GetReplySeq();
+    unsigned int GetGcodeBufferSpace() const;
+
     void ConnectionLost(const ConnectionState *cs);
     void ConnectionError();
     void WebDebug(bool wdb);
@@ -164,9 +169,6 @@ class Webserver
 			HttpInterpreter(Platform *p, Webserver *ws);
 			bool CharFromClient(const char c);
 			void ResetState();
-
-			bool FlushUploadData();
-			void ReceivedGcodeReply();
 
 			virtual bool DebugEnabled() /*override*/ const { return webDebug; }
 			void SetDebug(bool b) { webDebug = b; }
@@ -203,7 +205,6 @@ class Webserver
 			void SendJsonResponse(const char* command);
 			bool GetJsonResponse(const char* request, StringRef& response, const char* key, const char* value, size_t valueLength, bool& keepOpen);
 			void GetJsonUploadResponse(StringRef& response);
-			void GetStatusResponse(StringRef& response, uint8_t type);
 			bool ProcessMessage();
 			bool RejectMessage(const char* s, unsigned int code = 500);
 
@@ -287,7 +288,7 @@ class Webserver
 			bool CharFromClient(const char c);
 			void ResetState();
 
-			void HandleGcodeReply(const char* reply);
+			void HandleGcodeReply(const char* reply, bool haveMore = false);
 
 		private:
 
@@ -306,7 +307,6 @@ class Webserver
 	TelnetInterpreter *telnetInterpreter;
 
 	// G-Code processing
-    unsigned int GetGcodeBufferSpace() const;
     void ProcessGcode(const char* gc);
     void LoadGcodeBuffer(const char* gc);
     void StoreGcodeData(const char* data, size_t len);
@@ -319,10 +319,13 @@ class Webserver
     static void CopyParameterText(const char* src, char *dst, size_t length);
 
     // Buffer to hold gcode that is ready for processing
-    char gcodeBuffer[gcodeBufLength];
+    char gcodeBuffer[gcodeBufferLength];
     unsigned int gcodeReadIndex, gcodeWriteIndex;	// head and tail indices into gcodeBuffer
-    char gcodeReplyBuffer[2048];
+    char gcodeReplyBuffer[gcodeReplyBufferLength];
     StringRef gcodeReply;
+
+    unsigned int seq;
+    bool increaseSeq;
 
     // Misc
     char password[SHORT_STRING_LENGTH + 1];

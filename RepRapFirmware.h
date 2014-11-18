@@ -57,7 +57,7 @@ int StringContains(const char* string, const char* match);
 // Macro to give us the highest valid index into an array i.e. one less than the size
 #define ARRAY_UPB(_x)	(ARRAY_SIZE(_x) - 1)
 
-// Class to describe a string buffer, including its length. This saved passing buffer lengths around everywhere.
+// Class to describe a string buffer, including its length. This saves passing buffer lengths around everywhere.
 class StringRef
 {
 	char *p;		// pointer to the storage

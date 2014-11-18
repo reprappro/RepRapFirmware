@@ -141,7 +141,8 @@ Platform::Platform() :
 		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
 		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer)), autoSaveEnabled(false)
 {
-	line = new Line();
+	line = new Line(SerialUSB);
+	aux = new Line(Serial);
 
 	// Files
 
@@ -160,6 +161,9 @@ void Platform::Init()
 	digitalWriteNonDue(atxPowerPin, LOW);		// ensure ATX power is off by default
 	pinModeNonDue(atxPowerPin, OUTPUT);
 
+	SerialUSB.begin(BAUD_RATE);
+	Serial.begin(BAUD_RATE);	// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
+
 #ifdef DUEFLASHSTORAGE_H
 	DueFlashStorage::init();
 	// We really want to use static_assert here, but the ancient version of gcc used by Arduino doesn't support it
@@ -177,6 +181,7 @@ void Platform::Init()
 	ResetNvData();
 
 	line->Init();
+	aux->Init();
 	messageIndent = 0;
 
 	massStorage->Init();
@@ -692,6 +697,7 @@ void Platform::Spin()
 	}
 
 	line->Spin();
+	aux->Spin();
 
 	ClassReport("Platform", longWait);
 }
@@ -700,13 +706,17 @@ void Platform::SoftwareReset(uint16_t reason)
 {
 	if (reason != 0)
 	{
-		if (line->inUsbWrite)
+		if (line->inWrite)
 		{
 			reason |= SoftwareResetReason::inUsbOutput;	// if we are resetting because we are stuck in a Spin function, record whether we are trying to send to USB
 		}
 		if (reprap.GetNetwork()->InLwip())
 		{
 			reason |= SoftwareResetReason::inLwipSpin;
+		}
+		if (aux->inWrite)
+		{
+			reason |= SoftwareResetReason::inAuxOutput;	// if we are resetting because we are stuck in a Spin function, record whether we are trying to send to aux
 		}
 	}
 
@@ -1981,7 +1991,7 @@ uint32_t FileStore::longestWriteTime = 0;
 
 // Serial/USB class
 
-Line::Line()
+Line::Line(Stream& p_iface) : iface(p_iface)
 {
 }
 
@@ -2008,9 +2018,6 @@ void Line::InjectString(char* string)
 
 int Line::Read(char& b)
 {
-//  if(alternateInput != NULL)
-//	return alternateInput->Read(b);
-
 	if (inputNumChars == 0)
 		return 0;
 	b = inBuffer[inputGetIndex];
@@ -2026,8 +2033,7 @@ void Line::Init()
 	outputGetIndex = 0;
 	outputNumChars = 0;
 	ignoringOutputLine = false;
-	SerialUSB.begin(BAUD_RATE);
-	inUsbWrite = false;
+	inWrite = 0;
 	outputColumn = 0;
 }
 
@@ -2036,14 +2042,14 @@ void Line::Spin()
 	// Read the serial data in blocks to avoid excessive flow control
 	if (inputNumChars <= lineInBufsize / 2)
 	{
-		int16_t target = SerialUSB.available() + (int16_t) inputNumChars;
+		int16_t target = iface.available() + (int16_t) inputNumChars;
 		if (target > lineInBufsize)
 		{
 			target = lineInBufsize;
 		}
 		while ((int16_t) inputNumChars < target)
 		{
-			int incomingByte = SerialUSB.read();
+			int incomingByte = iface.read();
 			if (incomingByte < 0)
 				break;
 			inBuffer[(inputGetIndex + inputNumChars) % lineInBufsize] = (char) incomingByte;
@@ -2092,15 +2098,16 @@ void Line::Write(char b, bool block)
 			TryFlushOutput();
 			if (block)
 			{
-				SerialUSB.flush();
+				iface.flush();
 			}
 
-			if (outputNumChars == 0 && SerialUSB.canWrite() != 0)
+			// FIXME: Remember to open an issue for the core patches on Arduino's GitHub site
+			if (outputNumChars == 0 && iface.canWrite() != 0)
 			{
 				// We can write the character directly into the USB output buffer
-				++inUsbWrite;
-				SerialUSB.write(b);
-				--inUsbWrite;
+				++inWrite;
+				iface.write(b);
+				--inWrite;
 				break;
 			}
 			else if (   outputNumChars + 2 < lineOutBufSize							// save 2 spaces in the output buffer
@@ -2134,7 +2141,7 @@ void Line::Write(char b, bool block)
 		TryFlushOutput();
 		if (block)
 		{
-			SerialUSB.flush();
+			iface.flush();
 		}
 	}
 	// else discard the character
@@ -2154,11 +2161,12 @@ void Line::TryFlushOutput()
 	//while (SerialUSB.canWrite() == 0) {}
 	//end debug
 
-	while (outputNumChars != 0 && SerialUSB.canWrite() != 0)
+	// FIXME: Remember to open an issue for the core patches on Arduino's GitHub site
+	while (outputNumChars != 0 && iface.canWrite() != 0)
 	{
-		++inUsbWrite;
-		SerialUSB.write(outBuffer[outputGetIndex]);
-		--inUsbWrite;
+		++inWrite;
+		iface.write(outBuffer[outputGetIndex]);
+		--inWrite;
 		outputGetIndex = (outputGetIndex + 1) % lineOutBufSize;
 		--outputNumChars;
 	}
