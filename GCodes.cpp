@@ -1888,6 +1888,7 @@ bool GCodes::CanQueueCode(GCodeBuffer *gb) const
 		runNow |= (code == 109 || code == 190);			// Set temperatures and wait for them
 		runNow |= (code == 116);						// Wait for all temperatures
 		runNow |= (code >= 120 && code <= 121);			// Stack operations (Push, Pop)
+		runNow |= (code == 400);						// Wait for all moves to finish
 	}
 	// Check for T-Codes
 	else if (gb->Seen('T'))
