@@ -113,8 +113,7 @@ void Move::Init()
   isolatedMove->Release();
   runIsolatedMove = false;
 
-  liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
-  currentFeedrate = 0.0;
+  currentFeedrate = liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
 
   SetIdentityTransform();
   tanXY = 0.0;
@@ -142,8 +141,6 @@ void Move::Init()
 
   for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
   {
-    canExtrude[extruder] = false;
-    canRetract[extruder] = false;
     extrusionFactors[extruder] = 1.0;
   }
   speedFactor = 1.0;
@@ -167,17 +164,6 @@ void Move::Spin()
 	// Do some look-ahead work, if there's any to do
 
 	DoLookAhead();
-
-	// Check extrusion capabilities of each extruder drive
-	// TODO: move this somewhere else?
-
-	Tool *tool;
-	for(uint8_t drive = AXES; drive < DRIVES; drive++)
-	{
-		tool = reprap.GetToolByDrive(drive);
-		canExtrude[drive - AXES] = (tool == NULL) ? false : tool->ToolCanDrive(true);
-		canRetract[drive - AXES] = (tool == NULL) ? false : tool->ToolCanDrive(false);
-	}
 
 	// If there's space in the DDA ring, and there are completed moves in the look-ahead ring, transfer them.
 
@@ -217,11 +203,8 @@ void Move::Spin()
 	EndstopChecks endStopsToCheck;
 	if (gCodes->ReadMove(nextMove, endStopsToCheck) && state != cancelled)
 	{
-		// zpl-2014-10-21: Apply all print modification factors here if this is no homing move
-		if (endStopsToCheck == 0)
-		{
-			nextMove[DRIVES] *= speedFactor;
-		}
+		// Apply extrusion factors here
+
 		for(uint8_t drive = AXES; drive < DRIVES; drive++)
 		{
 			rawEDistances[drive - AXES] = nextMove[drive];
@@ -283,10 +266,6 @@ void Move::Spin()
 			return;
 		}
 
-		// Real move - record its feedrate with it, not here.
-
-		currentFeedrate = 0.0;
-
 		// Set the feedrate maximum and minimum, and the acceleration
 
 		float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
@@ -296,22 +275,26 @@ void Move::Spin()
 		if (state == paused)
 		{
 			// Do not pass raw extruder distances here, because they might mess around with print time estimation
-			if (!SetUpIsolatedMove(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck))
+			if (!SetUpIsolatedMove(nextMachineEndPoints, currentFeedrate, minSpeed, maxSpeed, acceleration, endStopsToCheck))
 			{
 				platform->Message(BOTH_ERROR_MESSAGE, "Can't set up isolated move!\n");
 			}
 		}
-		else if (LookAheadRingAdd(nextMachineEndPoints, nextMove[DRIVES], minSpeed, maxSpeed, acceleration, endStopsToCheck, rawEDistances))
-		{
-			if (state != cancelled)
-			{
-				// Tell GCodes class we're about to perform a new move
-				reprap.GetGCodes()->MoveQueued();
-			}
-		}
 		else
 		{
-			platform->Message(BOTH_ERROR_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+			const float feedRate = (endStopsToCheck == 0) ? currentFeedrate * speedFactor : currentFeedrate;
+			if (LookAheadRingAdd(nextMachineEndPoints, feedRate, minSpeed, maxSpeed, acceleration, endStopsToCheck, rawEDistances))
+			{
+				if (state != cancelled)
+				{
+					// Tell GCodes class we're about to perform a new move
+					reprap.GetGCodes()->MoveQueued();
+				}
+			}
+			else
+			{
+				platform->Message(BOTH_ERROR_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+			}
 		}
 	}
 	else if (state == cancelled && LookAheadRingEmpty() && DDARingEmpty())
@@ -321,7 +304,7 @@ void Move::Spin()
 		{
 			lastMove->endPoint[drive] = LookAhead::EndPointToMachine(drive, liveCoordinates[drive]);
 		}
-		lookAheadRingAddPointer->SetProcessed(released);
+		lookAheadRingAddPointer->Release();
 
 		// We've skipped all incoming moves, so reset our state again
 		state = running;
@@ -410,12 +393,14 @@ void Move::SetPositions(float move[])
 	{
 		lastMove->SetDriveCoordinate(move[drive], drive);
 	}
-	lastMove->SetFeedRate(move[DRIVES]);
+	currentFeedrate = move[DRIVES];
+	lastMove->SetFeedRate(currentFeedrate);
 }
 
 void Move::SetFeedrate(float feedRate)
 {
 	lastMove->SetFeedRate(feedRate);
+	currentFeedrate = feedRate;
 }
 
 
@@ -493,7 +478,7 @@ bool Move::GetCurrentMachinePosition(float m[]) const
 		{
 			m[drive] = lastMove->MachineToEndPoint(drive);
 		}
-		m[DRIVES] = (currentFeedrate != 0.0) ? currentFeedrate : lastMove->FeedRate();
+		m[DRIVES] = currentFeedrate;
 		return true;
 	}
 	// If there is no real movement, return liveCoordinates instead
@@ -1141,7 +1126,7 @@ In the case of only extruders moving, the distance moved is taken to be the Pyth
 the configuration space of the extruders.
 
 TODO: Worry about having more than eight drives
-TODO: Expand this code for live calculations where we can't change u
+TODO: Expand this code for live calculations where we can't change u or v
 
 */
 
@@ -1311,7 +1296,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   
   velocity = u;
   
-// Sanity check
+  // Sanity check
   
   if(velocity <= 0.0)
   {
@@ -1346,21 +1331,11 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 
 void DDA::Start()
 {
+	reprap.GetExtruderCapabilities(eMoveAllowed, directions);
+
 	for(uint8_t drive = 0; drive < DRIVES; drive++)
 	{
 		platform->SetDirection(drive, directions[drive]);
-	}
-
-	// zpl-2014-10-03: Because my fork enqueues certain G-Codes, we may have to block E moves here and NOT in the GCodes class
-	for(uint8_t drive = AXES; drive < DRIVES; drive++)
-	{
-		if (delta[drive] > 0)
-		{
-			// Don't interact with "foreign" classes in this ISR; use cached values instead
-			eMoveAllowed[drive - AXES] = (directions[drive] == FORWARDS) ?
-					move->canExtrude[drive - AXES] :
-					move->canRetract[drive - AXES];
-		}
 	}
 
 	platform->SetInterrupt(timeStep); // seconds

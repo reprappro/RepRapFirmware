@@ -615,8 +615,7 @@ bool ProtocolInterpreter::FlushUploadData()
 {
 	if (uploadState == uploadOK && uploadLength != 0)
 	{
-		// Write some uploaded data to file, if possible half a sector sector (256 bytes) at a time
-		// Limiting the amount of data we write improves throughput, probably by allowing lwip time to send ACKs etc.
+		// Write some uploaded data to file, if possible half a sector (256 bytes) at a time
 		unsigned int len = min<unsigned int>(uploadLength, 256);
 		if (!fileBeingUploaded.Write(uploadPointer, len))
 		{

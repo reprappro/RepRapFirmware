@@ -1713,7 +1713,7 @@ void GCodes::HandleReply(bool error, const GCodeBuffer *gb, const char* reply, c
 	}
 }
 
-// Set PID parameters (M301 or M303 command). 'heater' is the default heater number to use.
+// Set PID parameters (M301 or M304 command). 'heater' is the default heater number to use.
 void GCodes::SetPidParameters(GCodeBuffer *gb, int heater, StringRef& reply)
 {
 	if (gb->Seen('H'))
@@ -2295,6 +2295,44 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			{
 				result = false;
 			}
+		}
+		break;
+
+	case 26: // Set SD position
+		if (gb->Seen('S'))
+		{
+			long value = gb->GetLValue();
+			if (value < 0)
+			{
+				reply.copy("SD positions can't be negative!\n");
+				error = true;
+			}
+			else if (fileBeingPrinted.IsLive())
+			{
+				if (!fileBeingPrinted.Seek(value))
+				{
+					reply.copy("The specified SD position is invalid!\n");
+					error = true;
+				}
+			}
+			else if (fileToPrint.IsLive())
+			{
+				if (!fileToPrint.Seek(value))
+				{
+					reply.copy("The specified SD position is invalid!\n");
+					error = true;
+				}
+			}
+			else
+			{
+				reply.copy("Cannot set SD file position, because no print is in progress!\n");
+				error = true;
+			}
+		}
+		else
+		{
+			reply.copy("You must specify the SD position in bytes using the S parameter.\n");
+			error = true;
 		}
 		break;
 
@@ -2973,6 +3011,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 	case 305: // Set/report specific heater parameters
 		SetHeaterParameters(gb, reply);
+		break;
+
+	case 400: // Wait for current moves to finish
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			return false;
 		break;
 
 	case 500: // Store parameters in EEPROM

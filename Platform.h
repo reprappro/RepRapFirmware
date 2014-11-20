@@ -858,6 +858,11 @@ public:
 		return f->Flush();
 	}
 
+	bool Seek(unsigned long position)
+	{
+		return f->Seek(position);
+	}
+
 	float FractionRead() const
 	{
 		return (f == NULL ? -1.0 : f->FractionRead());

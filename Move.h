@@ -299,7 +299,7 @@ class Move
     float lastTime;									// The last time we were called (secs)
     bool addNoMoreMoves;							// If true, allow no more moves to be added to the look-ahead
     bool active;									// Are we live and running?
-    float currentFeedrate;							// Err... the current feed rate...
+    float currentFeedrate;                          // Err... the current feed rate...
     volatile float liveCoordinates[DRIVES + 1];		// The last endpoint that the machine moved to
     float pauseCoordinates[DRIVES + 1];				// The endpoint we were at when the machine was paused
     volatile float rawExtruderPos[DRIVES - AXES];	// The raw and unmodified extruder positions
@@ -326,8 +326,6 @@ class Move
 
     float extrusionFactors[DRIVES - AXES];			// Extrusion factors (normally 1.0)
     float speedFactor;								// Speed factor, changed feedrates are multiplied by this
-    bool canExtrude[DRIVES-AXES];					// Can we perform extruding moves with this drive?
-    bool canRetract[DRIVES-AXES];					// Can we perform retraction moves with this drive?
 
     volatile bool slowingDown;
     volatile MoveStatus state;
@@ -470,10 +468,11 @@ inline bool Move::Pause()
 			return false;
 		}
 
-		for(uint8_t drive=0; drive<=DRIVES; drive++)
+		for(uint8_t drive=0; drive<DRIVES; drive++)
 		{
 			pauseCoordinates[drive] = liveCoordinates[drive];
 		}
+		pauseCoordinates[DRIVES] = currentFeedrate;
 
 		if (ddaRingGetPointer != NULL)
 		{
@@ -484,7 +483,7 @@ inline bool Move::Pause()
 		ReleaseDDARingLock();
 	}
 
-	return (state != cancelled);
+	return true;
 }
 
 inline bool Move::IsPaused() const
@@ -522,25 +521,22 @@ inline bool Move::Resume()
 			}
 		}
 
-		// Yes - We're basically good to go again
-
-		if (!needMove)
-		{
-			for(uint8_t drive=0; drive<=DRIVES; drive++)
-			{
-				liveCoordinates[drive] = pauseCoordinates[drive];
-			}
-			currentFeedrate = lastMove->FeedRate();
-			state = running;
-			return true;
-		}
-
 		// No - Go back to the right coordinates first
 
-		// TODO: implement cosine calculation someday
-		float feedRate = (currentFeedrate > 0.0) ? currentFeedrate : liveCoordinates[DRIVES];
-		SetUpIsolatedMove(pauseCoordinates, feedRate, true);
-		return false;
+		if (needMove)
+		{
+			SetUpIsolatedMove(pauseCoordinates, currentFeedrate, true);
+			return false;
+		}
+
+		// Yes - We're basically good to go again
+
+		for(uint8_t drive=0; drive<=DRIVES; drive++)
+		{
+			liveCoordinates[drive] = pauseCoordinates[drive];
+		}
+		currentFeedrate = pauseCoordinates[DRIVES];
+		state = running;
 	}
 
 	return (state != cancelled);
