@@ -1314,19 +1314,6 @@ bool NetworkTransaction::Send()
 	// We also intend to send a file, so check if we can fill up the TCP window
 	if (sendBuffer == NULL)
 	{
-		/*char c;
-		while (bytesBeingSent != TCP_WND)
-		{
-			if (!fileBeingSent->Read(c))
-			{
-				fileBeingSent->Close();
-				fileBeingSent = NULL;
-				break;
-			}
-			sendingWindow[bytesBeingSent] = c;
-			bytesBeingSent++;
-		}*/
-
 		int bytesRead;
 		size_t bytesToRead;
 		while (bytesLeftToSend && fileBeingSent != NULL)

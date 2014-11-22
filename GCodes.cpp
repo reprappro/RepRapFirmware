@@ -176,6 +176,24 @@ void GCodes::Spin()
 
 	// Now the serial interfaces.
 
+	if (platform->GetAux()->Status() & byteAvailable)
+	{
+		int8_t i = 0;
+		do
+		{
+			char b;
+			platform->GetAux()->Read(b);
+			if (auxGCode->Put(b))	// add char to buffer and test whether the gcode is complete
+			{
+				auxGCode->SetFinished(ActOnCode(auxGCode, true));
+				break;	// stop after receiving a complete gcode in case we haven't finished processing it
+			}
+			++i;
+		} while (i < 16 && (platform->GetAux()->Status() & byteAvailable));
+		platform->ClassReport("GCodes", longWait);
+		return;
+	}
+
 	if (platform->GetLine()->Status() & byteAvailable)
 	{
 		// First check the special case of uploading the reprap.htm file
@@ -216,24 +234,6 @@ void GCodes::Spin()
 			platform->ClassReport("GCodes", longWait);
 			return;
 		}
-	}
-
-	if (platform->GetAux()->Status() & byteAvailable)
-	{
-		int8_t i = 0;
-		do
-		{
-			char b;
-			platform->GetAux()->Read(b);
-			if (auxGCode->Put(b))	// add char to buffer and test whether the gcode is complete
-			{
-				auxGCode->SetFinished(ActOnCode(auxGCode, reprap.GetMove()->IsPaused()));
-				break;	// stop after receiving a complete gcode in case we haven't finished processing it
-			}
-			++i;
-		} while (i < 16 && (platform->GetAux()->Status() & byteAvailable));
-		platform->ClassReport("GCodes", longWait);
-		return;
 	}
 
 	// Then check if there are any queued codes left to be executed in-time
@@ -286,18 +286,18 @@ void GCodes::Spin()
 		return;
 	}
 
-	if (serialGCode->Active())
+	if (auxGCode->Active())
 	{
-		// We want codes from the serial interface to be queued unless the print has been paused
-		serialGCode->SetFinished(ActOnCode(serialGCode, reprap.GetMove()->IsPaused()));
+		// Don't use code-queuing for codes received from AUX, because their responses are handled differently
+		auxGCode->SetFinished(ActOnCode(auxGCode, true));
 		platform->ClassReport("GCodes", longWait);
 		return;
 	}
 
-	if (auxGCode->Active())
+	if (serialGCode->Active())
 	{
-		// Same goes for our auxiliary interface
-		auxGCode->SetFinished(ActOnCode(auxGCode, reprap.GetMove()->IsPaused()));
+		// We want codes from the serial interface to be queued unless the print has been paused
+		serialGCode->SetFinished(ActOnCode(serialGCode, reprap.GetMove()->IsPaused()));
 		platform->ClassReport("GCodes", longWait);
 		return;
 	}
@@ -857,7 +857,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 		if (platform->MustHomeXYBeforeZ() && (!axisIsHomed[X_AXIS] || !axisIsHomed[Y_AXIS]))
 		{
 			// We can only home Z if X and Y have already been homed
-			reply.copy("Must home X and Y before homing Z");
+			reply.copy("Must home X and Y before homing Z\n");
 			error = true;
 			homing = false;
 			homeZ = false;
@@ -1879,10 +1879,10 @@ bool GCodes::CanQueueCode(GCodeBuffer *gb) const
 	{
 		const int code = gb->GetIValue();
 		runNow |= ((code == 0 || code == 1) &&			// Stop, Sleep
-					!reprap.GetMove()->IsPaused());		// (Cancel paused print)
+				!reprap.GetMove()->IsPaused());			// (Cancel paused print)
 		runNow |= (code == 18 || code == 84);			// Disable drives
-		runNow |= (code == 25) &&						// Pause print
-				(gb == serialGCode || gb == auxGCode);	// (for serial interfaces only)
+		runNow |= (code == 25 || code == 105) &&		// Pause print / Get status response
+				(gb == serialGCode);					// (for serial interface only)
 		runNow |= (code >= 80 && code <= 83);			// ATX control, relative or absolute E moves
 		runNow |= (code == 98 || code == 99);			// Call macro, Return from macro
 		runNow |= (code == 109 || code == 190);			// Set temperatures and wait for them
@@ -2019,7 +2019,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		result = DoDwell(gb);
 		break;
 
-	case 10: // Set/report offsets
+	case 10: // Set/report offsets and temperatures
 		SetOrReportOffsets(reply, gb);
 		break;
 
@@ -2113,10 +2113,23 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			return false;
 
 		{
+			// zpl 2014-11-21: M0 does not disable any drives, M1 still does (no, I won't change it again)
+			if (code == 1)
+			{
+				DisableDrives();
+			}
+			else if (reprap.GetMove()->IsPaused())
+			{
+				result = DoFileMacro(RESET_G);
+				if (!result)
+				{
+					break;
+				}
+			}
+
 			// zpl 2014-11-01: M0 only turns off all drives and heaters if the print is NOT paused
 			if (code == 1 || !reprap.GetMove()->IsPaused())
 			{
-				DisableDrives();
 				reprap.GetHeat()->SwitchOffAll();
 
 				Tool* tool = reprap.GetCurrentTool();
@@ -2379,6 +2392,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			return false;
 
+		if (code == 81)
+		{
+			DisableDrives();
+		}
 		platform->SetAtxPower(code == 80);
 		break;
 
@@ -2975,7 +2992,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			else
 			{
-				reply.printf("Extrusion factor override for extruder %d: %.1f%%\n", extruder, reprap.GetMove()->GetExtrusionFactor(extruder) * 100.0);
+				reply.printf("Extrusion factor override for extruder %d: %.1f%%\n", extruder,
+						reprap.GetMove()->GetExtrusionFactor(extruder) * 100.0);
 			}
 		}
 		break;

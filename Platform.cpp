@@ -1774,8 +1774,13 @@ bool FileStore::Seek(unsigned long pos)
 		WriteBuffer();
 	}
 	FRESULT fr = f_lseek(&file, pos);
-	bufferPointer = (writing) ? 0 : FILE_BUF_LEN;
-	return fr == FR_OK;
+	if (fr == FR_OK)
+	{
+		bufferPointer = (writing) ? 0 : FILE_BUF_LEN;
+		bytesRead = pos;
+		return true;
+	}
+	return false;
 }
 
 bool FileStore::GoToEnd()

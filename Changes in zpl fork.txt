@@ -30,8 +30,10 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * When axes are being homed and axis drives are disabled, the according homing states are reset
 
-* M0 does not turn off any drives or heaters and it does not deselect the current tool if the print was paused.
+* If the print was paused, M0 will neither deselect the current tool nor turn off any heaters, but it will run reset.g before the print is reset
   Use my web interface fork (version 1.08+) to restart failed prints easily on demand
+
+* M0 does not turn off any drives, M1 still does
 
 * Ability to specify which drives may be disabled by M18 and M84
 
