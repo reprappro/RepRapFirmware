@@ -61,8 +61,6 @@ class PID
     int8_t heater;									// The index of our heater
     int8_t badTemperatureCount;						// Count of sequential dud readings
     bool temperatureFault;							// Has our heater developed a fault?
-    float timeSetHeating;							// When we were switched on
-    bool heatingUp;									// Are we heating up?
 };
 
 /**
@@ -142,18 +140,12 @@ inline void PID::Activate()
 {
   SwitchOn();
   active = true;
-  if(!heatingUp)
-	  timeSetHeating = platform->Time();
-  heatingUp = activeTemperature > temperature;
 }
 
 inline void PID::Standby()
 {
   SwitchOn();
   active = false;
-  if(!heatingUp)
-	  timeSetHeating = platform->Time();
-  heatingUp = standbyTemperature > temperature;
 }
 
 inline void PID::ResetFault()
@@ -167,7 +159,6 @@ inline void PID::SwitchOff()
 	platform->SetHeater(heater, 0.0);
 	active = false;
 	switchedOff = true;
-	heatingUp = false;
 }
 
 

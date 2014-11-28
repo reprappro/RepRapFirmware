@@ -53,10 +53,8 @@ class Webserver
     void Diagnostics();
     void SetPassword(const char* pw);
     void SetName(const char* nm);
-    const char* GetName() const;
     void ConnectionError();
     void WebDebug(bool wdb);
-    bool PasswordGiven();
 
     friend class Platform;
 

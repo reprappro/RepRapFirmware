@@ -34,20 +34,13 @@ public:
 	void GetOffset(float& xx, float& yy, float& zz);
 	int DriveCount();
 	int Drive(int driveNumber);
-	bool ToolCanDrive();
 	int HeaterCount();
 	int Heater(int heaterNumber);
 	int Number();
 	void SetVariables(float* standby, float* active);
 	void GetVariables(float* standby, float* active);
-	void DefineMix(float* m);
-	float* GetMix() const;
-	void TurnMixingOn();
-	void TurnMixingOff();
-	bool Mixing();
 	float MaxFeedrate();
 	float InstantDv();
-	void Print(char* reply);
 
 	friend class RepRap;
 
@@ -57,18 +50,11 @@ protected:
 	void Activate(Tool* currentlyActive);
 	void Standby();
 	void AddTool(Tool* t);
-	void FlagTemperatureFault(int8_t dudHeater);
-	void ClearTemperatureFault(int8_t wasDudHeater);
 
 private:
 
-	void SetTemperatureFault(int8_t dudHeater);
-	void ResetTemperatureFault(int8_t wasDudHeater);
-	bool AllHeatersAtHighTemperature();
 	int myNumber;
 	int* drives;
-	float* mix;
-	bool mixing;
 	int driveCount;
 	int* heaters;
 	float* activeTemperatures;
@@ -76,9 +62,12 @@ private:
 	int heaterCount;
 	Tool* next;
 	bool active;
-	bool heaterFault;
 };
 
+inline int Tool::DriveCount()
+{
+	return driveCount;
+}
 
 inline int Tool::Drive(int driveNumber)
 {
@@ -105,36 +94,6 @@ inline int Tool::Number()
 	return myNumber;
 }
 
-inline void Tool::DefineMix(float* m)
-{
-	for(int8_t drive = 0; drive < driveCount; drive++)
-		mix[drive] = m[drive];
-}
-
-inline float* Tool::GetMix() const
-{
-	return mix;
-}
-
-inline void Tool::TurnMixingOn()
-{
-	mixing = true;
-}
-
-inline void Tool::TurnMixingOff()
-{
-	mixing = false;
-}
-
-inline bool Tool::Mixing()
-{
-	return mixing;
-}
-
-inline int Tool::DriveCount()
-{
-	return driveCount;
-}
 
 
 

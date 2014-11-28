@@ -25,7 +25,7 @@ Licence: GPL
 #define STACK 5
 #define GCODE_LENGTH 100 // Maximum length of internally-generated G Code string
 
-#define AXIS_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
+#define GCODE_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
 #define FEEDRATE_LETTER 'F'// GCode feedrate
 #define EXTRUDE_LETTER 'E' // GCode extrude
 
@@ -81,8 +81,9 @@ class GCodes
     void DeleteFile(const char* fileName);								// Does what it says
     bool GetProbeCoordinates(int count, float& x, float& y, float& z);	// Get pre-recorded probe coordinates
     char* GetCurrentCoordinates();										// Get where we are as a string
-    float FractionOfFilePrinted() const;								// Are we in the middle of printing a file? -ve means no, value is fraction printed
+    bool PrintingAFile() const;											// Are we in the middle of printing a file?
     void Diagnostics();													// Send helpful information out
+    //int8_t GetSelectedHead();											// return which tool is selected
     bool HaveIncomingData() const;										// Is there something that we have to do?
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
     
@@ -91,22 +92,18 @@ class GCodes
     void DoFilePrint(GCodeBuffer* gb);									// Get G Codes from a file and print them
     bool AllMovesAreFinishedAndMoveBufferIsLoaded();					// Wait for move queue to exhaust and the current position is loaded
     bool DoCannedCycleMove(bool ce);									// Do a move from an internally programmed canned cycle
-    bool DoFileMacro(const char* fileName);						// Run a GCode macro in a file
+    bool DoFileCannedCycles(const char* fileName);						// Run a GCode macro in a file
     bool FileCannedCyclesReturn();										// End a macro
-    bool ActOnCode(GCodeBuffer* gb);									// Do a G, M or T Code
-    bool HandleGcode(int code, GCodeBuffer* gb);						// Do a G Code
-    bool HandleMcode(int code, GCodeBuffer* gb);						// Do an M Code
-    bool HandleTcode(int code, GCodeBuffer* gb);						// Do a T Code
+    bool ActOnGcode(GCodeBuffer* gb);									// Do the G Code
     bool SetUpMove(GCodeBuffer* gb);									// Set up a new movement
     bool DoDwell(GCodeBuffer *gb);										// Wait for a bit
     bool DoHome(char *reply, bool& error);								// Home some axes
     bool DoSingleZProbeAtPoint();										// Probe at a given point
     bool DoSingleZProbe();												// Probe where we are
-    bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, char *reply);		// Probes at a given position - see the comment at the head of the function itself
-    //bool DoMultipleZProbe(char* reply);									// Probes a series of points and sets the bed equation
-    bool SetBedEquationWithProbe();											// Probes a series of points and sets the bed equation
+    bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, char* reply);		// Probes at a given position - see the comment at the head of the function itself
+    bool DoMultipleZProbe(char* reply);									// Probes a series of points and sets the bed equation
     bool SetPrintZProbe(GCodeBuffer *gb, char *reply);					// Either return the probe value, or set its threshold
-    void SetOrReportOffsets(char* reply, GCodeBuffer *gb);				// Deal with a G10
+    bool SetOffsets(GCodeBuffer *gb);									// Deal with a G10
     bool SetPositions(GCodeBuffer *gb);									// Deal with a G92
     bool LoadMoveBufferFromGCode(GCodeBuffer *gb,  						// Set up a move for the Move class
     		bool doingG92, bool applyLimits);
@@ -126,7 +123,7 @@ class GCodes
     void WriteHTMLToFile(char b, GCodeBuffer *gb);						// Save an HTML file (usually to upload a new web interface)
     bool OffsetAxes(GCodeBuffer *gb);									// Set offsets - deprecated, use G10
     int8_t Heater(int8_t head) const;									// Legacy G codes start heaters at 0, but we use 0 for the bed.  This sorts that out.
-    void AddNewTool(GCodeBuffer *gb, char* reply);						// Create a new tool definition
+    void AddNewTool(GCodeBuffer *gb);									// Create a new tool definition
     void SetToolHeaters(float temperature);								// Set all a tool's heaters to the temperature.  For M104...
     bool ChangeTool(int newToolNumber);									// Select a new tool
 
@@ -138,7 +135,7 @@ class GCodes
     GCodeBuffer* webGCode;						// The sources...
     GCodeBuffer* fileGCode;						// ...
     GCodeBuffer* serialGCode;					// ...
-    GCodeBuffer* fileMacroGCode;				// ... of G Codes
+    GCodeBuffer* cannedCycleGCode;				// ... of G Codes
     bool moveAvailable;							// Have we seen a move G Code and set it up?
     float moveBuffer[DRIVES+1]; 				// Move coordinates; last is feed rate
     bool checkEndStops;							// Should we check them on the next move?
@@ -149,7 +146,7 @@ class GCodes
     float feedrateStack[STACK];					// For dealing with Push and Pop
     FileStore* fileStack[STACK];				// For dealing with Push and Pop
     int8_t stackPointer;						// Push and Pop stack pointer
-    char axisLetters[AXES]; 					// 'X', 'Y', 'Z'
+    char gCodeLetters[AXES]; 					// 'X', 'Y', 'Z'
     float lastPos[DRIVES - AXES]; 				// Just needed for relative moves; i.e. not X, Y and Z
 	float record[DRIVES+1];						// Temporary store for move positions
 	float moveToDo[DRIVES+1];					// Where to go set by G1 etc
@@ -160,8 +157,7 @@ class GCodes
     FileStore* fileToPrint;						// A file to print in the future, or one that has been paused
     FileStore* fileBeingWritten;				// A file to write G Codes (or sometimes HTML) in
     FileStore* configFile;						// A file containing a macro
-    float fractionOfFilePrinted;				// Only used to record the main file when a macro is being printed
-    bool doingFileMacro;						// Are we executing a macro file?
+    bool doingCannedCycleFile;					// Are we executing a macro file?
     char* eofString;							// What's at the end of an HTML file?
     uint8_t eofStringCounter;					// Check the...
     uint8_t eofStringLength;					// ... EoF string as we read.
@@ -214,13 +210,9 @@ inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 	writingFileDirectory = wfd;
 }
 
-inline float GCodes::FractionOfFilePrinted() const
+inline bool GCodes::PrintingAFile() const
 {
-  if(fileBeingPrinted == NULL)
-	  	 return -1.0;
-  if(fractionOfFilePrinted < 0.0)
-	  return fileBeingPrinted->FractionRead();
-  return fractionOfFilePrinted;
+  return fileBeingPrinted != NULL;
 }
 
 inline bool GCodes::HaveIncomingData() const
@@ -246,7 +238,7 @@ inline int8_t GCodes::Heater(int8_t head) const
 
 inline bool GCodes::RunConfigurationGCodes()
 {
-	return !DoFileMacro(platform->GetConfigFile());
+	return !DoFileCannedCycles(platform->GetConfigFile());
 }
 
 //inline int8_t GCodes::GetSelectedHead()
