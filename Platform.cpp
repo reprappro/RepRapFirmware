@@ -21,6 +21,56 @@ Licence: GPL
 
 #include "RepRapFirmware.h"
 
+// Default values for the arrays.
+
+// Drives
+
+const int8_t step_pins[DRIVES] = STEP_PINS;
+const int8_t direction_pins[DRIVES] = DIRECTION_PINS;
+const bool directions_[DRIVES] = DIRECTIONS;
+const int8_t enable_pins[DRIVES] = ENABLE_PINS;
+const bool disable_drives[DRIVES] = DISABLE_DRIVES;
+const int8_t low_stop_pins[DRIVES] = LOW_STOP_PINS;
+const int8_t high_stop_pins[DRIVES] = HIGH_STOP_PINS;
+const int8_t pot_wipes[DRIVES] = POT_WIPES;
+const float max_feedrates[DRIVES] = MAX_FEEDRATES;
+const float accelerations_[DRIVES] = ACCELERATIONS;
+const float drive_steps_per_unit[DRIVES] = DRIVE_STEPS_PER_UNIT;
+const float instant_dvs[DRIVES] = INSTANT_DVS;
+
+// Axes
+
+const float axis_lengths[AXES] = AXIS_LENGTHS;
+const float home_feedrates[AXES] = HOME_FEEDRATES;
+const float head_offsets[AXES] = HEAD_OFFSETS;
+
+// Heaters
+
+const int8_t temp_sense_pins[HEATERS] = TEMP_SENSE_PINS;
+const int8_t heat_on_pins[HEATERS] = HEAT_ON_PINS;
+const float thermistor_betas[HEATERS] = THERMISTOR_BETAS;
+const float thermistor_series_rs[HEATERS] = THERMISTOR_SERIES_RS;
+const float thermistor_25_rs[HEATERS] = THERMISTOR_25_RS;
+const bool use_pids[HEATERS] = USE_PID;
+const float pid_kis[HEATERS] = PID_KIS;
+const float pid_kds[HEATERS] = PID_KDS;
+const float pid_kps[HEATERS] = PID_KPS;
+const float full_pid_bands[HEATERS] = FULL_PID_BAND;
+const float pid_mins[HEATERS] = PID_MIN;
+const float pid_maxes[HEATERS] = PID_MAX;
+const float d_mixes[HEATERS] = D_MIX;
+const float standby_temperatures[HEATERS] = STANDBY_TEMPERATURES;
+const float active_temperatures[HEATERS] = ACTIVE_TEMPERATURES;
+
+// Network
+
+const unsigned char ip_address[4] = IP_ADDRESS;
+const unsigned char net_mask[4] = NET_MASK;
+const unsigned char gate_way[4] = GATE_WAY;
+const unsigned char mac_address[6] = MAC_ADDRESS;
+
+
+
 #define WINDOWED_SEND_PACKETS	(2)
 
 extern char _end;
@@ -74,7 +124,11 @@ Platform::Platform()
 
 void Platform::Init()
 { 
-  byte i;
+  uint8_t i;
+  uint8_t drive;
+  uint8_t heater;
+  uint8_t ip;
+  uint8_t file;
 
   compatibility = me;
 
@@ -83,7 +137,7 @@ void Platform::Init()
 
   massStorage->Init();
 
-  for(i=0; i < MAX_FILES; i++)
+  for(uint8_t i=0; i < MAX_FILES; i++)
     files[i]->Init();
 
   fileStructureInitialised = true;
@@ -93,28 +147,55 @@ void Platform::Init()
   sysDir = SYS_DIR;
   configFile = CONFIG_FILE;
 
-  ipAddress = IP_ADDRESS;
-  netMask = NET_MASK;
-  gateWay = GATE_WAY;
-  macAddress = MAC_ADDRESS;
+  for(ip = 0; ip < 4; ip++)
+  {
+	  ipAddress[ip] = ip_address[ip];
+	  netMask[ip] = net_mask[ip];
+	  gateWay[ip] = gate_way[ip];
+  }
+  for(ip = 0; ip < 6; ip++)
+	  macAddress[ip] = mac_address[ip];
 
   // DRIVES
 
-  stepPins = STEP_PINS;
-  directionPins = DIRECTION_PINS;
-  enablePins = ENABLE_PINS;
-  disableDrives = DISABLE_DRIVES;
-  directions = DIRECTIONS;
-  lowStopPins = LOW_STOP_PINS;
-  highStopPins = HIGH_STOP_PINS;
-  maxFeedrates = MAX_FEEDRATES;
-  accelerations = ACCELERATIONS;
-  driveStepsPerUnit = DRIVE_STEPS_PER_UNIT;
-  instantDvs = INSTANT_DVS;
-  potWipes = POT_WIPES;
-  senseResistor = SENSE_RESISTOR;
-  maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
-  numMixingDrives = NUM_MIXING_DRIVES;
+  for(drive = 0; drive < DRIVES; drive++)
+  {
+	  stepPins[drive] = step_pins[drive];
+	  directionPins[drive] = direction_pins[drive];
+	  directions[drive] = directions_[drive];
+	  enablePins[drive] = enable_pins[drive];
+	  disableDrives[drive] = disable_drives[drive];
+	  lowStopPins[drive] = low_stop_pins[drive];
+	  highStopPins[drive] = high_stop_pins[drive];
+	  maxFeedrates[drive] = max_feedrates[drive];
+	  accelerations[drive] = accelerations_[drive];
+	  driveStepsPerUnit[drive] = drive_steps_per_unit[drive];
+	  instantDvs[drive] = instant_dvs[drive];
+	  potWipes[drive] = pot_wipes[drive];
+  }
+
+//  ipAddress = IP_ADDRESS;
+//  netMask = NET_MASK;
+//  gateWay = GATE_WAY;
+//  macAddress = MAC_ADDRESS;
+//
+//  // DRIVES
+//
+//  stepPins = STEP_PINS;
+//  directionPins = DIRECTION_PINS;
+//  enablePins = ENABLE_PINS;
+//  disableDrives = DISABLE_DRIVES;
+//  directions = DIRECTIONS;
+//  lowStopPins = LOW_STOP_PINS;
+//  highStopPins = HIGH_STOP_PINS;
+//  maxFeedrates = MAX_FEEDRATES;
+//  accelerations = ACCELERATIONS;
+//  driveStepsPerUnit = DRIVE_STEPS_PER_UNIT;
+//  instantDvs = INSTANT_DVS;
+//  potWipes = POT_WIPES;
+//  senseResistor = SENSE_RESISTOR;
+//  maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
+//  numMixingDrives = NUM_MIXING_DRIVES;
 
   // Z PROBE
 
@@ -127,31 +208,57 @@ void Platform::Init()
 
   // AXES
 
-  axisLengths = AXIS_LENGTHS;
-  homeFeedrates = HOME_FEEDRATES;
-  headOffsets = HEAD_OFFSETS;
+  for(drive = 0; drive < AXES; drive++)
+  {
+	  axisLengths[drive] = axis_lengths[drive];
+	  homeFeedrates[drive] = home_feedrates[drive];
+	  headOffsets[drive] = head_offsets[drive];
+  }
+
+//  axisLengths = AXIS_LENGTHS;
+//  homeFeedrates = HOME_FEEDRATES;
+//  headOffsets = HEAD_OFFSETS;
 
   SetSlowestDrive();
 
   // HEATERS - Bed is assumed to be the first
 
-  tempSensePins = TEMP_SENSE_PINS;
-  heatOnPins = HEAT_ON_PINS;
-  thermistorBetas = THERMISTOR_BETAS;
-  thermistorSeriesRs = THERMISTOR_SERIES_RS;
-  thermistorRAt25 = THERMISTOR_25_RS;
-  usePID = USE_PID;
-  pidKis = PID_KIS;
-  pidKds = PID_KDS;
-  pidKps = PID_KPS;
-  fullPidBand = FULL_PID_BAND;
-  pidMin = PID_MIN;
-  pidMax = PID_MAX;
-  dMix = D_MIX;
-  heatSampleTime = HEAT_SAMPLE_TIME;
-  standbyTemperatures = STANDBY_TEMPERATURES;
-  activeTemperatures = ACTIVE_TEMPERATURES;
-  coolingFanPin = COOLING_FAN_PIN;
+  for(heater = 0; heater < HEATERS; heater++)
+  {
+	  tempSensePins[heater] = temp_sense_pins[heater];
+	  heatOnPins[heater] = heat_on_pins[heater];
+	  thermistorBetas[heater] = thermistor_betas[heater];
+	  thermistorSeriesRs[heater] = thermistor_series_rs[heater];
+	  thermistorRAt25[heater] = thermistor_25_rs[heater];
+	  usePID[heater] = use_pids[heater];
+	  pidKis[heater] = pid_kis[heater];
+	  pidKds[heater] = pid_kds[heater];
+	  pidKps[heater] = pid_kps[heater];
+	  fullPidBand[heater] = full_pid_bands[heater];
+	  pidMin[heater] = pid_mins[heater];
+	  pidMax[heater] = pid_maxes[heater];
+	  dMix[heater] = d_mixes[heater];
+	  standbyTemperatures[heater] = standby_temperatures[heater];
+	  activeTemperatures[heater] = active_temperatures[heater];
+  }
+
+//  tempSensePins = TEMP_SENSE_PINS;
+//  heatOnPins = HEAT_ON_PINS;
+//  thermistorBetas = THERMISTOR_BETAS;
+//  thermistorSeriesRs = THERMISTOR_SERIES_RS;
+//  thermistorRAt25 = THERMISTOR_25_RS;
+//  usePID = USE_PID;
+//  pidKis = PID_KIS;
+//  pidKds = PID_KDS;
+//  pidKps = PID_KPS;
+ // fullPidBand = FULL_PID_BAND;
+  //pidMin = PID_MIN;
+ // pidMax = PID_MAX;
+ // dMix = D_MIX;
+//  heatSampleTime = HEAT_SAMPLE_TIME;
+//  standbyTemperatures = STANDBY_TEMPERATURES;
+//  activeTemperatures = ACTIVE_TEMPERATURES;
+//  coolingFanPin = COOLING_FAN_PIN;
   //turnHeatOn = HEAT_ON;
 
   webDir = WEB_DIR;

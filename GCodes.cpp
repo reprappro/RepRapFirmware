@@ -56,7 +56,9 @@ void GCodes::Init()
   drivesRelative = true;
   axesRelative = false;
   checkEndStops = false;
-  gCodeLetters = GCODE_LETTERS;
+  gCodeLetters[0] = 'X';
+  gCodeLetters[1] = 'Y';
+  gCodeLetters[2] = 'Z';
   distanceScale = 1.0;
   for(int8_t i = 0; i < DRIVES - AXES; i++)
     lastPos[i] = 0.0;

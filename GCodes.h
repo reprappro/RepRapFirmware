@@ -25,7 +25,7 @@ Licence: GPL
 #define STACK 5
 #define GCODE_LENGTH 100 // Maximum length of internally-generated G Code string
 
-#define GCODE_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
+//#define GCODE_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
 #define FEEDRATE_LETTER 'F'// GCode feedrate
 #define EXTRUDE_LETTER 'E' // GCode extrude
 
