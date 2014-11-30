@@ -663,6 +663,8 @@ public:
   const PidParameters& GetPidParameters(size_t heater);
   float TimeToHot() const;
   void SetTimeToHot(float t);
+  void SetThermistorNumber(size_t heater, size_t thermistor);
+  int GetThermistorNumber(size_t heater) const;
 
   // Flash operations
   void ResetNvData();
@@ -686,6 +688,7 @@ private:
 
 	  uint16_t magic;
 	  uint16_t resetReason;							// this records why we did a software reset, for diagnostic purposes
+	  char lastMessage[256];						// the last known message before a software reset occurred
 	  size_t neverUsedRam;							// the amount of never used RAM at the last abnormal software reset
 
 	  // The remaining data could alternatively be saved to SD card.
@@ -706,6 +709,8 @@ private:
   static const uint32_t nvAddress = 0;				// address in flash where we store the nonvolatile data
   FlashData nvData;
   bool autoSaveEnabled;
+  StringRef lastMessage;
+  uint8_t WatchdogResetReason() const;
 
   float lastTime;
   float longWait;
@@ -868,7 +873,7 @@ public:
 		return (f == NULL ? -1.0 : f->FractionRead());
 	}
 
-	unsigned long Length()
+	unsigned long Length() const
 	{
 		return f->Length();
 	}

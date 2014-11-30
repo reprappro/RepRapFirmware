@@ -101,8 +101,7 @@ const float pasvPortTimeout = 10.0;	 					// seconds to wait for the FTP data po
 
 // Constructor and initialisation
 Webserver::Webserver(Platform* p) : platform(p), webserverActive(false), readingConnection(NULL),
-		fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, gcodeReplyBufferLength),
-		seq(0), increaseSeq(false)
+		gcodeReply(gcodeReplyBuffer, gcodeReplyBufferLength)
 {
 	httpInterpreter = new HttpInterpreter(p, this);
 	ftpInterpreter = new FtpInterpreter(p, this);
@@ -121,13 +120,13 @@ void Webserver::Init()
 	gcodeReply[0] = 0;
 	webserverActive = true;
 
+	increaseSeq = false;
+	seq = 0;
+
 	// initialise all protocol handlers
 	httpInterpreter->ResetState();
 	ftpInterpreter->ResetState();
 	telnetInterpreter->ResetState();
-
-	// Reinitialise the message file
-	//platform->GetMassStorage()->Delete(platform->GetWebDir(), MESSAGE_FILE);
 }
 
 
@@ -143,7 +142,7 @@ void Webserver::Spin()
 		if (req != NULL)
 		{
 			// Process incoming request
-			if (req->IsReady())
+			if (!req->LostConnection())
 			{
 				// I (zpl) have added support for two more protocols (FTP and Telnet),
 				// so we must take care of the protocol type here.
@@ -213,6 +212,12 @@ void Webserver::Spin()
 						net->SendAndClose(NULL);
 					}
 				}
+				// Check if we need to send data to a Telnet client
+				else if (interpreter == telnetInterpreter && telnetInterpreter->HasRemainingData())
+				{
+					net->SendAndClose(NULL, true);
+					telnetInterpreter->RemainingDataSent();
+				}
 				// Process other messages
 				else
 				{
@@ -240,7 +245,7 @@ void Webserver::Spin()
 					}
 				}
 			}
-			else if (req->LostConnection())
+			else
 			{
 				platform->Message(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
 				net->CloseTransaction();
@@ -320,11 +325,8 @@ void Webserver::ProcessGcode(const char* gc)
 	}
 	else if (StringStartsWith(gc, "M23 "))	// select SD card file to print next
 	{
-		fileInfoDetected = GetFileInfo(platform->GetGCodeDir(), &gc[4], currentFileInfo);
-		printStartTime = platform->Time();
-		strncpy(fileBeingPrinted, &gc[4], ARRAY_SIZE(fileBeingPrinted));
-		fileBeingPrinted[ARRAY_UPB(fileBeingPrinted)] = 0;
-		reprap.GetGCodes()->QueueFileToPrint(fileBeingPrinted);
+		reprap.StartingFilePrint(&gc[4]);
+		reprap.GetGCodes()->QueueFileToPrint(&gc[4]);
 	}
 	else if (StringStartsWith(gc, "M112") && !isdigit(gc[4]))	// emergency stop
 	{
@@ -892,103 +894,15 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 	else if (StringEquals(request, "files"))
 	{
 		const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-
-		FileInfo file_info;
-		if (platform->GetMassStorage()->FindFirst(dir, file_info))
-		{
-			response.copy("{\"files\":[");
-
-			do {
-				// build the file list here, but keep 2 characters free to terminate the JSON message
-				response.catf("%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
-			} while (platform->GetMassStorage()->FindNext(file_info));
-
-			response[response.strlen() - 1] = 0;	// remove last separator
-			response[response.Length() - 3] = 0;	// ensure room for 2 more characters and a null
-			response.cat("]}");
-		}
-		else
-		{
-			response.copy("{\"files\":[]}");
-		}
+		reprap.GetFilesResponse(response, dir);
 	}
 	else if (StringEquals(request, "fileinfo"))
 	{
-		// Poll file info for a specific file
-		if (StringEquals(key, "name"))
-		{
-			GcodeFileInfo info;
-			bool found = webserver->GetFileInfo("0:/", value, info);
-			if (found)
-			{
-				response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
-								info.fileSize, info.objectHeight, info.layerHeight);
-				char ch = '[';
-				if (info.numFilaments == 0)
-				{
-					response.catf("%c", ch);
-				}
-				else
-				{
-					for (unsigned int i = 0; i < info.numFilaments; ++i)
-					{
-						response.catf("%c%.1f", ch, info.filamentNeeded[i]);
-						ch = ',';
-					}
-				}
-				response.catf("],\"generatedBy\":\"%s\"}", info.generatedBy);
-			}
-			else
-			{
-				response.copy("{\"err\":1}");
-			}
-		}
-		// Poll file info about a file currently being printed
-		else if (reprap.GetGCodes()->FractionOfFilePrinted() >= 0.0 && webserver->fileInfoDetected)
-		{
-			response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
-							webserver->currentFileInfo.fileSize, webserver->currentFileInfo.objectHeight, webserver->currentFileInfo.layerHeight);
-			char ch = '[';
-			if (webserver->currentFileInfo.numFilaments == 0)
-			{
-				response.catf("%c", ch);
-			}
-			else
-			{
-				for (unsigned int i = 0; i < webserver->currentFileInfo.numFilaments; ++i)
-				{
-					response.catf("%c%.1f", ch, webserver->currentFileInfo.filamentNeeded[i]);
-					ch = ',';
-				}
-			}
-			response.catf("],\"generatedBy\":\"%s\",\"printDuration\":%d,\"fileName\":\"%s\"}",
-					webserver->currentFileInfo.generatedBy, (int)((platform->Time() - webserver->printStartTime) * 1000.0), webserver->fileBeingPrinted);
-		}
-		else
-		{
-			response.copy("{\"err\":1}");
-		}
+		reprap.GetFileInfoResponse(response, (StringEquals(key, "name")) ? value : NULL);
 	}
 	else if (StringEquals(request, "name"))
 	{
-		response.copy("{\"myName\":\"");
-		size_t j = response.strlen();
-		const char *myName = webserver->GetName();
-		for (size_t i = 0; i < SHORT_STRING_LENGTH; ++i)
-		{
-			char c = myName[i];
-			if (c < ' ')	// if null terminator or bad character
-				break;
-			if (c == '"' || c == '\\')
-			{
-				// Need to escape the quote-mark or backslash for JSON
-				response[j++] = '\\';
-			}
-			response[j++] = c;
-		}
-		response[j++] = '"';
-		response[j++] = '}';
-		response[j] = 0;
+		reprap.GetNameResponse(response);
 	}
 	else if (StringEquals(request, "password") && StringEquals(key, "password"))
 	{
@@ -2151,6 +2065,7 @@ void Webserver::TelnetInterpreter::ResetState()
 {
 	state = authenticating;
 	clientPointer = 0;
+	sendPending = false;
 }
 
 void Webserver::TelnetInterpreter::ProcessLine()
@@ -2187,7 +2102,15 @@ void Webserver::TelnetInterpreter::ProcessLine()
 			else
 			{
 				webserver->ProcessGcode(clientMessage);
-				net->CloseTransaction();
+				if (sendPending)
+				{
+					sendPending = false;
+					net->SendAndClose(NULL, true);
+				}
+				else
+				{
+					net->CloseTransaction();
+				}
 			}
 			break;
 	}
@@ -2220,8 +2143,27 @@ void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply, bool have
 			req->Write("\r\n");
 		}
 
-		net->SendAndClose(NULL, true);
+		// Check if we can send the message now
+		if (haveMore)
+		{
+			sendPending = true;
+		}
+		else
+		{
+			sendPending = false;
+			net->SendAndClose(NULL, true);
+		}
 	}
+}
+
+bool Webserver::TelnetInterpreter::HasRemainingData() const
+{
+	return sendPending;
+}
+
+void Webserver::TelnetInterpreter::RemainingDataSent()
+{
+	sendPending = false;
 }
 
 

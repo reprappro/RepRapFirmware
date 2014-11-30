@@ -163,7 +163,8 @@ RepRap reprap;
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ticksInSpinState(0), resetting(false)
+RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ticksInSpinState(0),
+		resetting(false), fileInfoDetected(false), printStartTime(0.0)
 {
   platform = new Platform();
   network = new Network();
@@ -214,23 +215,18 @@ void RepRap::Init()
   platform->GetLine()->InjectString(scratchString.Pointer());
 
   bool runningTheFile = false;
-  bool initialisingInProgress = true;
-  while (initialisingInProgress)
+  while (true)
   {
 	  Spin();
-	  if (gCodes->FractionOfFilePrinted() >= 0.0)
+	  if (gCodes->PrintingAFile())
 	  {
 		  runningTheFile = true;
 	  }
-	  if (runningTheFile)
+	  else if (runningTheFile)
 	  {
-		  if (gCodes->FractionOfFilePrinted() < 0.0)
-		  {
-			  initialisingInProgress = false;
-		  }
+		  break;
 	  }
   }
-
 
   if(network->IsEnabled())
   {
@@ -523,6 +519,7 @@ void RepRap::Tick()
 // Type 0 is the old-style webserver status response (we should be able to bet rid of this soon).
 // Type 1 is the new-style webserver status response.
 // Type 2 is the M105 S2 response, which is like the new-style status response but some fields are omitted.
+// Type 3 is the M105 S3 response, which is like the M105 S2 response except that static values are also included.
 // 'seq' is the response sequence number, not needed for the type 2 response because that field is omitted.
 void RepRap::GetStatusResponse(StringRef& response, uint8_t type) const
 {
@@ -690,7 +687,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type) const
 	// Send the fraction printed
 	response.catf(",\"fraction_printed\":%.4f", max<float>(0.0, fractionPrinted));
 
-	if (type != 2)
+	if (type < 2)
 	{
 		// Send the amount of buffer space available for gcodes
 		response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());
@@ -743,7 +740,132 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type) const
 		response[jp] = 0;
 		response.cat("\"");
 	}
+	else if (type == 3)
+	{
+		// Add the static fields. For now this is just the machine name, but other fields could be added e.g. axis lengths.
+		response.cat(",");
+		EncodeMachineName(response);
+	}
 	response.cat("}");
+}
+
+// Copy the machine name variable in JSON format, leaving enough room to append "}" to it
+void RepRap::EncodeMachineName(StringRef& response) const
+{
+	response.cat("\"myName\":\"");
+	size_t j = response.strlen();
+	const char *myName = webserver->GetName();
+	for (size_t i = 0; i < response.Length() - 4; ++i)
+	{
+		char c = myName[i];
+		if (c < ' ')	// if null terminator or bad character
+			break;
+		if (c == '"' || c == '\\')
+		{
+			// Need to escape the quote-mark or backslash for JSON
+			response[j++] = '\\';
+		}
+		response[j++] = c;
+	}
+	response[j++] = '"';
+	response[j] = 0;
+}
+
+// Get just the machine name in JSON format
+void RepRap::GetNameResponse(StringRef& response) const
+{
+	response.copy("{");
+	EncodeMachineName(response);
+	response.cat("}");
+}
+
+// Get the list of files in the specified directory in JSON format
+void RepRap::GetFilesResponse(StringRef& response, const char* dir) const
+{
+	FileInfo file_info;
+	if (platform->GetMassStorage()->FindFirst(dir, file_info))
+	{
+		response.copy("{\"files\":[");
+
+		do {
+			// build the file list here, but keep 2 characters free to terminate the JSON message
+			response.catf("%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
+		} while (platform->GetMassStorage()->FindNext(file_info));
+
+		response[response.strlen() - 1] = 0;	// remove last separator
+		response[response.Length() - 3] = 0;	// ensure room for 2 more characters and a null
+		response.cat("]}");
+	}
+	else
+	{
+		response.copy("{\"files\":[]}");
+	}
+}
+// Get information for the specified file, or the currently printing file, in JSON format
+void RepRap::GetFileInfoResponse(StringRef& response, const char* filename) const
+{
+	// Poll file info for a specific file
+	if (filename != NULL)
+	{
+		GcodeFileInfo info;
+		bool found = webserver->GetFileInfo("0:/", filename, info);
+		if (found)
+		{
+			response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
+							info.fileSize, info.objectHeight, info.layerHeight);
+			char ch = '[';
+			if (info.numFilaments == 0)
+			{
+				response.catf("%c", ch);
+			}
+			else
+			{
+				for (unsigned int i = 0; i < info.numFilaments; ++i)
+				{
+					response.catf("%c%.1f", ch, info.filamentNeeded[i]);
+					ch = ',';
+				}
+			}
+			response.catf("],\"generatedBy\":\"%s\"}", info.generatedBy);
+		}
+		else
+		{
+			response.copy("{\"err\":1}");
+		}
+	}
+	else if (GetGCodes()->PrintingAFile() && fileInfoDetected)
+	{
+		// Poll file info about a file currently being printed
+		response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
+						currentFileInfo.fileSize, currentFileInfo.objectHeight, currentFileInfo.layerHeight);
+		char ch = '[';
+		if (currentFileInfo.numFilaments == 0)
+		{
+			response.catf("%c", ch);
+		}
+		else
+		{
+			for (unsigned int i = 0; i < currentFileInfo.numFilaments; ++i)
+			{
+				response.catf("%c%.1f", ch, currentFileInfo.filamentNeeded[i]);
+				ch = ',';
+			}
+		}
+		response.catf("],\"generatedBy\":\"%s\",\"printDuration\":%d,\"fileName\":\"%s\"}",
+				currentFileInfo.generatedBy, (int)((platform->Time() - printStartTime) * 1000.0), fileBeingPrinted);
+	}
+	else
+	{
+		response.copy("{\"err\":1}");
+	}
+}
+
+void RepRap::StartingFilePrint(const char *filename)
+{
+	fileInfoDetected = Webserver::GetFileInfo(platform->GetGCodeDir(), filename, currentFileInfo);
+	printStartTime = platform->Time();
+	strncpy(fileBeingPrinted, filename, ARRAY_SIZE(fileBeingPrinted));
+	fileBeingPrinted[ARRAY_UPB(fileBeingPrinted)] = 0;
 }
 
 //*************************************************************************************************

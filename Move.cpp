@@ -95,7 +95,7 @@ void Move::Init()
   // Put the origin on the lookahead ring with default velocity in the previous
   // position to the first one that will be used.
   
-  lastMove = lookAheadRingAddPointer->Previous();
+  lastRingMove = lookAheadRingAddPointer->Previous();
   
   for(uint8_t drive = 0; drive < DRIVES; drive++)
   {
@@ -108,10 +108,10 @@ void Move::Init()
   }
 
   int8_t slow = platform->SlowestDrive();
-  lastMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), 0, zeroExtruderPositions);
-  lastMove->Release();
+  lastRingMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), 0, zeroExtruderPositions);
+  lastRingMove->Release();
   isolatedMove->Release();
-  runIsolatedMove = false;
+  isolatedMoveAvailable = false;
 
   currentFeedrate = liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
 
@@ -145,6 +145,7 @@ void Move::Init()
   }
   speedFactor = 1.0;
 
+  doingSplitMove = false;
   slowingDown = false;
   state = running;
   active = true;
@@ -179,140 +180,249 @@ void Move::Spin()
 		}
 	}
 
-	// If all pending moves are paused and there is no live movement, see if we can perform an isolated move.
+	// If we're paused and there is no live movement, see if we can perform an isolated move.
 
-	if (state == paused && !(isolatedMove->Processed() & released) && NoLiveMovement())
+	if (IsPaused() && NoLiveMovement() && !(isolatedMove->Processed() & released))
 	{
 		if (GetDDARingLock())
 		{
-			runIsolatedMove = true;
+			isolatedMoveAvailable = true;
 			ReleaseDDARingLock();
 		}
+
+		platform->ClassReport("Move", longWait);
+		return;
+	}
+
+	// If we're done purging all pending moves, see if we can reset our properties again.
+
+	if (IsCancelled())
+	{
+		if (LookAheadRingEmpty() && DDARingEmpty())
+		{
+			// Make sure the last look-ahead entry points to the same coordinates we're at right now
+
+			float currentCoordinates[DRIVES];
+			LiveCoordinates(currentCoordinates);
+			SetPositions(currentCoordinates);
+
+			// We've skipped all incoming moves, so reset our state again
+
+			lookAheadRingAddPointer->Release();
+			doingSplitMove = false;
+			state = running;
+		}
+
+		platform->ClassReport("Move", longWait);
+		return;
 	}
 
 	// If we either don't want to, or can't, add to the look-ahead ring, go home.
 
-	if ((addNoMoreMoves && state != cancelled) || LookAheadRingFull())
+	const bool splitNextMove = IsRunning() && doingSplitMove;
+	if ((!splitNextMove && addNoMoreMoves) || LookAheadRingFull() || isolatedMoveAvailable)
 	{
 		platform->ClassReport("Move", longWait);
 		return;
 	}
 
-	// If there's a G Code move available, add it to the look-ahead ring for processing.
+	// We don't need to obtain any move if we're still busy processing one.
 
-	EndstopChecks endStopsToCheck;
-	if (gCodes->ReadMove(nextMove, endStopsToCheck) && state != cancelled)
+	EndstopChecks endStopsToCheck = 0;
+	if (splitNextMove)
 	{
-		// Apply extrusion factors here
+		for(uint8_t drive=0; drive<DRIVES; drive++)
+		{
+			nextMove[drive] = splitMove[drive];
+		}
+	}
 
+	// Read a new move and apply extrusion factors right away.
+
+	else if (gCodes->ReadMove(nextMove, endStopsToCheck))
+	{
 		for(uint8_t drive = AXES; drive < DRIVES; drive++)
 		{
 			rawEDistances[drive - AXES] = nextMove[drive];
 			nextMove[drive] *= extrusionFactors[drive - AXES];
 		}
+	}
 
-		Transform(nextMove);
+	// We cannot process any moves, so stop here.
 
-		currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
+	else
+	{
+		platform->ClassReport("Move", longWait);
+		return;
+	}
 
-		bool noMove = true;
-		for(uint8_t drive = 0; drive < DRIVES; drive++)
+	// If there's a new move available, split it up and add it to the look-ahead ring for processing.
+
+	currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
+
+	doingSplitMove = SplitNextMove(); // TODO: Make this work with more than one inner probe point
+
+	Transform(nextMove);
+
+	const LookAhead *lastMove = (IsPaused()) ? isolatedMove : lastRingMove;
+	bool noMove = true;
+	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		nextMachineEndPoints[drive] = LookAhead::EndPointToMachine(drive, nextMove[drive]);
+		if (drive < AXES)
 		{
-			nextMachineEndPoints[drive] = LookAhead::EndPointToMachine(drive, nextMove[drive]);
-			if (drive < AXES)
+			if (nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
 			{
-				if (state == paused)
-				{
-					if (nextMachineEndPoints[drive] - LookAhead::EndPointToMachine(drive, liveCoordinates[drive]))
-					{
-						noMove = false;
-					}
-					normalisedDirectionVector[drive] = nextMove[drive] - liveCoordinates[drive];
-				}
-				else
-				{
-					if (nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
-					{
-						noMove = false;
-					}
-					normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
-				}
+				noMove = false;
 			}
-			else
-			{
-				if (nextMachineEndPoints[drive] != 0)
-				{
-					noMove = false;
-				}
-				normalisedDirectionVector[drive] = nextMove[drive];
-			}
-		}
-
-		// Throw it away if there's no real movement.
-
-		if (noMove)
-		{
-			platform->ClassReport("Move", longWait);
-			return;
-		}
-
-		// Compute the direction of motion, moved to the positive hyperquadrant
-
-		Absolute(normalisedDirectionVector, DRIVES);
-		if (Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
-		{
-			platform->Message(BOTH_ERROR_MESSAGE, "Attempt to normalise zero-length move.\n");  // Should never get here - noMove above
-			platform->ClassReport("Move", longWait);
-			return;
-		}
-
-		// Set the feedrate maximum and minimum, and the acceleration
-
-		float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
-		float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
-		float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
-
-		if (state == paused)
-		{
-			// Do not pass raw extruder distances here, because they might mess around with print time estimation
-			if (!SetUpIsolatedMove(nextMachineEndPoints, currentFeedrate, minSpeed, maxSpeed, acceleration, endStopsToCheck))
-			{
-				platform->Message(BOTH_ERROR_MESSAGE, "Can't set up isolated move!\n");
-			}
+			normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
 		}
 		else
 		{
-			const float feedRate = (endStopsToCheck == 0) ? currentFeedrate * speedFactor : currentFeedrate;
-			if (LookAheadRingAdd(nextMachineEndPoints, feedRate, minSpeed, maxSpeed, acceleration, endStopsToCheck, rawEDistances))
+			if (nextMachineEndPoints[drive] != 0)
 			{
-				if (state != cancelled)
-				{
-					// Tell GCodes class we're about to perform a new move
-					reprap.GetGCodes()->MoveQueued();
-				}
+				noMove = false;
 			}
-			else
-			{
-				platform->Message(BOTH_ERROR_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
-			}
+			normalisedDirectionVector[drive] = nextMove[drive];
 		}
 	}
-	else if (state == cancelled && LookAheadRingEmpty() && DDARingEmpty())
-	{
-		// Make sure the last look-ahead entry points to the same coordinates we're at right now
-		for(uint8_t drive=0; drive<DRIVES; drive++)
-		{
-			lastMove->endPoint[drive] = LookAhead::EndPointToMachine(drive, liveCoordinates[drive]);
-		}
-		lookAheadRingAddPointer->Release();
 
-		// We've skipped all incoming moves, so reset our state again
-		state = running;
+	// Throw it away if there's no real movement.
+
+	if (noMove)
+	{
+		platform->ClassReport("Move", longWait);
+		return;
+	}
+
+	// Compute the direction of motion, moved to the positive hyperquadrant
+
+	Absolute(normalisedDirectionVector, DRIVES);
+	if (Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
+	{
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to normalise zero-length move.\n");  // Should never get here - noMove above
+		platform->ClassReport("Move", longWait);
+		return;
+	}
+
+	// Set the feedrate maximum and minimum, and the acceleration
+
+	float minSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->InstantDvs(), DRIVES);
+	float acceleration = VectorBoxIntersection(normalisedDirectionVector, platform->Accelerations(), DRIVES);
+	float maxSpeed = VectorBoxIntersection(normalisedDirectionVector, platform->MaxFeedrates(), DRIVES);
+
+	if (IsPaused())
+	{
+		// Do not pass raw extruder distances here, because they would mess around with print time estimation
+
+		if (!SetUpIsolatedMove(nextMachineEndPoints, currentFeedrate, minSpeed, maxSpeed, acceleration, endStopsToCheck))
+		{
+			platform->Message(BOTH_ERROR_MESSAGE, "Couldn't set up isolated move!\n");
+		}
+	}
+	else
+	{
+		const float feedRate = (endStopsToCheck == 0) ? currentFeedrate * speedFactor : currentFeedrate;
+		if (LookAheadRingAdd(nextMachineEndPoints, feedRate, minSpeed, maxSpeed, acceleration, endStopsToCheck, rawEDistances))
+		{
+			// Tell GCodes class we're about to perform a new (regular) move
+			reprap.GetGCodes()->MoveQueued();
+		}
+		else
+		{
+			platform->Message(BOTH_ERROR_MESSAGE, "Can't add to non-full look ahead ring!\n"); // Should never happen...
+		}
 	}
 
 	platform->ClassReport("Move", longWait);
 }
 
+/* Check if we need to split up the next move to make 5-point bed compensation work well.
+ * Do this by verifying whether we cross either X or Y of the fifth bed compensation point.
+ *
+ * Returns true if the next move has been split up
+ */
+
+bool Move::SplitNextMove()
+{
+	if (!IsRunning() || doingSplitMove || identityBedTransform || NumberOfProbePoints() != 5)
+		return false;
+
+	// Get the last untransformed XYZ coordinates
+
+	float lastXYZ[AXES];
+	for(uint8_t axis=0; axis<AXES; axis++)
+	{
+		lastXYZ[axis] = lastRingMove->MachineToEndPoint(axis);
+	}
+	InverseTransform(lastXYZ);
+
+	// Are we crossing X coordinate of 5th bed compensation point?
+
+	const float x1 = lastXYZ[X_AXIS];
+	const float x2 = nextMove[X_AXIS];
+	const float xCenter = xBedProbePoints[4];
+	bool crossingX = false;
+	float scaleX;
+
+	if ((fabs(x2 - x1) > MINIMUM_SPLIT_DISTANCE) && ((x1 < xCenter && x2 > xCenter) || (x2 < xCenter && x1 > xCenter)))
+	{
+		crossingX = true;
+		scaleX = (xCenter - x1) / (x2 - x1);
+	}
+
+	// Are we crossing Y coordinate of 5th bed compensation point?
+
+	const float y1 = lastXYZ[Y_AXIS];
+	const float y2 = nextMove[Y_AXIS];
+	const float yCenter = yBedProbePoints[4];
+	bool crossingY = false;
+	float scaleY;
+
+	if ((fabs(y2 - y1) > MINIMUM_SPLIT_DISTANCE) && ((y1 < yCenter && y2 > yCenter) || (y2 < yCenter && y1 > yCenter)))
+	{
+		crossingY = true;
+		scaleY = (yCenter - y1) / (y2 - y1);
+	}
+
+	// Split components of the next move proportionally into two move endpoints
+
+	if (crossingX || crossingY)
+	{
+		float splitFactor;
+		if (crossingX && crossingY)
+		{
+			splitFactor = 0.5 * (scaleX + scaleY);
+		}
+		else
+		{
+			splitFactor = (crossingX) ? scaleX : scaleY;
+		}
+
+		for(uint8_t drive=0; drive<DRIVES; drive++)
+		{
+			if (drive < AXES)
+			{
+				splitMove[drive] = nextMove[drive];
+				nextMove[drive] = lastXYZ[drive] + (nextMove[drive] - lastXYZ[drive]) * splitFactor;
+			}
+			else
+			{
+				splitMove[drive] = nextMove[drive] * (1.0 - splitFactor);
+				nextMove[drive] *= splitFactor;
+			}
+		}
+
+//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Current XYZ: %f %f %f\n", lastXYZ[X_AXIS], lastXYZ[Y_AXIS], lastXYZ[Z_AXIS]);
+//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Temp XYZ: %f %f %f\n", nextMove[X_AXIS], nextMove[Y_AXIS], nextMove[Z_AXIS]);
+//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Target XYZ: %f %f %f\n", splitMove[X_AXIS], splitMove[Y_AXIS], splitMove[Z_AXIS]);
+//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "scaleX: %f scaleY: %f scale: %f\n", crossingX ? scaleX : 0.0, crossingY ? scaleY : 0.0, splitFactor);
+
+		return true;
+	}
+
+	return false;
+}
 
 
 /*
@@ -389,6 +499,7 @@ void Move::Absolute(float v[], int8_t dimensions)
 
 void Move::SetPositions(float move[])
 {
+	LookAhead *lastMove = (IsPaused()) ? isolatedMove : lastRingMove;
 	for(uint8_t drive = 0; drive < DRIVES; drive++)
 	{
 		lastMove->SetDriveCoordinate(move[drive], drive);
@@ -399,6 +510,7 @@ void Move::SetPositions(float move[])
 
 void Move::SetFeedrate(float feedRate)
 {
+	LookAhead *lastMove = (IsPaused()) ? isolatedMove : lastRingMove;
 	lastMove->SetFeedRate(feedRate);
 	currentFeedrate = feedRate;
 }
@@ -469,14 +581,14 @@ void Move::Diagnostics()
 bool Move::GetCurrentMachinePosition(float m[]) const
 {
 	// If moves are still running, use the last look-ahead entry to retrieve the current position
-	if (state == running || state == pausing)
+	if (IsRunning() || IsPausing())
 	{
 		if(LookAheadRingFull())
 			return false;
 
-		for(int8_t drive = 0; drive < DRIVES; drive++)
+		for(uint8_t drive = 0; drive < DRIVES; drive++)
 		{
-			m[drive] = lastMove->MachineToEndPoint(drive);
+			m[drive] = lastRingMove->MachineToEndPoint(drive);
 		}
 		m[DRIVES] = currentFeedrate;
 		return true;
@@ -484,7 +596,7 @@ bool Move::GetCurrentMachinePosition(float m[]) const
 	// If there is no real movement, return liveCoordinates instead
 	else if (NoLiveMovement())
 	{
-		for(int8_t drive = 0; drive <= DRIVES; drive++)
+		for(uint8_t drive = 0; drive <= DRIVES; drive++)
 		{
 			m[drive] = liveCoordinates[drive];
 		}
@@ -542,21 +654,21 @@ DDA* Move::DDARingGet()
 	{
 		// If we're paused and have a valid DDA, perform an isolated move
 
-		if (state == paused)
+		if (IsPaused())
 		{
-			if (runIsolatedMove)
+			if (isolatedMoveAvailable)
 			{
 				result = ddaIsolatedMove;
-				runIsolatedMove = false;
+				isolatedMoveAvailable = false;
 			}
 
 			ReleaseDDARingLock();
 			return result;
 		}
 
-		// If we can stop, wait for another class (GCodes) to set our final state first
+		// If we've decelerated to a minimum velocity, or ran out of moves, stop here
 
-		if ((state == pausing && !slowingDown) || DDARingEmpty())
+		if ((IsPausing() && !slowingDown) || DDARingEmpty())
 		{
 			slowingDown = false;
 			ReleaseDDARingLock();
@@ -577,7 +689,7 @@ DDA* Move::DDARingGet()
 
 void Move::DoLookAhead()
 {
-	if ((state != running && state != cancelled) || LookAheadRingEmpty())
+	if ((!IsRunning() && !IsCancelled()) || LookAheadRingEmpty() || doingSplitMove)
 	{
 		return;
 	}
@@ -693,7 +805,7 @@ void Move::Interrupt()
 		dda = DDARingGet();
 		if(dda != NULL)
 		{
-			if (state == cancelled)
+			if (IsCancelled())
 			{
 				dda->Release();		// Yes - but don't use it. All pending moves have been cancelled.
 				dda = NULL;
@@ -701,6 +813,7 @@ void Move::Interrupt()
 			else
 			{
 				dda->Start();		// Yes - got it.  So fire it up if the print is still running.
+				dda->Step();		// And take the first step.
 			}
 		}
 		return;
@@ -738,7 +851,7 @@ bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, 
     }
 
 	lookAheadRingAddPointer->Init(ep, requestedFeedRate, minSpeed, maxSpeed, acceleration, ce, extrDiffs);
-	lastMove = lookAheadRingAddPointer;
+	lastRingMove = lookAheadRingAddPointer;
 	lookAheadRingAddPointer = lookAheadRingAddPointer->Next();
 	lookAheadRingCount++;
 
@@ -762,7 +875,7 @@ LookAhead* Move::LookAheadRingGet()
 
 bool Move::SetUpIsolatedMove(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, EndstopChecks ce)
 {
-	if (runIsolatedMove)
+	if (isolatedMoveAvailable)
 	{
 		return false;
 	}
@@ -791,7 +904,7 @@ bool Move::SetUpIsolatedMove(long ep[], float requestedFeedRate, float minSpeed,
 
 bool Move::SetUpIsolatedMove(float to[], float feedRate, bool axesOnly)
 {
-	if (runIsolatedMove)
+	if (isolatedMoveAvailable)
 	{
 		return false;
 	}
@@ -1351,7 +1464,7 @@ void DDA::Step()
   
   // Try to slow down the current move, because we can't stop immediately and don't want to risk missed steps
 
-  if (move->state == pausing && !slowingDown)
+  if (move->IsPausing() && !slowingDown)
   {
 	  slowingDown = true;
 	  distance -= (stepCount / totalSteps) * distance;		// take into account how far we've gone so far
@@ -1464,7 +1577,7 @@ void DDA::Step()
 	move->liveCoordinates[DRIVES] = myLookAheadEntry->FeedRate();
 
 	// Don't tell GCodes about any completed moves if we're performing an isolated move
-	if (move->state == running || move->state == pausing)
+	if (move->IsRunning() || move->IsPausing())
 	{
 	  reprap.GetGCodes()->MoveCompleted();
 	}
@@ -1526,7 +1639,7 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
   
   processed = (reprap.GetGCodes()->HaveIncomingData())
     			? unprocessed
-  	  	  	  	  : complete|vCosineSet|upPass;
+  	  	  	  	  : complete|vCosineSet;
 }
 
 

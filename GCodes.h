@@ -47,7 +47,7 @@ class GCodeBuffer
     float GetFValue();									// Get a float after a key letter
     int GetIValue();									// Get an integer after a key letter
     long GetLValue();									// Get a long integer after a key letter
-    const char* GetUnprecedentedString();				// Get a string with no preceding key letter
+    const char* GetUnprecedentedString(bool optional = false);	// Get a string with no preceding key letter
     const char* GetString();							// Get a string after a key letter
     const void GetFloatArray(float a[], int& length);	// Get a :-separated list of floats after a key letter
     const void GetLongArray(long l[], int& length);		// Get a :-separated list of longs after a key letter
@@ -81,11 +81,10 @@ class GCodeBuffer
 
 // The item class for the internal code queue
 
-// We don't want ordinary commands to be executed too early, so we must buffer non-moving commands
-// and execute them in-time in GCodes::Spin while regular moves are fed into the look-ahead queue.
+// We don't want some commands to be executed too early, so we should queue these codes and execute
+// them just in time in GCodes::Spin while regular moves are being fed into the look-ahead queue.
 
-const unsigned int codeQueueLength = 16;
-const unsigned int maxCodeLength = 128;
+const unsigned int codeQueueLength = 8;
 
 class CodeQueueItem
 {
@@ -105,7 +104,7 @@ class CodeQueueItem
 
 	private:
 
-		char command[maxCodeLength];
+		char command[GCODE_LENGTH];
 		size_t commandLength;
 		unsigned int moveToExecute;
 		CodeQueueItem *next;
@@ -131,7 +130,8 @@ class GCodes
     void DeleteFile(const char* fileName);								// Does what it says
     bool GetProbeCoordinates(int count, float& x, float& y, float& z) const;	// Get pre-recorded probe coordinates
     const char* GetCurrentCoordinates() const;							// Get where we are as a string
-    float FractionOfFilePrinted() const;								// Are we in the middle of printing a file? -ve means no, value is fraction printed
+    float FractionOfFilePrinted() const;								// Returns the current file-based progress or -1.0 if no file is being printed
+    bool PrintingAFile() const;											// Are we in the middle of printing a file?
     void Diagnostics();													// Send helpful information out
     bool HaveIncomingData() const;										// Is there something that we have to do?
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
@@ -207,6 +207,7 @@ class GCodes
     bool drivesRelativeStack[STACK];			// For dealing with Push and Pop
     bool axesRelativeStack[STACK];				// For dealing with Push and Pop
     float feedrateStack[STACK];					// For dealing with Push and Pop
+    float extruderPositionStack[STACK][DRIVES-AXES];	// For dealing with Push and Pop
     FileData fileStack[STACK];
     int8_t stackPointer;						// Push and Pop stack pointer
     char axisLetters[AXES]; 					// 'X', 'Y', 'Z'
@@ -319,6 +320,11 @@ inline float GCodes::FractionOfFilePrinted() const
 	}
 
 	return fractionOfFilePrinted;
+}
+
+inline bool GCodes::PrintingAFile() const
+{
+	return (FractionOfFilePrinted() >= 0.0);
 }
 
 inline bool GCodes::HaveIncomingData() const

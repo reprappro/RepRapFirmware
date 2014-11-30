@@ -39,11 +39,8 @@ const unsigned int gcodeReplyBufferLength = 2048;	// size of our gcode reply buf
 #define KO_FIRST 3
 
 const unsigned int webUploadBufferSize = 2300;	// maximum size of HTTP upload packets (webMessageLength - 700)
-const unsigned int webMessageLength = 3000;		// maximum length of the web message we accept after decoding, excluding POST data
+const unsigned int webMessageLength = 3000;		// maximum length of the web message we accept after decoding
 const unsigned int maxFilenameLength = 100;		// maximum length of a filename (inc. path from root) that we can upload
-//const unsigned int postBoundaryLength = 100;	// max length of the POST boundary string
-//const unsigned int postFilenameLength = 100;	// max length of the POST filename
-//const unsigned int postDataLength = 1000;		// max amount of POST data
 
 const unsigned int maxCommandWords = 4;			// max number of space-separated words in the command
 const unsigned int maxQualKeys = 5;				// max number of key/value pairs in the qualifier
@@ -53,8 +50,8 @@ const unsigned int jsonReplyLength = 2000;		// size of buffer used to hold JSON 
 
 /* FTP */
 
-const unsigned int ftpMessageLength = 256;		// maximum line length for incoming FTP commands
-const unsigned int ftpResponseLength = 256;		// maximum FTP response length
+const unsigned int ftpResponseLength = 128;		// maximum FTP response length
+const unsigned int ftpMessageLength = 128;		// maximum line length for incoming FTP commands
 
 /* Telnet */
 
@@ -143,6 +140,8 @@ class Webserver
     unsigned int GetReplySeq();
     unsigned int GetGcodeBufferSpace() const;
 
+    static bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info);
+
     void ConnectionLost(const ConnectionState *cs);
     void ConnectionError();
     void WebDebug(bool wdb);
@@ -150,12 +149,6 @@ class Webserver
     friend class Platform;
 
   protected:
-
-	// File information about the file being printed
-	bool fileInfoDetected;
-	char fileBeingPrinted[255];
-	GcodeFileInfo currentFileInfo;
-	float printStartTime;
 
     void MessageStringToWebInterface(const char *s, bool error);
     void AppendReplyToWebInterface(const char* s, bool error);
@@ -210,18 +203,8 @@ class Webserver
 
 			HttpState state;
 
-//			bool receivingPost;
-//			int boundaryCount;
-//			FileStore* postFile;
-//			bool postSeen;
-//			bool getSeen;
-//			bool clientLineIsBlank;
-
 			// Buffers for processing HTTP input
 			char clientMessage[webMessageLength];			// holds the command, qualifier, and headers
-//			char postBoundary[postBoundaryLength];			// holds the POST boundary string
-//			char postFileName[postFilenameLength];			// holds the POST filename
-//			char postData[postDataLength];			    	// holds the POST data
 			unsigned int clientPointer;						// current index into clientMessage
 
 			const char* commandWords[maxCommandWords];
@@ -262,7 +245,7 @@ class Webserver
 
 			char clientMessage[ftpMessageLength];
 			unsigned int clientPointer;
-			char ftpResponse[ftpResponseLength];
+			char ftpResponse[ftpResponseLength]; // TODO: remove this
 
 			char currentDir[maxFilenameLength];
 			char filename[maxFilenameLength];
@@ -289,6 +272,8 @@ class Webserver
 			void ResetState();
 
 			void HandleGcodeReply(const char* reply, bool haveMore = false);
+			bool HasRemainingData() const;
+			void RemainingDataSent();
 
 		private:
 
@@ -301,6 +286,7 @@ class Webserver
 
 			char clientMessage[telnetMessageLength];
 			unsigned int clientPointer;
+			bool sendPending;
 
 			void ProcessLine();
 	};
@@ -312,7 +298,6 @@ class Webserver
     void StoreGcodeData(const char* data, size_t len);
 
     // File info methods
-    static bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info);
     static bool FindHeight(const char* buf, size_t len, float& height);
     static bool FindLayerHeight(const char* buf, size_t len, float& layerHeight);
     static unsigned int FindFilamentUsed(const char* buf, size_t len,  float *filamentUsed, unsigned int maxFilaments);

@@ -35,45 +35,6 @@ const uint32_t fanMaxInterruptCount = 32;			// number of fan interrupts that we 
 static volatile uint32_t fanLastResetTime = 0;		// time (microseconds) at which we last reset the interrupt count, accessed inside and outside ISR
 static volatile uint32_t fanInterval = 0;			// written by ISR, read outside the ISR
 
-// Default values for the arrays.
-
-// Drives
-
-const int8_t step_pins[DRIVES] = STEP_PINS;
-const int8_t direction_pins[DRIVES] = DIRECTION_PINS;
-const bool directions_[DRIVES] = DIRECTIONS;
-const int8_t enable_pins[DRIVES] = ENABLE_PINS;
-const bool disable_drives[DRIVES] = DISABLE_DRIVES;
-const int8_t low_stop_pins[DRIVES] = LOW_STOP_PINS;
-const int8_t high_stop_pins[DRIVES] = HIGH_STOP_PINS;
-const int8_t pot_wipes[DRIVES] = POT_WIPES;
-const float max_feedrates[DRIVES] = MAX_FEEDRATES;
-const float accelerations_[DRIVES] = ACCELERATIONS;
-const float drive_steps_per_unit[DRIVES] = DRIVE_STEPS_PER_UNIT;
-const float instant_dvs[DRIVES] = INSTANT_DVS;
-
-// Axes
-
-const float axis_maxima[AXES] = AXIS_MAXIMA;
-const float axis_minima[AXES] = AXIS_MINIMA;
-const float home_feedrates[AXES] = HOME_FEEDRATES;
-const bool z_probe_axes[AXES] = Z_PROBE_AXES;
-
-// Heaters
-
-const int8_t temp_sense_pins[HEATERS] = TEMP_SENSE_PINS;
-const int8_t heat_on_pins[HEATERS] = HEAT_ON_PINS;
-const float standby_temperatures[HEATERS] = STANDBY_TEMPERATURES;
-const float active_temperatures[HEATERS] = ACTIVE_TEMPERATURES;
-
-// Network
-
-const uint8_t ip_address[4] = IP_ADDRESS;
-const uint8_t net_mask[4] = NET_MASK;
-const uint8_t gate_way[4] = GATE_WAY;
-const uint8_t mac_address[6] = MAC_ADDRESS;
-
-
 // Arduino initialise and loop functions
 // Put nothing in these other than calls to the RepRap equivalents
 
@@ -139,7 +100,8 @@ bool PidParameters::operator==(const PidParameters& other) const
 
 Platform::Platform() :
 		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
-		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer)), autoSaveEnabled(false)
+		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer)), autoSaveEnabled(false),
+		lastMessage(nvData.lastMessage, ARRAY_SIZE(nvData.lastMessage))
 {
 	line = new Line(SerialUSB);
 	aux = new Line(Serial);
@@ -201,21 +163,18 @@ void Platform::Init()
 
 	// DRIVES
 
-	for (uint8_t drive = 0; drive < DRIVES; drive++)
-	{
-		stepPins[drive] = step_pins[drive];
-		directionPins[drive] = direction_pins[drive];
-		directions[drive] = directions_[drive];
-		enablePins[drive] = enable_pins[drive];
-		disableDrives[drive] = disable_drives[drive];
-		lowStopPins[drive] = low_stop_pins[drive];
-		highStopPins[drive] = high_stop_pins[drive];
-		maxFeedrates[drive] = max_feedrates[drive];
-		accelerations[drive] = accelerations_[drive];
-		driveStepsPerUnit[drive] = drive_steps_per_unit[drive];
-		instantDvs[drive] = instant_dvs[drive];
-		potWipes[drive] = pot_wipes[drive];
-	}
+	ARRAY_INIT(stepPins, STEP_PINS);
+	ARRAY_INIT(directionPins, DIRECTION_PINS);
+	ARRAY_INIT(directions, DIRECTIONS);
+	ARRAY_INIT(enablePins, ENABLE_PINS);
+	ARRAY_INIT(disableDrives, DISABLE_DRIVES);
+	ARRAY_INIT(lowStopPins, LOW_STOP_PINS);
+	ARRAY_INIT(highStopPins, HIGH_STOP_PINS);
+	ARRAY_INIT(maxFeedrates, MAX_FEEDRATES);
+	ARRAY_INIT(accelerations, ACCELERATIONS);
+	ARRAY_INIT(driveStepsPerUnit, DRIVE_STEPS_PER_UNIT);
+	ARRAY_INIT(instantDvs, INSTANT_DVS);
+	ARRAY_INIT(potWipes, POT_WIPES);
 
 	senseResistor = SENSE_RESISTOR;
 	maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
@@ -230,24 +189,18 @@ void Platform::Init()
 
 	// AXES
 
-	for (uint8_t axis = 0; axis < AXES; axis++)
-	{
-		axisMaxima[axis] = axis_maxima[axis];
-		axisMinima[axis] = axis_minima[axis];
-		homeFeedrates[axis] = home_feedrates[axis];
-	}
+	ARRAY_INIT(axisMaxima, AXIS_MAXIMA);
+	ARRAY_INIT(axisMinima, AXIS_MINIMA);
+	ARRAY_INIT(homeFeedrates, HOME_FEEDRATES);
 
 	SetSlowestDrive();
 
 	// HEATERS - Bed is assumed to be the first
 
-	for (uint8_t heater = 0; heater < HEATERS; heater++)
-	{
-		tempSensePins[heater] = temp_sense_pins[heater];
-		heatOnPins[heater] = heat_on_pins[heater];
-		standbyTemperatures[heater] = standby_temperatures[heater];
-		activeTemperatures[heater] = active_temperatures[heater];
-	}
+	ARRAY_INIT(tempSensePins, TEMP_SENSE_PINS);
+	ARRAY_INIT(heatOnPins, HEAT_ON_PINS);
+	ARRAY_INIT(standbyTemperatures, STANDBY_TEMPERATURES);
+	ARRAY_INIT(activeTemperatures, ACTIVE_TEMPERATURES);
 
 	heatSampleTime = HEAT_SAMPLE_TIME;
 	coolingFanValue = 0.0;
@@ -323,6 +276,25 @@ void Platform::Init()
 	longWait = lastTime;
 }
 
+// Specify which thermistor channel a particular heater uses
+void Platform::SetThermistorNumber(size_t heater, size_t thermistor)
+//pre(heater < HEATERS && thermistor < HEATERS)
+{
+	heaterAdcChannels[heater] = PinToAdcChannel(tempSensePins[thermistor]);
+}
+
+int Platform::GetThermistorNumber(size_t heater) const
+{
+	for (size_t thermistor = 0; thermistor < HEATERS; ++thermistor)
+	{
+		if (heaterAdcChannels[heater] == PinToAdcChannel(tempSensePins[thermistor]))
+		{
+			return thermistor;
+		}
+	}
+	return -1;
+}
+
 void Platform::SetSlowestDrive()
 {
 	slowestDrive = 0;
@@ -338,17 +310,12 @@ void Platform::InitZProbe()
 	zProbeOnFilter.Init(0);
 	zProbeOffFilter.Init(0);
 
-	// zpl-2014-10-12: The Z-probe index of dc42's ultrasonic sensor has moved from 3 to 4 to stay compatible with RRP's FW
-	if (nvData.zProbeType >= 1 && nvData.zProbeType <= 3)
+	// zpl-2014-10-12: The Z-probe index of dc42's ultrasonic sensor has moved from 3 to 4/5 to stay compatible with RRP's FW
+	if (nvData.zProbeType >= 1)
 	{
-		zProbeModulationPin = (nvData.zProbeType == 3) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
+		zProbeModulationPin = (nvData.zProbeType == 3 || nvData.zProbeType == 5) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
 		pinModeNonDue(zProbeModulationPin, OUTPUT);
-		digitalWriteNonDue(zProbeModulationPin, HIGH);		// enable the IR LED
-	}
-	else if (nvData.zProbeType == 4)
-	{
-		pinModeNonDue(zProbeModulationPin, OUTPUT);
-		digitalWriteNonDue(zProbeModulationPin, LOW);		// enable the alternate sensor
+		digitalWriteNonDue(zProbeModulationPin, (nvData.zProbeType <= 3) ? HIGH : LOW);	// enable the IR LED or alternate sensor
 	}
 }
 
@@ -367,6 +334,7 @@ int Platform::ZProbe() const
 		{
 		case 1:
 		case 4:
+		case 5:
 			// Simple IR sensor, or direct-mode ultrasonic sensor
 			return (int) ((zProbeOnFilter.GetSum() + zProbeOffFilter.GetSum()) / (8 * numZProbeReadingsAveraged));
 
@@ -439,6 +407,7 @@ float Platform::ZProbeStopHeight() const
 	case 3:
 		return nvData.irZProbeParameters.GetStopHeight(GetTemperature(0));
 	case 4:
+	case 5:
 		return nvData.alternateZProbeParameters.GetStopHeight(GetTemperature(0));
 	default:
 		return 0;
@@ -447,7 +416,7 @@ float Platform::ZProbeStopHeight() const
 
 void Platform::SetZProbeType(int pt)
 {
-	int newZProbeType = (pt >= 0 && pt <= 4) ? pt : 0;
+	int newZProbeType = (pt >= 0 && pt <= 5) ? pt : 0;
 	if (newZProbeType != nvData.zProbeType)
 	{
 		nvData.zProbeType = newZProbeType;
@@ -472,6 +441,7 @@ bool Platform::GetZProbeParameters(struct ZProbeParameters& params) const
 		params = nvData.irZProbeParameters;
 		return true;
 	case 4:
+	case 5:
 		params = nvData.alternateZProbeParameters;
 		return true;
 	default:
@@ -506,6 +476,7 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 		}
 		return true;
 	case 4:
+	case 5:
 		if (nvData.alternateZProbeParameters != params)
 		{
 			nvData.alternateZProbeParameters = params;
@@ -529,22 +500,14 @@ bool Platform::MustHomeXYBeforeZ() const
 void Platform::ResetNvData()
 {
 	nvData.compatibility = me;
-	for(uint8_t seg = 0; seg < 4; seg++)
-	{
-		nvData.ipAddress[seg] = ip_address[seg];
-		nvData.netMask[seg] = net_mask[seg];
-		nvData.gateWay[seg] = gate_way[seg];
-	}
-	for(uint8_t mac_seg = 0; mac_seg < 6; mac_seg++)
-	{
-		nvData.macAddress[mac_seg] = mac_address[mac_seg];
-	}
+
+	ARRAY_INIT(nvData.ipAddress, IP_ADDRESS);
+	ARRAY_INIT(nvData.netMask, NET_MASK);
+	ARRAY_INIT(nvData.gateWay, GATE_WAY);
+	ARRAY_INIT(nvData.macAddress, MAC_ADDRESS);
 
 	nvData.zProbeType = 0;	// Default is to use the switch
-	for(uint8_t axis = 0; axis < AXES; axis++)
-	{
-		nvData.zProbeAxes[axis] = z_probe_axes[axis];
-	}
+	ARRAY_INIT(nvData.zProbeAxes, Z_PROBE_AXES);
 	nvData.switchZProbeParameters.Init(0.0);
 	nvData.irZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
 	nvData.alternateZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
@@ -566,6 +529,7 @@ void Platform::ResetNvData()
 	}
 
 	nvData.resetReason = 0;
+	nvData.lastMessage[0] = 0;
 	GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
 #ifdef DUEFLASHSTORAGE_H
 	nvData.magic = FlashData::magicValue;
@@ -722,8 +686,11 @@ void Platform::SoftwareReset(uint16_t reason)
 
 	if (reason != 0 || reason != nvData.resetReason)
 	{
-		// zpl-2014-11-03: Here we must ensure that no changed values are saved, so load last-known values first
+		// Here we must ensure that no changed values are saved, so load last-known values first.
+		// But make sure the last message is properly written to Flash, might be useful for debugging.
+		messageString.copy(nvData.lastMessage);
 		ReadNvData();
+		lastMessage.copy(messageString.Pointer());
 		nvData.resetReason = reason;
 		GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
 		WriteNvData();
@@ -923,13 +890,18 @@ void Platform::Diagnostics()
 
 	// Show the up time and reason for the last reset
 	const uint32_t now = (uint32_t)Time();		// get up time in seconds
+	const unsigned int watchdogResetReason = WatchdogResetReason();
 	const char* resetReasons[8] = { "power up", "backup", "watchdog", "software", "external", "?", "?", "?" };
 	AppendMessage(BOTH_MESSAGE, "Last reset %02d:%02d:%02d ago, cause: %s\n",
 			(unsigned int)(now/3600), (unsigned int)((now % 3600)/60), (unsigned int)(now % 60),
-			resetReasons[(REG_RSTC_SR & RSTC_SR_RSTTYP_Msk) >> RSTC_SR_RSTTYP_Pos]);
+			resetReasons[watchdogResetReason]);
 
-	// Show the error code stored at the last software reset
+	// Show the error code stored at the last software reset and maybe the last message
 	AppendMessage(BOTH_MESSAGE, "Last software reset code & available RAM: 0x%04x, %u\n", nvData.resetReason, nvData.neverUsedRam);
+	if (watchdogResetReason != 0)
+	{
+		AppendMessage(BOTH_MESSAGE, "Last message before reset: %s\n", nvData.lastMessage);
+	}
 
 	// Show the current error codes
 	AppendMessage(BOTH_MESSAGE, "Error status: %u\n", errorCodeBits);
@@ -981,6 +953,12 @@ void Platform::DiagnosticTest(int d)
 	default:
 		break;
 	}
+}
+
+// Get the last reset reason
+inline uint8_t Platform::WatchdogResetReason() const
+{
+	return (REG_RSTC_SR & RSTC_SR_RSTTYP_Msk) >> RSTC_SR_RSTTYP_Pos;
 }
 
 // Return the stack usage and amount of memory that has never been used, in bytes
@@ -1290,6 +1268,12 @@ void Platform::Message(char type, const char* message, ...)
 
 void Platform::Message(char type, const StringRef& message)
 {
+	if (WatchdogResetReason() == 0 && message.strlen() > 0)
+	{
+		// Store this message in EEPROM (just in case)
+		lastMessage.copy(message.Pointer());
+	}
+
 	switch(type)
 	{
 	case FLASH_LED:
@@ -1367,6 +1351,12 @@ void Platform::AppendMessage(char type, const char* message, ...)
 
 void Platform::AppendMessage(char type, const StringRef& message)
 {
+	if (WatchdogResetReason() == 0 && message.strlen() > 0)
+	{
+		// Store this message in EEPROM (just in case)
+		lastMessage.cat(message.Pointer());
+	}
+
 	switch(type)
 	{
 	case FLASH_LED:
@@ -2109,7 +2099,7 @@ void Line::Write(char b, bool block)
 			// FIXME: Remember to open an issue for the core patches on Arduino's GitHub site
 			if (outputNumChars == 0 && iface.canWrite() != 0)
 			{
-				// We can write the character directly into the USB output buffer
+				// We can write the character directly into the output buffer
 				++inWrite;
 				iface.write(b);
 				--inWrite;

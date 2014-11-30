@@ -61,8 +61,14 @@ class RepRap
     uint16_t GetExtrudersInUse() const;
     uint16_t GetHeatersInUse() const;
     void GetStatusResponse(StringRef& response, uint8_t type) const;
+    void GetNameResponse(StringRef& response) const;
+    void GetFilesResponse(StringRef& response, const char* dir) const;
+    void GetFileInfoResponse(StringRef& response, const char* filename) const;
+    void StartingFilePrint(const char *filename);
     
   private:
+
+    void EncodeMachineName(StringRef& response) const;
   
     Platform* platform;
     Network* network;
@@ -83,6 +89,12 @@ class RepRap
     uint16_t activeExtruders;
     uint16_t activeHeaters;
     bool coldExtrude;
+
+    // File information about the file being printed
+    bool fileInfoDetected;
+    char fileBeingPrinted[255];
+    GcodeFileInfo currentFileInfo;
+    float printStartTime;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -142,10 +154,6 @@ inline void RepRap::SetDebug(bool d)
 	if(debug)
 	{
 		platform->Message(BOTH_MESSAGE, "Debugging enabled\n");
-	}
-	else
-	{
-		platform->Message(WEB_MESSAGE, "");
 	}
 }
 

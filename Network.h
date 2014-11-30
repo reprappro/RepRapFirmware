@@ -86,8 +86,7 @@ public:
 	bool Send();
 
 	void SetConnectionLost();
-	bool LostConnection() const { return cs == NULL; }
-	bool IsReady() const { return cs != NULL && cs->sendingTransaction == NULL; }
+	bool LostConnection() const { return cs == NULL || cs->pcb == NULL; }
 	ConnectionState *GetConnection() const { return cs; }
 	uint16_t GetLocalPort() const;
 	TransactionStatus GetStatus() const { return status; }
@@ -134,6 +133,7 @@ class Network
 public:
 	friend class NetworkTransaction;
 
+	void ReadPacket();
 	void ReceiveInput(pbuf *pb, ConnectionState *cs);
 	void SentPacketAcknowledged(ConnectionState *cs, unsigned int len);
 	ConnectionState *ConnectionAccepted(tcp_pcb *pcb);
@@ -162,9 +162,7 @@ public:
 	void Spin();
 	void Interrupt();
 	void Diagnostics();
-
 	bool InLwip() const;
-	void ReadPacket();
 
 	void Enable();
 	void Disable();

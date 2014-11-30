@@ -51,9 +51,11 @@
 //#define LWIP_DEBUG
 
 /* Include user defined options first */
- #include "conf_eth.h"
+#include "conf_eth.h"
 
+#ifdef LWIP_DEBUG
 #include "lwip/src/include/lwip/debug.h"
+#endif
 
 /* ---------- System options ---------- */
 /* Specify NO_SYS because we are not using an RTOS */
@@ -181,7 +183,7 @@ a lot of data that needs to be copied, this should be set high. */
 
 /* 1 if you want to do an ARP check on the offered address
    (recommended). */
- #define DHCP_DOES_ARP_CHECK     1
+#define DHCP_DOES_ARP_CHECK     1
 #endif
 
 /* ---------- Statistics options ---------- */

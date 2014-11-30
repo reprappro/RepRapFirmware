@@ -39,14 +39,14 @@
  ****************************************************************************************************/
 
 #include "RepRapFirmware.h"
-#include "DueFlashStorage.h"
 #include "ethernet_sam.h"
 
 extern "C"
 {
 #include "lwipopts.h"
-#include "lwip/src/include/lwip/debug.h"
+#ifdef LWIP_STATS
 #include "lwip/src/include/lwip/stats.h"
+#endif
 #include "lwip/src/include/lwip/tcp.h"
 
 void RepRapNetworkSetMACAddress(const u8_t macAddress[]);
@@ -72,9 +72,9 @@ static uint8_t sendingRetries;
 extern "C" void RepRapNetworkMessage(const char* s)
 {
 #ifdef LWIP_DEBUG
-	reprap.GetPlatform()->Message(DEBUG_MESSAGE, s);
+	reprap.GetPlatform()->Message(DEBUG_MESSAGE, "%s", s);
 #else
-	reprap.GetPlatform()->Message(HOST_MESSAGE, s);
+	reprap.GetPlatform()->Message(HOST_MESSAGE, "%s", s);
 #endif
 }
 
@@ -136,17 +136,27 @@ static err_t conn_poll(void *arg, tcp_pcb *pcb)
 	ConnectionState *cs = (ConnectionState*)arg;
 	if (cs != NULL && sendingTransaction != NULL && cs == sendingTransaction->GetConnection())
 	{
+		// We tried to send data, but didn't receive an ACK within reasonable time.
+
 		sendingRetries++;
 		if (sendingRetries == 4)
 		{
 			RepRapNetworkMessage("poll received error!\n");
-
 			tcp_abort(pcb);
 			return ERR_ABRT;
 		}
 
-		tcp_write(pcb, sendingWindow + (sendingWindowSize - sentDataOutstanding), sentDataOutstanding, 0);
-		tcp_output(pcb);
+		// Try to send the remaining data once again
+
+		if (tcp_write(pcb, sendingWindow + (sendingWindowSize - sentDataOutstanding), sentDataOutstanding, 0) == ERR_OK)
+		{
+			tcp_output(pcb);
+		}
+		else
+		{
+			tcp_abort(pcb);
+			return ERR_ABRT;
+		}
 	}
 
 	return ERR_OK;
@@ -156,6 +166,8 @@ static err_t conn_poll(void *arg, tcp_pcb *pcb)
 
 static err_t conn_sent(void *arg, tcp_pcb *pcb, u16_t len)
 {
+	LWIP_UNUSED_ARG(pcb);
+
 	ConnectionState *cs = (ConnectionState*)arg;
 	if (cs != NULL)
 	{
@@ -370,6 +382,7 @@ void Network::Spin()
 	if (state == NetworkActive)
 	{
 		// See if we can read any packets
+
 		if (readingData)
 		{
 			readingData = false;
@@ -384,28 +397,27 @@ void Network::Spin()
 		}
 
 		// See if we can send anything
+
 		++inLwip;
 		NetworkTransaction *r = writingTransactions;
 		if (r != NULL && r->Send())
 		{
-			ConnectionState *cs = r->cs;
+			// We're done, free up this transaction
 
-			writingTransactions = r->next;
+			ConnectionState *cs = r->cs;
 			NetworkTransaction *rn = r->nextWrite;
-			r->nextWrite = NULL;
+			writingTransactions = r->next;
 			AppendTransaction(&freeTransactions, r);
 
+			// If there is more data to write on this connection, do it next time
+
+			if (cs != NULL)
+			{
+				cs->sendingTransaction = rn;
+			}
 			if (rn != NULL)
 			{
-				if (cs != NULL)
-				{
-					cs->sendingTransaction = (rn->cs == cs) ? rn : NULL;
-				}
 				PrependTransaction(&writingTransactions, rn);
-			}
-			else if (cs != NULL)
-			{
-				cs->sendingTransaction = NULL;
 			}
 		}
 		--inLwip;
@@ -466,11 +478,6 @@ void Network::Diagnostics()
 bool Network::InLwip() const
 {
 	return (inLwip);
-}
-
-void Network::ReadPacket()
-{
-	readingData = true;
 }
 
 void Network::Enable()
@@ -665,6 +672,12 @@ void Network::ConnectionClosedGracefully(ConnectionState *cs)
 	AppendTransaction(&readyTransactions, r);
 }
 
+// Called from ISR
+void Network::ReadPacket()
+{
+	readingData = true;
+}
+
 // May be called from ISR
 void Network::ReceiveInput(pbuf *pb, ConnectionState* cs)
 {
@@ -758,7 +771,6 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 		else
 		{
 			r->cs->persistConnection = keepConnectionOpen;
-			r->nextWrite = NULL;
 			r->fileBeingSent = f;
 			r->status = dataSending;
 			if (f != NULL && r->sendBuffer == NULL)
@@ -776,8 +788,8 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 				}
 			}
 
-			NetworkTransaction *sendingTransaction = r->cs->sendingTransaction;
-			if (sendingTransaction == NULL)
+			NetworkTransaction *mySendingTransaction = r->cs->sendingTransaction;
+			if (mySendingTransaction == NULL)
 			{
 				r->cs->sendingTransaction = r;
 				AppendTransaction(&writingTransactions, r);
@@ -787,11 +799,11 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 			}
 			else
 			{
-				while (sendingTransaction->nextWrite != NULL)
+				while (mySendingTransaction->nextWrite != NULL)
 				{
-					sendingTransaction = sendingTransaction->nextWrite;
+					mySendingTransaction = mySendingTransaction->nextWrite;
 				}
-				sendingTransaction->nextWrite = r;
+				mySendingTransaction->nextWrite = r;
 //				debugPrintf("Transaction appended to sending RS\n");
 			}
 		}
@@ -849,6 +861,7 @@ void Network::RepeatTransaction()
 
 void Network::OpenDataPort(uint16_t port)
 {
+	closingDataPort = false;
 	++inLwip;
 	tcp_pcb* pcb = tcp_new();
 	tcp_bind(pcb, IP_ADDR_ANY, port);
@@ -869,12 +882,12 @@ bool Network::CloseDataPort()
 	// Close the open data connection if there is any
 	if (dataCs != NULL && dataCs->pcb != NULL)
 	{
-		NetworkTransaction *sendingTransaction = dataCs->sendingTransaction;
-		if (sendingTransaction != NULL)
+		NetworkTransaction *mySendingTransaction = dataCs->sendingTransaction;
+		if (mySendingTransaction != NULL)
 		{
 			// we can't close the connection as long as we're sending
 			closingDataPort = true;
-			sendingTransaction->Close();
+			mySendingTransaction->Close();
 			return false;
 		}
 		else
@@ -951,8 +964,8 @@ bool Network::AcquireTelnetTransaction()
 	return AcquireTransaction(telnetCs);
 }
 
-// Retrieves the NetworkTransaction of a sending connection to which dataLength bytes can be appended at
-// the present time or returns a released NetworkTransaction, which can easily be sent via SendAndClose.
+// Retrieves the NetworkTransaction of a sending connection to which data can be appended to,
+// or prepares a released NetworkTransaction, which can easily be sent via SendAndClose.
 bool Network::AcquireTransaction(ConnectionState *cs)
 {
 	// Make sure we have a valid connection
@@ -962,11 +975,17 @@ bool Network::AcquireTransaction(ConnectionState *cs)
 		return false;
 	}
 
+	// If our current transaction already belongs to cs, don't look for another one
+	if (readyTransactions->GetConnection() == cs)
+	{
+		return true;
+	}
+
 	// See if we're already writing on this connection
 	NetworkTransaction *lastTransaction = cs->sendingTransaction;
 	if (lastTransaction != NULL)
 	{
-		while (lastTransaction->next != NULL)
+		while (lastTransaction->nextWrite != NULL)
 		{
 			lastTransaction = lastTransaction->nextWrite;
 		}
@@ -1231,8 +1250,9 @@ void NetworkTransaction::Printf(const char* fmt, ...)
 // Send exactly one TCP window of data or return true if we can free up this object
 bool NetworkTransaction::Send()
 {
-	// We can't send any data if the connection has been lost
-	if (LostConnection())
+	// Free up this transaction if we either lost our connection or are supposed to close it now
+
+	if (LostConnection() || closeRequested)
 	{
 		if (fileBeingSent != NULL)
 		{
@@ -1246,27 +1266,12 @@ bool NetworkTransaction::Send()
 			sendBuffer = net->ReleaseSendBuffer(sendBuffer);
 		}
 
-		sendingTransaction = NULL;
-		sentDataOutstanding = 0;
-
-		return true;
-	}
-
-	// We've finished with this RS and want to close the connection, so do it here
-	if (closeRequested)
-	{
-		// Close the file if it is still open
-		if (fileBeingSent != NULL)
+		if (!LostConnection())
 		{
-			fileBeingSent->Close();
-			fileBeingSent = NULL;
+//			debugPrintf("NetworkTransaction is closing connection cs=%08x\n", (unsigned int)cs);
+			reprap.GetNetwork()->ConnectionClosed(cs, true);
 		}
 
-		// Close the connection PCB
-//		debugPrintf("NetworkTransaction is closing connection cs=%08x\n", (unsigned int)cs);
-		reprap.GetNetwork()->ConnectionClosed(cs, true);
-
-		// Close the main connection if possible
 		if (closingDataPort)
 		{
 			if (ftp_pasv_pcb != NULL)
@@ -1278,9 +1283,15 @@ bool NetworkTransaction::Send()
 
 			closingDataPort = false;
 		}
+
+		sendingTransaction = NULL;
+		sentDataOutstanding = 0;
+
+		return true;
 	}
 
 	// We're still waiting for data to be ACK'ed, so check timeouts here
+
 	if (sentDataOutstanding)
 	{
 		if (!isnan(lastWriteTime))
@@ -1289,8 +1300,8 @@ bool NetworkTransaction::Send()
 			if (timeNow - lastWriteTime > writeTimeout)
 			{
 				reprap.GetPlatform()->Message(HOST_MESSAGE, "Network: Timing out connection cs=%08x\n", (unsigned int)cs);
-				Close();
-				lastWriteTime = NAN;
+				tcp_abort(cs->pcb);
+				cs->pcb = NULL;
 			}
 			return false;
 		}
@@ -1301,6 +1312,7 @@ bool NetworkTransaction::Send()
 	}
 
 	// See if we can fill up the TCP window with some data chunks from our SendBuffer instances
+
 	uint16_t bytesBeingSent = 0, bytesLeftToSend = TCP_WND;
 	while (sendBuffer != NULL && bytesLeftToSend >= sendBuffer->bytesToWrite)
 	{
@@ -1312,6 +1324,7 @@ bool NetworkTransaction::Send()
 	}
 
 	// We also intend to send a file, so check if we can fill up the TCP window
+
 	if (sendBuffer == NULL)
 	{
 		int bytesRead;
@@ -1355,9 +1368,8 @@ bool NetworkTransaction::Send()
 		if (tcp_write(cs->pcb, sendingWindow, bytesBeingSent, 0 /*TCP_WRITE_FLAG_COPY*/ ) != ERR_OK) // Final arg - 1 means make a copy
 		{
 			RepRapNetworkMessage("tcp_write encountered an error, this should never happen!\n");
-
-			cs->pcb = NULL;
 			tcp_abort(cs->pcb);
+			cs->pcb = NULL;
 		}
 		else
 		{
