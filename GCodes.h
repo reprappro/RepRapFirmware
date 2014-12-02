@@ -241,6 +241,7 @@ class GCodes
     bool axisIsHomed[3];						// These record which of the axes have been homed
     bool waitingForMoveToComplete;
     bool coolingInverted;
+    float lastFanValue;
     int8_t toolChangeSequence;					// Steps through the tool change procedure
     CodeQueueItem *internalCodeQueue;			// Linked list of all the queued codes
     CodeQueueItem *releasedQueueItems;			// Linked list of all released queue items
@@ -305,21 +306,6 @@ inline const char* GCodeBuffer::WritingFileDirectory() const
 inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 {
 	writingFileDirectory = wfd;
-}
-
-inline float GCodes::FractionOfFilePrinted() const
-{
-	if (fractionOfFilePrinted < 0.0)
-	{
-		return fileBeingPrinted.FractionRead();
-	}
-
-	if (!fileBeingPrinted.IsLive())
-	{
-		return (internalCodeQueue == NULL ? -1.0 : 0.9999);
-	}
-
-	return fractionOfFilePrinted;
 }
 
 inline bool GCodes::PrintingAFile() const

@@ -111,7 +111,7 @@ void Move::Init()
   lastRingMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), 0, zeroExtruderPositions);
   lastRingMove->Release();
   isolatedMove->Release();
-  isolatedMoveAvailable = false;
+  readIsolatedMove = isolatedMoveAvailable = false;
 
   currentFeedrate = liveCoordinates[DRIVES] = platform->HomeFeedRate(slow);
 
@@ -182,11 +182,12 @@ void Move::Spin()
 
 	// If we're paused and there is no live movement, see if we can perform an isolated move.
 
-	if (IsPaused() && NoLiveMovement() && !(isolatedMove->Processed() & released))
+	if (IsPaused() && isolatedMoveAvailable)
 	{
 		if (GetDDARingLock())
 		{
-			isolatedMoveAvailable = true;
+			readIsolatedMove = true;
+			isolatedMoveAvailable = false;
 			ReleaseDDARingLock();
 		}
 
@@ -314,7 +315,6 @@ void Move::Spin()
 	if (IsPaused())
 	{
 		// Do not pass raw extruder distances here, because they would mess around with print time estimation
-
 		if (!SetUpIsolatedMove(nextMachineEndPoints, currentFeedrate, minSpeed, maxSpeed, acceleration, endStopsToCheck))
 		{
 			platform->Message(BOTH_ERROR_MESSAGE, "Couldn't set up isolated move!\n");
@@ -581,7 +581,7 @@ void Move::Diagnostics()
 bool Move::GetCurrentMachinePosition(float m[]) const
 {
 	// If moves are still running, use the last look-ahead entry to retrieve the current position
-	if (IsRunning() || IsPausing())
+	if (IsRunning())
 	{
 		if(LookAheadRingFull())
 			return false;
@@ -656,10 +656,10 @@ DDA* Move::DDARingGet()
 
 		if (IsPaused())
 		{
-			if (isolatedMoveAvailable)
+			if (readIsolatedMove)
 			{
 				result = ddaIsolatedMove;
-				isolatedMoveAvailable = false;
+				readIsolatedMove = false;
 			}
 
 			ReleaseDDARingLock();
@@ -894,6 +894,8 @@ bool Move::SetUpIsolatedMove(long ep[], float requestedFeedRate, float minSpeed,
 	float u = instantDv, v = instantDv;
 	ddaIsolatedMove->Init(isolatedMove, u, v);
 
+	isolatedMoveAvailable = true;
+
 //	reprap.GetPlatform()->Message(BOTH_MESSAGE, "minSpeed: %f maxSpeed: %f instantDv: %f\n", minSpeed, maxSpeed, instantDv);
 //	reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "DDA-v: %f timeStep: %f\n", ddaIsolatedMove->velocity, ddaIsolatedMove->timeStep);
 //	reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "stopAStep: %u startDStep: %u totalSteps: %u\n", ddaIsolatedMove->stopAStep, ddaIsolatedMove->startDStep, ddaIsolatedMove->totalSteps);
@@ -957,6 +959,8 @@ bool Move::SetUpIsolatedMove(float to[], float feedRate, bool axesOnly)
 	const float instantDv = platform->InstantDv(platform->SlowestDrive());
 	float u = instantDv, v = instantDv;
 	ddaIsolatedMove->Init(isolatedMove, u, v);
+
+	isolatedMoveAvailable = true;
 
 	return true;
 }

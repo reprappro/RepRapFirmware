@@ -167,7 +167,7 @@ RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ti
 		resetting(false), fileInfoDetected(false), printStartTime(0.0)
 {
   platform = new Platform();
-  network = new Network();
+  network = new Network(platform);
   webserver = new Webserver(platform);
   gCodes = new GCodes(platform, webserver);
   move = new Move(platform, gCodes);

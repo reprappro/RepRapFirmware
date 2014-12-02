@@ -76,6 +76,7 @@ public:
 
 	NetworkTransaction(NetworkTransaction* n) : next(n) { }
 	void Set(pbuf *p, ConnectionState* c, TransactionStatus s);
+	uint16_t DataLength() const;
 	bool Read(char& b);
 	bool ReadBuffer(char *&buffer, unsigned int &len);
 	void Write(char b);
@@ -157,11 +158,14 @@ public:
 	bool AcquireDataTransaction();
 	bool AcquireTelnetTransaction();
 
-	Network();
+	Network(Platform* p);
 	void Init();
 	void Spin();
 	void Interrupt();
 	void Diagnostics();
+
+	bool Lock();
+	void Unlock();
 	bool InLwip() const;
 
 	void Enable();
@@ -169,6 +173,9 @@ public:
 	bool IsEnabled() const;
 
 private:
+
+	Platform* platform;
+	float longWait;
 
 	void AppendTransaction(NetworkTransaction* volatile * list, NetworkTransaction *r);
 	void PrependTransaction(NetworkTransaction* volatile * list, NetworkTransaction *r);

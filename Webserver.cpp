@@ -135,9 +135,20 @@ void Webserver::Spin()
 {
 	// Before we process an incoming Request, we must ensure that the webserver
 	// is active and that all upload buffers are empty.
+
 	if (webserverActive && httpInterpreter->FlushUploadData() && ftpInterpreter->FlushUploadData())
 	{
+		// We must ensure that we have exclusive access to LWIP
+
 		Network *net = reprap.GetNetwork();
+		if (!net->Lock())
+		{
+			platform->ClassReport("Webserver", longWait);
+			return;
+		}
+
+		// See if we have new data to process
+
 		NetworkTransaction *req = net->GetTransaction(readingConnection);
 		if (req != NULL)
 		{
@@ -205,7 +216,7 @@ void Webserver::Spin()
 							net->CloseTransaction();
 						}
 					}
-					else
+					else if (req->DataLength() > 0)
 					{
 						platform->Message(HOST_MESSAGE, "Webserver: Closing invalid data connection\n");
 						readingConnection = NULL;
@@ -222,7 +233,7 @@ void Webserver::Spin()
 				else
 				{
 					char c;
-					for (int i=0; i<500; i++)
+					for (uint16_t i=0; i<500; i++)
 					{
 						if (req->Read(c))
 						{
@@ -237,9 +248,10 @@ void Webserver::Spin()
 						else
 						{
 							// We ran out of data before finding a complete request.
-							// This happens when the incoming message length exceeds the TCP MSS. We need to process another packet on the same connection.
+							// This happens when the incoming message length exceeds the TCP MSS.
+							// We need to process another packet on the same connection.
 							readingConnection = req->GetConnection();
-							net->SendAndClose(NULL, true);
+							net->CloseTransaction();
 							break;
 						}
 					}
@@ -252,6 +264,7 @@ void Webserver::Spin()
 			}
 		}
 
+		net->Unlock();
 		platform->ClassReport("Webserver", longWait);
 	}
 }
@@ -1463,6 +1476,18 @@ void Webserver::FtpInterpreter::ResetState()
 	state = authenticating;
 }
 
+bool Webserver::FtpInterpreter::StoreUploadData(const char* data, unsigned int len)
+{
+	if (uploadState == uploadOK)
+	{
+		uploadPointer = data;
+		uploadLength = len;
+		return true;
+	}
+	return false;
+}
+
+
 // return true if an error has occurred, false otherwise
 void Webserver::FtpInterpreter::ProcessLine()
 {
@@ -2143,16 +2168,8 @@ void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply, bool have
 			req->Write("\r\n");
 		}
 
-		// Check if we can send the message now
-		if (haveMore)
-		{
-			sendPending = true;
-		}
-		else
-		{
-			sendPending = false;
-			net->SendAndClose(NULL, true);
-		}
+		// We must not send the message here, because then we'd have to deal with LWIP internals
+		sendPending = true;
 	}
 }
 

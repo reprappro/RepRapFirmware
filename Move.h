@@ -194,6 +194,7 @@ class Move
 
     bool GetCurrentUserPosition(float m[]) const; 	// Return the current position in transformed coords if possible. Returns false otherwise
     void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
+    bool GetPauseCoordinates(float m[]) const;	// Gives the coordinates at which the print was paused and returns true on success
     void GetRawExtruderPositions(float e[]) const;	// Get the original extruder positions without the extusion multiplier applied
     void ResetExtruderPositions();				// Resets the extruder positions to zero
     void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
@@ -286,7 +287,7 @@ class Move
     DDA* ddaRingAddPointer;
     DDA* ddaRingGetPointer;
     DDA* ddaIsolatedMove;
-    bool isolatedMoveAvailable;
+    bool readIsolatedMove;
     volatile bool ddaRingLocked;
     
     // These implement the look-ahead ring
@@ -295,6 +296,7 @@ class Move
     LookAhead* lookAheadRingGetPointer;
     LookAhead* lastRingMove;
     LookAhead* isolatedMove;
+    bool isolatedMoveAvailable;
     DDA* lookAheadDDA;
     int lookAheadRingCount;
 
@@ -470,6 +472,12 @@ inline bool Move::Pause()
 			return false;
 		}
 
+		if (readIsolatedMove)
+		{
+			ReleaseDDARingLock();
+			return false;
+		}
+
 		for(uint8_t drive=0; drive<DRIVES; drive++)
 		{
 			pauseCoordinates[drive] = liveCoordinates[drive];
@@ -575,7 +583,10 @@ inline bool Move::DDARingEmpty() const
 
 inline bool Move::NoLiveMovement() const
 {
-	return (dda == NULL) && (!slowingDown || state != pausing) && (state != running || DDARingEmpty());
+	return (dda == NULL) &&
+			(state != pausing || !slowingDown) &&
+			(state != paused || !isolatedMoveAvailable) &&
+			(state != running || DDARingEmpty());
 }
 
 inline void Move::LiveMachineCoordinates(long m[]) const
@@ -627,6 +638,20 @@ inline void Move::LiveCoordinates(float m[]) const
 		m[drive] = liveCoordinates[drive];
 	}
 	InverseTransform(m);
+}
+
+inline bool Move::GetPauseCoordinates(float m[]) const
+{
+	if (!IsPaused())
+		return false;
+
+	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		m[drive] = pauseCoordinates[drive];
+	}
+	InverseTransform(m);
+
+	return true;
 }
 
 inline void Move::GetRawExtruderPositions(float e[]) const

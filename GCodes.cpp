@@ -74,6 +74,7 @@ void GCodes::Init()
 	axisIsHomed[X_AXIS] = axisIsHomed[Y_AXIS] = axisIsHomed[Z_AXIS] = false;
 	toolChangeSequence = 0;
 	coolingInverted = false;
+	lastFanValue = 0.0;
 	internalCodeQueue = NULL;
 	releasedQueueItems = NULL;
 	for(uint8_t i=0; i<codeQueueLength; i++)
@@ -562,13 +563,36 @@ int GCodes::SetUpMove(GCodeBuffer *gb)
 	{
 		if (gb->GetIValue() == 1)
 		{
-			for (unsigned int i = 0; i < AXES; ++i)
+			for (uint8_t axis = 0; axis < AXES; axis++)
 			{
-				if (gb->Seen(axisLetters[i]))
+				if (gb->Seen(axisLetters[axis]))
 				{
-					endStopsToCheck |= (1 << i);
+					endStopsToCheck |= (1 << axis);
 				}
 			}
+		}
+	}
+
+	// Check for 'R' parameter here to go back to the coordinates at which the print was paused
+	if (gb->Seen('R') && gb->GetIValue() > 0)
+	{
+		moveAvailable = reprap.GetMove()->GetPauseCoordinates(moveBuffer);
+		if (moveAvailable)
+		{
+			for(uint8_t drive=AXES; drive<DRIVES; drive++)
+			{
+				moveBuffer[drive] = 0.0;
+			}
+			if (gb->Seen(FEEDRATE_LETTER))
+			{
+				moveBuffer[DRIVES] = gb->GetFValue();
+			}
+			return 2;
+		}
+		else
+		{
+			platform->Message(BOTH_ERROR_MESSAGE, "Could not obtain pause coordinates!\n");
+			return 1;
 		}
 	}
 
@@ -1183,6 +1207,26 @@ const char* GCodes::GetCurrentCoordinates() const
 		scratchString.catf("E%u:%.1f ", i-AXES, liveCoordinates[i]);
 	}
 	return scratchString.Pointer();
+}
+
+float GCodes::FractionOfFilePrinted() const
+{
+	if (fractionOfFilePrinted < 0.0)
+	{
+		return fileBeingPrinted.FractionRead();
+	}
+
+	if (reprap.GetMove()->IsPaused() && fileToPrint.IsLive())
+	{
+		return fileToPrint.FractionRead();
+	}
+
+	if (!fileBeingPrinted.IsLive())
+	{
+		return (internalCodeQueue == NULL ? -1.0 : 0.9999);
+	}
+
+	return fractionOfFilePrinted;
 }
 
 bool GCodes::OpenFileToWrite(const char* directory, const char* fileName, GCodeBuffer *gb)
@@ -1946,12 +1990,19 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 	}
 	else
 	{
-		// Allocate a new queue item for each code
+		// Run the next code immediately and wait for it if there is no free item available
 		if (releasedQueueItems == NULL)
 		{
-			// If there is no free item available, return false until we get one
+			internalCodeQueue->Execute();
+			if (queuedGCode->Put(internalCodeQueue->GetCommand(), internalCodeQueue->GetCommandLength()))
+			{
+				queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
+			}
+
 			return false;
 		}
+
+		// Set up a new queue item
 		CodeQueueItem *newItem = releasedQueueItems;
 		releasedQueueItems = releasedQueueItems->Next();
 		newItem->Init(gb->Buffer(), totalMoves);
@@ -1964,9 +2015,9 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		else
 		{
 			CodeQueueItem *lastItem = internalCodeQueue, *next;
-			while ((next = lastItem->Next()) != NULL)
+			while (lastItem->Next() != NULL)
 			{
-				lastItem = next;
+				lastItem = lastItem->Next();
 			}
 			lastItem->SetNext(newItem);
 		}
@@ -2307,6 +2358,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				reply.copy("Cannot pause print, because no file is being printed!\n");
 				error = true;
 			}
+			else if (doingFileMacro)
+			{
+				reply.copy("Cannot pause macro files, wait for it to complete first!\n");
+				error = true;
+			}
 			else
 			{
 				reprap.GetMove()->Pause();				// tell Move we wish to pause the current print
@@ -2558,17 +2614,32 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			bool seen = false;
 
-			if (gb->Seen('I'))
+			if (gb->Seen('I'))		// Invert cooling
 			{
 				coolingInverted = (gb->GetIValue() > 0);
 				seen = true;
 			}
 
-			if (gb->Seen('S'))
+			float f = lastFanValue;
+			if (gb->Seen('S'))		// Set new fan value
 			{
-				float f = gb->GetFValue();
+				f = gb->GetFValue();
 				f = min<float>(f, 255.0);
 				f = max<float>(f, 0.0);
+				seen = true;
+			}
+
+			if (gb->Seen('R'))		// Restore last-known fan value
+			{
+				seen = true;
+			}
+			else
+			{
+				lastFanValue = f;
+			}
+
+			if (seen)
+			{
 				if (coolingInverted)
 				{
 					// Check if 1.0 or 255.0 may be used as the maximum value
@@ -2578,13 +2649,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				{
 					platform->SetFanValue(f);
 				}
-				seen = true;
 			}
-
-			if (!seen)
+			else
 			{
-				float fanValue = coolingInverted ? (1.0 - platform->GetFanValue()) : platform->GetFanValue();
-				reply.printf("Fan value: %d%%, Cooling inverted: %s\n", (byte)(fanValue * 100.0),
+				f = coolingInverted ? (1.0 - platform->GetFanValue()) : platform->GetFanValue();
+				reply.printf("Fan value: %d%%, Cooling inverted: %s\n", (byte)(f * 100.0),
 						coolingInverted ? "yes" : "no");
 			}
 		}

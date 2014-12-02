@@ -43,6 +43,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * When prints are either being stopped or resumed, macro files (pause.g or resume.g) are executed
 
+* Implemented 'R' paramter for G0/G1 to be able to go to the coordinates a print was initially paused at
+
 * default.g is executed if config.g cannot be found (same behaviour as with versions older than 0.90)
 
 * config.g has been removed from the SD-image directory, copy default.g to create it
@@ -56,6 +58,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
   This includes raw extruder positions without the extrusion multipliers applied to them, to improve filament estimation (requires web interfacae version 1.06+ to work)
 
 * Current fan value is reported by M106 and included in the web interface status response
+
+* Added 'R' parameter to M106 to restore the last-known fan value after it has been turned off. It may also be used to maintain this value
 
 * Implemented M500, M501 and M502 (EEPROM tools) and made Flash usage optional when building the firmware.
   Passing 'S1' to M501 will enable auto-save for non-volatile parameters, so backward compatibility with forks based on dc42's firmware can be maintained.

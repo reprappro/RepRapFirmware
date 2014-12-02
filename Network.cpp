@@ -59,7 +59,7 @@ static tcp_pcb *telnet_pcb = NULL;
 
 static bool closingDataPort = false;
 
-static uint8_t volatile inLwip = 0;
+static volatile bool lwipLocked = false;
 
 static NetworkTransaction *sendingTransaction = NULL;
 static char sendingWindow[TCP_WND];
@@ -83,29 +83,43 @@ extern "C" void RepRapNetworkMessage(const char* s)
 extern "C"
 {
 
-// Callback functions for the EMAC driver
+// Lock functions for LWIP (LWIP generally isn't thread-safe)
+bool LockLWIP()
+{
+	if (lwipLocked)
+		return false;
+
+	lwipLocked = true;
+	return true;
+}
+
+void UnlockLWIP()
+{
+	lwipLocked = false;
+}
+
+// Callback functions for the EMAC driver (called from ISR)
 
 static void emac_read_packet(uint32_t ul_status)
 {
 	// Because the LWIP stack can become corrupted if we work with it in parallel,
 	// we may have to wait for the next Spin() call to read the next packet.
-	// On this occasion, we can set the RX callback again.
-	if (inLwip)
+
+	if (LockLWIP())
+	{
+		do {
+			// read all queued packets from the RX buffer
+		} while (ethernet_read());
+		UnlockLWIP();
+	}
+	else
 	{
 		reprap.GetNetwork()->ReadPacket();
 		ethernet_set_rx_callback(NULL);
 	}
-	else
-	{
-		++inLwip;
-		do {
-			// read all queued packets from the RX buffer
-		} while (ethernet_read());
-		--inLwip;
-	}
 }
 
-// Callback functions called by LWIP
+// Callback functions called by LWIP (may be called from ISR)
 
 static void conn_err(void *arg, err_t err)
 {
@@ -320,8 +334,8 @@ void telnetd_init()
 
 // Network/Ethernet class
 
-Network::Network()
-	: isEnabled(true), state(NetworkInactive), readingData(false),
+Network::Network(Platform* p)
+	: platform(p), isEnabled(true), state(NetworkInactive), readingData(false),
 	  freeTransactions(NULL), readyTransactions(NULL), writingTransactions(NULL),
 	  dataCs(NULL), ftpCs(NULL), telnetCs(NULL), freeSendBuffers(NULL), freeConnections(NULL)
 {
@@ -347,38 +361,43 @@ Network::Network()
 
 void Network::AppendTransaction(NetworkTransaction* volatile* list, NetworkTransaction *r)
 {
-	++inLwip;
 	r->next = NULL;
 	while (*list != NULL)
 	{
 		list = &((*list)->next);
 	}
 	*list = r;
-	--inLwip;
 }
 
 void Network::PrependTransaction(NetworkTransaction* volatile* list, NetworkTransaction *r)
 {
-	++inLwip;
 	r->next = *list;
 	*list = r;
-	--inLwip;
 }
 
 void Network::Init()
 {
 	if (!isEnabled)
 	{
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempting to start the network when it is disabled.\n");
+		platform->Message(HOST_MESSAGE, "Attempting to start the network when it is disabled.\n");
 		return;
 	}
-	RepRapNetworkSetMACAddress(reprap.GetPlatform()->MACAddress());
+	RepRapNetworkSetMACAddress(platform->MACAddress());
 	init_ethernet();
+	longWait = platform->Time();
 	state = NetworkInitializing;
 }
 
 void Network::Spin()
 {
+	// Basically we can't do anything if we can't interact with LWIP
+
+	if (!LockLWIP())
+	{
+		platform->ClassReport("Network", longWait);
+		return;
+	}
+
 	if (state == NetworkActive)
 	{
 		// See if we can read any packets
@@ -387,18 +406,15 @@ void Network::Spin()
 		{
 			readingData = false;
 
-			++inLwip;
 			do {
 				// read all queued packets from the RX buffer
 			} while (ethernet_read());
-			--inLwip;
 
 			ethernet_set_rx_callback(&emac_read_packet);
 		}
 
 		// See if we can send anything
 
-		++inLwip;
 		NetworkTransaction *r = writingTransactions;
 		if (r != NULL && r->Send())
 		{
@@ -420,32 +436,33 @@ void Network::Spin()
 				PrependTransaction(&writingTransactions, rn);
 			}
 		}
-		--inLwip;
 	}
 	else if (state == NetworkInitializing && establish_ethernet_link())
 	{
-		start_ethernet(reprap.GetPlatform()->IPAddress(), reprap.GetPlatform()->NetMask(), reprap.GetPlatform()->GateWay());
+		start_ethernet(platform->IPAddress(), platform->NetMask(), platform->GateWay());
 		httpd_init();
 		ftpd_init();
 		telnetd_init();
 		ethernet_set_rx_callback(&emac_read_packet);
 		state = NetworkActive;
 	}
+
+	UnlockLWIP();
+	platform->ClassReport("Network", longWait);
 }
 
 void Network::Interrupt()
 {
-	if (!inLwip && state != NetworkInactive)
+	if (state != NetworkInactive && LockLWIP())
 	{
-		++inLwip;
 		ethernet_timers_update();
-		--inLwip;
+		UnlockLWIP();
 	}
 }
 
 void Network::Diagnostics()
 {
-	reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Network diagnostics:\n");
+	platform->AppendMessage(BOTH_MESSAGE, "Network Diagnostics:\n");
 
 	uint8_t numFreeConnections = 0;
 	ConnectionState *freeConn = freeConnections;
@@ -454,7 +471,7 @@ void Network::Diagnostics()
 		numFreeConnections++;
 		freeConn = freeConn->next;
 	}
-	reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Free connections: %d of %d\n", numFreeConnections, numConnections);
+	platform->AppendMessage(BOTH_MESSAGE, "Free connections: %d of %d\n", numFreeConnections, numConnections);
 
 	uint8_t numFreeTransactions = 0;
 	NetworkTransaction *freeTrans = freeTransactions;
@@ -463,7 +480,7 @@ void Network::Diagnostics()
 		numFreeTransactions++;
 		freeTrans = freeTrans->next;
 	}
-	reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Free transactions: %d of %d\n", numFreeTransactions, networkTransactionCount);
+	platform->AppendMessage(BOTH_MESSAGE, "Free transactions: %d of %d\n", numFreeTransactions, networkTransactionCount);
 
 	uint16_t numFreeSendBuffs = 0;
 	SendBuffer *freeSendBuff = freeSendBuffers;
@@ -472,12 +489,7 @@ void Network::Diagnostics()
 		numFreeSendBuffs++;
 		freeSendBuff = freeSendBuff->next;
 	}
-	reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Free send buffers: %d of %d\n", numFreeSendBuffs, tcpOutputBufferCount);
-}
-
-bool Network::InLwip() const
-{
-	return (inLwip);
+	platform->AppendMessage(BOTH_MESSAGE, "Free send buffers: %d of %d\n", numFreeSendBuffs, tcpOutputBufferCount);
 }
 
 void Network::Enable()
@@ -570,20 +582,17 @@ void Network::SentPacketAcknowledged(ConnectionState *cs, unsigned int len)
 // This is called when a connection is being established and returns an initialised ConnectionState instance.
 ConnectionState *Network::ConnectionAccepted(tcp_pcb *pcb)
 {
-	++inLwip;
 	ConnectionState *cs = freeConnections;
 	if (cs == NULL)
 	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::ConnectionAccepted() - no free ConnectionStates!\n");
+		platform->Message(HOST_MESSAGE, "Network::ConnectionAccepted() - no free ConnectionStates!\n");
 		return NULL;
 	}
 
 	NetworkTransaction* r = freeTransactions;
 	if (r == NULL)
 	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::ConnectionAccepted() - no free transactions!\n");
+		platform->Message(HOST_MESSAGE, "Network::ConnectionAccepted() - no free transactions!\n");
 		return NULL;
 	}
 
@@ -592,7 +601,6 @@ ConnectionState *Network::ConnectionAccepted(tcp_pcb *pcb)
 
 	r->Set(NULL, cs, connected);
 	freeTransactions = r->next;
-	--inLwip;
 	AppendTransaction(&readyTransactions, r);
 
 	return cs;
@@ -657,22 +665,35 @@ void Network::ConnectionClosed(ConnectionState* cs, bool closeConnection)
 // May be called from ISR
 void Network::ConnectionClosedGracefully(ConnectionState *cs)
 {
-	++inLwip;
 	NetworkTransaction* r = freeTransactions;
 	if (r == NULL)
 	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::ConnectionClosedGracefully() - no free transactions!\n");
+		platform->Message(HOST_MESSAGE, "Network::ConnectionClosedGracefully() - no free transactions!\n");
 		return;
 	}
 	freeTransactions = r->next;
 	r->Set(NULL, cs, disconnected);
-	--inLwip;
 
 	AppendTransaction(&readyTransactions, r);
 }
 
+// Not called from ISR
+bool Network::Lock()
+{
+	return LockLWIP();
+}
+
+void Network::Unlock()
+{
+	UnlockLWIP();
+}
+
 // Called from ISR
+bool Network::InLwip() const
+{
+	return lwipLocked;
+}
+
 void Network::ReadPacket()
 {
 	readingData = true;
@@ -681,18 +702,15 @@ void Network::ReadPacket()
 // May be called from ISR
 void Network::ReceiveInput(pbuf *pb, ConnectionState* cs)
 {
-	++inLwip;
 	NetworkTransaction* r = freeTransactions;
 	if (r == NULL)
 	{
-		--inLwip;
-		reprap.GetPlatform()->Message(HOST_MESSAGE, "Network::ReceiveInput() - no free transactions!\n");
+		platform->Message(HOST_MESSAGE, "Network::ReceiveInput() - no free transactions!\n");
 		return;
 	}
 
 	freeTransactions = r->next;
 	r->Set(pb, cs, dataReceiving);
-	--inLwip;
 
 	AppendTransaction(&readyTransactions, r);
 //	debugPrintf("Network - input received\n");
@@ -705,11 +723,9 @@ void Network::ReceiveInput(pbuf *pb, ConnectionState* cs)
 // will return the same one.
 NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 {
-	++inLwip;
 	NetworkTransaction *rs = readyTransactions;
 	if (rs == NULL || cs == NULL || rs->cs == cs)
 	{
-		--inLwip;
 		return rs;
 	}
 
@@ -721,14 +737,12 @@ NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 			rs->next = rsNext->next;		// remove rsNext from the list
 			rsNext->next = readyTransactions;
 			readyTransactions = rsNext;
-			--inLwip;
 			return rsNext;
 		}
 
 		rs = rsNext;
 	}
 
-	--inLwip;
 	return NULL;
 }
 
@@ -736,25 +750,22 @@ NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 // The file may be too large for our buffer, so we may have to send it in multiple transactions.
 void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 {
-	++inLwip;
 	NetworkTransaction *r = readyTransactions;
 	if (r == NULL)
 	{
-		--inLwip;
+		return;
 	}
-	else if (r->status == dataSending)
+
+	if (r->status == dataSending)
 	{
 		// This transaction is already in use for sending (e.g. a Telnet request),
 		// so all we have to do is to remove it from readyTransactions.
 		readyTransactions = r->next;
-		--inLwip;
 	}
 	else
 	{
 		readyTransactions = r->next;
-		--inLwip;
 
-		r->FreePbuf();
 		if (r->LostConnection())
 		{
 			if (f != NULL)
@@ -770,6 +781,7 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 		}
 		else
 		{
+			r->FreePbuf();
 			r->cs->persistConnection = keepConnectionOpen;
 			r->fileBeingSent = f;
 			r->status = dataSending;
@@ -810,13 +822,16 @@ void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
 	}
 }
 
-// We have no data to read nor to write and we want to keep the current connection alive if possible.
+// We have no data to write and we want to keep the current connection alive if possible.
 // That way we can speed up freeing the current NetworkTransaction.
 void Network::CloseTransaction()
 {
 	// Free the current NetworkTransaction's data (if any)
-	++inLwip;
 	NetworkTransaction *r = readyTransactions;
+	if (r == NULL)
+	{
+		return;
+	}
 	r->FreePbuf();
 
 	// Terminate this connection if this NetworkTransaction indicates a graceful disconnect
@@ -829,7 +844,6 @@ void Network::CloseTransaction()
 
 	// Remove the current item from readyTransactions
 	readyTransactions = r->next;
-	--inLwip;
 
 	// Append it to freeTransactions again unless it's already on another list
 	if (status != dataSending)
@@ -843,31 +857,23 @@ void Network::CloseTransaction()
 // data connection.
 void Network::RepeatTransaction()
 {
-	++inLwip;
 	NetworkTransaction *r = readyTransactions;
 	r->inputPointer = 0; // behave as if this request hasn't been processed yet
 	if (r->next != NULL)
 	{
 		readyTransactions = r->next;
-		--inLwip;
 
 		AppendTransaction(&readyTransactions, r);
-	}
-	else
-	{
-		--inLwip;
 	}
 }
 
 void Network::OpenDataPort(uint16_t port)
 {
 	closingDataPort = false;
-	++inLwip;
 	tcp_pcb* pcb = tcp_new();
 	tcp_bind(pcb, IP_ADDR_ANY, port);
 	ftp_pasv_pcb = tcp_listen(pcb);
 	tcp_accept(ftp_pasv_pcb, conn_accept);
-	--inLwip;
 }
 
 // Close the data port and return true on success
@@ -894,20 +900,16 @@ bool Network::CloseDataPort()
 		{
 			// close the data connection
 //			debugPrintf("CloseDataPort is closing connection dataCS=%08x\n", (unsigned int)loc_cs);
-			++inLwip;
 			ConnectionClosed(dataCs, true);
-			--inLwip;
 		}
 	}
 
 	// close listening data port
 	if (ftp_pasv_pcb != NULL)
 	{
-		++inLwip;
 		tcp_accept(ftp_pasv_pcb, NULL);
 		tcp_close(ftp_pasv_pcb);
 		ftp_pasv_pcb = NULL;
-		--inLwip;
 	}
 
 	return true;
@@ -916,36 +918,26 @@ bool Network::CloseDataPort()
 // These methods keep track of our connections in case we need to send to one of them
 void Network::SaveDataConnection()
 {
-	++inLwip;
 	dataCs = readyTransactions->cs;
-	--inLwip;
 }
 
 void Network::SaveFTPConnection()
 {
-	++inLwip;
 	ftpCs = readyTransactions->cs;
-	--inLwip;
 }
 
 void Network::SaveTelnetConnection()
 {
-	++inLwip;
 	telnetCs = readyTransactions->cs;
-	--inLwip;
 }
 
 // Check if there are enough resources left to allocate another NetworkTransaction for sending
 bool Network::CanAcquireTransaction()
 {
-	++inLwip;
 	if (freeTransactions == NULL)
 	{
-		--inLwip;
 		return false;
 	}
-	--inLwip;
-
 	return (freeSendBuffers != NULL);
 }
 
@@ -971,12 +963,13 @@ bool Network::AcquireTransaction(ConnectionState *cs)
 	// Make sure we have a valid connection
 	if (cs == NULL)
 	{
-		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Attempting to allocate transaction for no connection!\n");
+		platform->Message(BOTH_ERROR_MESSAGE, "Attempting to allocate transaction for no connection!\n");
 		return false;
 	}
 
-	// If our current transaction already belongs to cs, don't look for another one
-	if (readyTransactions->GetConnection() == cs)
+	// If our current transaction already belongs to cs and can be used, don't look for another one
+	NetworkTransaction *currentTransaction = readyTransactions;
+	if (currentTransaction != NULL && currentTransaction->GetConnection() == cs && currentTransaction->fileBeingSent == NULL)
 	{
 		return true;
 	}
@@ -1000,16 +993,13 @@ bool Network::AcquireTransaction(ConnectionState *cs)
 	// We cannot use it, so try to allocate a free one
 	else
 	{
-		++inLwip;
 		transactionToUse = freeTransactions;
 		if (transactionToUse == NULL)
 		{
-			--inLwip;
-			reprap.GetPlatform()->Message(HOST_MESSAGE, "Could not acquire free transaction!\n");
+			platform->Message(HOST_MESSAGE, "Could not acquire free transaction!\n");
 			return false;
 		}
 		freeTransactions = transactionToUse->next;
-		--inLwip;
 		transactionToUse->Set(NULL, cs, dataReceiving); // set it to dataReceiving as we expect a response
 	}
 
@@ -1046,6 +1036,12 @@ void NetworkTransaction::Set(pbuf *p, ConnectionState *c, TransactionStatus s)
 	closeRequested = false;
 	nextWrite = NULL;
 	lastWriteTime = NAN;
+}
+
+// How many incoming bytes do we have to process?
+uint16_t NetworkTransaction::DataLength() const
+{
+	return (pb == NULL) ? 0 : pb->tot_len;
 }
 
 // Webserver calls this to read bytes that have come in from the network.
@@ -1402,12 +1398,10 @@ uint16_t NetworkTransaction::GetLocalPort() const
 
 void NetworkTransaction::Close()
 {
-	++inLwip;
 	tcp_pcb *pcb = cs->pcb;
 	tcp_poll(pcb, NULL, 4);
 	tcp_recv(pcb, NULL);
 	closeRequested = true;
-	--inLwip;
 }
 
 void NetworkTransaction::FreePbuf()
@@ -1415,10 +1409,8 @@ void NetworkTransaction::FreePbuf()
 	// Tell LWIP that we have processed data
 	if (cs != NULL && bufferLength > 0 && cs->pcb != NULL)
 	{
-		++inLwip;
 		tcp_recved(cs->pcb, bufferLength);
 		bufferLength = 0;
-		--inLwip;
 	}
 
 	// Free pbuf (pbufs are thread-safe)

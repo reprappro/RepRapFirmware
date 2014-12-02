@@ -231,6 +231,8 @@ class Webserver
 			bool CharFromClient(const char c);
 			void ResetState();
 
+			bool StoreUploadData(const char* data, unsigned int len);
+
 		private:
 
 			enum FtpState
