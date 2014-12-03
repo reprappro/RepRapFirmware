@@ -323,7 +323,8 @@ void Move::Spin()
 	else
 	{
 		const float feedRate = (endStopsToCheck == 0) ? currentFeedrate * speedFactor : currentFeedrate;
-		if (LookAheadRingAdd(nextMachineEndPoints, feedRate, minSpeed, maxSpeed, acceleration, endStopsToCheck, rawEDistances))
+		const float *unmodifiedEDistances = (doingSplitMove) ? zeroExtruderPositions : rawEDistances;
+		if (LookAheadRingAdd(nextMachineEndPoints, feedRate, minSpeed, maxSpeed, acceleration, endStopsToCheck, unmodifiedEDistances))
 		{
 			// Tell GCodes class we're about to perform a new (regular) move
 			reprap.GetGCodes()->MoveQueued();
@@ -837,7 +838,8 @@ void Move::Interrupt()
 
 // Records a new lookahead object and adds it to the lookahead ring, returns false if it's full
 
-bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed, float acceleration, EndstopChecks ce, float extrDiffs[])
+bool Move::LookAheadRingAdd(long ep[], float requestedFeedRate, float minSpeed, float maxSpeed,
+		float acceleration, EndstopChecks ce, const float extrDiffs[])
 {
     if(LookAheadRingFull())
     {

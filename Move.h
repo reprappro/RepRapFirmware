@@ -266,7 +266,7 @@ class Move
     bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
             float minSpeed, float maxSpeed,
             float acceleration, EndstopChecks ce,
-            float extrDiffs[]);
+            const float extrDiffs[]);
     LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
     void LiveMachineCoordinates(long m[]) const;		// Same as LiveCoordinates, but returns machine coordinates and no feedrate
     bool SetUpIsolatedMove(long ep[], float requestedFeedRate,	// Set up a single look-ahead entry for only one move
