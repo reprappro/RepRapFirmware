@@ -147,7 +147,8 @@ public:
 	void RepeatTransaction();
 
 	void OpenDataPort(uint16_t port);
-	bool CloseDataPort();
+	uint16_t GetDataPort() const;
+	void CloseDataPort();
 
 	void SaveDataConnection();
 	void SaveFTPConnection();

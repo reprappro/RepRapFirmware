@@ -203,8 +203,12 @@ void Move::Spin()
 		{
 			// Make sure the last look-ahead entry points to the same coordinates we're at right now
 
-			float currentCoordinates[DRIVES];
-			LiveCoordinates(currentCoordinates);
+			float currentCoordinates[DRIVES + 1];
+			for(uint8_t axis=0; axis<AXES; axis++)
+			{
+				currentCoordinates[axis] = liveCoordinates[axis];
+			}
+			currentCoordinates[DRIVES] = currentFeedrate;
 			SetPositions(currentCoordinates);
 
 			// We've skipped all incoming moves, so reset our state again
@@ -247,6 +251,8 @@ void Move::Spin()
 			rawEDistances[drive - AXES] = nextMove[drive];
 			nextMove[drive] *= extrusionFactors[drive - AXES];
 		}
+
+		currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
 	}
 
 	// We cannot process any moves, so stop here.
@@ -259,9 +265,10 @@ void Move::Spin()
 
 	// If there's a new move available, split it up and add it to the look-ahead ring for processing.
 
-	currentFeedrate = nextMove[DRIVES]; // Might be G1 with just an F field
-
-	doingSplitMove = SplitNextMove(); // TODO: Make this work with more than one inner probe point
+	if (endStopsToCheck == 0)
+	{
+		doingSplitMove = SplitNextMove(); // TODO: Make this work with more than one inner probe point
+	}
 
 	Transform(nextMove);
 
@@ -414,11 +421,6 @@ bool Move::SplitNextMove()
 			}
 		}
 
-//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Current XYZ: %f %f %f\n", lastXYZ[X_AXIS], lastXYZ[Y_AXIS], lastXYZ[Z_AXIS]);
-//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Temp XYZ: %f %f %f\n", nextMove[X_AXIS], nextMove[Y_AXIS], nextMove[Z_AXIS]);
-//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "Target XYZ: %f %f %f\n", splitMove[X_AXIS], splitMove[Y_AXIS], splitMove[Z_AXIS]);
-//		reprap.GetPlatform()->AppendMessage(BOTH_MESSAGE, "scaleX: %f scaleY: %f scale: %f\n", crossingX ? scaleX : 0.0, crossingY ? scaleY : 0.0, splitFactor);
-
 		return true;
 	}
 
@@ -509,14 +511,6 @@ void Move::SetPositions(float move[])
 	lastMove->SetFeedRate(currentFeedrate);
 }
 
-void Move::SetFeedrate(float feedRate)
-{
-	LookAhead *lastMove = (IsPaused()) ? isolatedMove : lastRingMove;
-	lastMove->SetFeedRate(feedRate);
-	currentFeedrate = feedRate;
-}
-
-
 void Move::Diagnostics() 
 {
 	platform->AppendMessage(BOTH_MESSAGE, "Move Diagnostics:\n");
@@ -584,7 +578,7 @@ bool Move::GetCurrentMachinePosition(float m[]) const
 	// If moves are still running, use the last look-ahead entry to retrieve the current position
 	if (IsRunning())
 	{
-		if(LookAheadRingFull())
+		if(LookAheadRingFull() || doingSplitMove)
 			return false;
 
 		for(uint8_t drive = 0; drive < DRIVES; drive++)
@@ -690,7 +684,7 @@ DDA* Move::DDARingGet()
 
 void Move::DoLookAhead()
 {
-	if ((!IsRunning() && !IsCancelled()) || LookAheadRingEmpty() || doingSplitMove)
+	if ((!IsRunning() && !IsCancelled()) || LookAheadRingEmpty())
 	{
 		return;
 	}
@@ -785,7 +779,7 @@ void Move::DoLookAhead()
 
 		// If we have no more moves to process, set the last move's end velocity to an appropriate minimum speed.
 
-		if(addNoMoreMoves || !gCodes->HaveIncomingData())
+		if(!doingSplitMove && (addNoMoreMoves || !gCodes->HaveIncomingData()))
 		{
 			n1->SetV(platform->InstantDv(platform->SlowestDrive())); // The next thing may be the slowest; be prepared.
 			n1->SetProcessed(complete);

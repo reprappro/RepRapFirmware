@@ -66,15 +66,15 @@ static char sendingWindow[TCP_WND];
 static uint16_t sendingWindowSize, sentDataOutstanding;
 static uint8_t sendingRetries;
 
-// Called to put out a message via the RepRap firmware.
-// Can be called from C as well as C++
+// Called only by LWIP to put out a message.
+// May be called from C as well as C++
 
 extern "C" void RepRapNetworkMessage(const char* s)
 {
 #ifdef LWIP_DEBUG
-	reprap.GetPlatform()->Message(DEBUG_MESSAGE, "%s", s);
+       reprap.GetPlatform()->Message(DEBUG_MESSAGE, "%s", s);
 #else
-	reprap.GetPlatform()->Message(HOST_MESSAGE, "%s", s);
+       reprap.GetPlatform()->Message(HOST_MESSAGE, "%s", s);
 #endif
 }
 
@@ -124,12 +124,7 @@ static void emac_read_packet(uint32_t ul_status)
 static void conn_err(void *arg, err_t err)
 {
 	// Report the error to the monitor
-	RepRapNetworkMessage("Network connection error, code ");
-	{
-		char tempBuf[10];
-		snprintf(tempBuf, ARRAY_SIZE(tempBuf), "%d\n", err);
-		RepRapNetworkMessage(tempBuf);
-	}
+	reprap.GetPlatform()->Message(HOST_MESSAGE, "Network: Connection error, code %d\n", err);
 
 	ConnectionState *cs = (ConnectionState*)arg;
 	if (cs != NULL)
@@ -155,19 +150,21 @@ static err_t conn_poll(void *arg, tcp_pcb *pcb)
 		sendingRetries++;
 		if (sendingRetries == 4)
 		{
-			RepRapNetworkMessage("poll received error!\n");
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Network: Poll received error!\n");
 			tcp_abort(pcb);
 			return ERR_ABRT;
 		}
 
 		// Try to send the remaining data once again
 
-		if (tcp_write(pcb, sendingWindow + (sendingWindowSize - sentDataOutstanding), sentDataOutstanding, 0) == ERR_OK)
+		err_t err = tcp_write(pcb, sendingWindow + (sendingWindowSize - sentDataOutstanding), sentDataOutstanding, 0);
+		if (err == ERR_OK)
 		{
 			tcp_output(pcb);
 		}
 		else
 		{
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Network: tcp_write in conn_poll failed with code %d\n", err);
 			tcp_abort(pcb);
 			return ERR_ABRT;
 		}
@@ -199,7 +196,7 @@ static err_t conn_recv(void *arg, tcp_pcb *pcb, pbuf *p, err_t err)
 	{
 		if (cs->pcb != pcb)
 		{
-			RepRapNetworkMessage("Network: mismatched pcb\n");
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Network: Mismatched pcb!\n");
 			tcp_abort(pcb);
 			return ERR_ABRT;
 		}
@@ -208,16 +205,6 @@ static err_t conn_recv(void *arg, tcp_pcb *pcb, pbuf *p, err_t err)
 		{
 			// Tell higher levels that we are receiving data
 			reprap.GetNetwork()->ReceiveInput(p, cs);
-#if 0	//debug
-			{
-				char buff[20];
-				strncpy(buff, (const char*)(p->payload), 18);
-				buff[18] = '\n';
-				buff[19] = 0;
-				RepRapNetworkMessage("Network: Accepted data: ");
-				RepRapNetworkMessage(buff);
-			}
-#endif
 		}
 		else if (cs->persistConnection)
 		{
@@ -289,7 +276,7 @@ void httpd_init()
 	httpInitCount++;
 	if (httpInitCount > 1)
 	{
-		RepRapNetworkMessage("httpd_init() called more than once.\n");
+		reprap.GetPlatform()->Message(HOST_MESSAGE, "httpd_init() called more than once.\n");
 	}
 
 	tcp_pcb* pcb = tcp_new();
@@ -305,7 +292,7 @@ void ftpd_init()
 	ftpInitCount++;
 	if (ftpInitCount > 1)
 	{
-		RepRapNetworkMessage("ftpd_init() called more than once.\n");
+		reprap.GetPlatform()->Message(HOST_MESSAGE, "ftpd_init() called more than once.\n");
 	}
 
 	tcp_pcb* pcb = tcp_new();
@@ -321,7 +308,7 @@ void telnetd_init()
 	telnetInitCount++;
 	if (telnetInitCount > 1)
 	{
-		RepRapNetworkMessage("telnetd_init() called more than once.\n");
+		reprap.GetPlatform()->Message(HOST_MESSAGE, "telnetd_init() called more than once.\n");
 	}
 
 	tcp_pcb* pcb = tcp_new();
@@ -524,7 +511,7 @@ bool Network::AllocateSendBuffer(SendBuffer *&buffer)
 	buffer = freeSendBuffers;
 	if (buffer == NULL)
 	{
-		RepRapNetworkMessage("Network: Could not allocate send buffer!\n");
+		platform->Message(HOST_MESSAGE, "Network: Could not allocate send buffer!\n");
 		return false;
 	}
 	freeSendBuffers = buffer->next;
@@ -636,14 +623,13 @@ void Network::ConnectionClosed(ConnectionState* cs, bool closeConnection)
 			tcp_recv(pcb, NULL);
 			tcp_poll(pcb, NULL, 4);
 			tcp_close(pcb);
+			cs->pcb = NULL;
 		}
 	}
 
 	// cs points to a connection state block that the caller is about to release, so we need to stop referring to it.
 	// There may be one NetworkTransaction in the writing or closing list referring to it, and possibly more than one in the ready list.
-	//RepRapNetworkMessage("Network: ConnectionError\n");
 
-	// See if it's a ready transaction
 	for (NetworkTransaction* r = readyTransactions; r != NULL; r = r->next)
 	{
 		if (r->cs == cs)
@@ -662,7 +648,6 @@ void Network::ConnectionClosed(ConnectionState* cs, bool closeConnection)
 	freeConnections = cs;
 }
 
-// May be called from ISR
 void Network::ConnectionClosedGracefully(ConnectionState *cs)
 {
 	NetworkTransaction* r = freeTransactions;
@@ -677,7 +662,6 @@ void Network::ConnectionClosedGracefully(ConnectionState *cs)
 	AppendTransaction(&readyTransactions, r);
 }
 
-// Not called from ISR
 bool Network::Lock()
 {
 	return LockLWIP();
@@ -688,7 +672,6 @@ void Network::Unlock()
 	UnlockLWIP();
 }
 
-// Called from ISR
 bool Network::InLwip() const
 {
 	return lwipLocked;
@@ -699,7 +682,6 @@ void Network::ReadPacket()
 	readingData = true;
 }
 
-// May be called from ISR
 void Network::ReceiveInput(pbuf *pb, ConnectionState* cs)
 {
 	NetworkTransaction* r = freeTransactions;
@@ -876,43 +858,40 @@ void Network::OpenDataPort(uint16_t port)
 	tcp_accept(ftp_pasv_pcb, conn_accept);
 }
 
-// Close the data port and return true on success
-bool Network::CloseDataPort()
+uint16_t Network::GetDataPort() const
+{
+	return (closingDataPort || (ftp_pasv_pcb == NULL) ? 0 : ftp_pasv_pcb->local_port);
+}
+
+// Close FTP data port and purge associated PCB
+void Network::CloseDataPort()
 {
 	// See if it's already being closed
 	if (closingDataPort)
 	{
-		return false;
+		return;
 	}
+	closingDataPort = true;
 
-	// Close the open data connection if there is any
+	// Close remote connection of our data port or do it as soon as the current transaction has finished
 	if (dataCs != NULL && dataCs->pcb != NULL)
 	{
 		NetworkTransaction *mySendingTransaction = dataCs->sendingTransaction;
 		if (mySendingTransaction != NULL)
 		{
-			// we can't close the connection as long as we're sending
-			closingDataPort = true;
 			mySendingTransaction->Close();
-			return false;
-		}
-		else
-		{
-			// close the data connection
-//			debugPrintf("CloseDataPort is closing connection dataCS=%08x\n", (unsigned int)loc_cs);
-			ConnectionClosed(dataCs, true);
+			return;
 		}
 	}
 
-	// close listening data port
+	// We can close it now, so do it here
 	if (ftp_pasv_pcb != NULL)
 	{
 		tcp_accept(ftp_pasv_pcb, NULL);
 		tcp_close(ftp_pasv_pcb);
 		ftp_pasv_pcb = NULL;
 	}
-
-	return true;
+	closingDataPort = false;
 }
 
 // These methods keep track of our connections in case we need to send to one of them
@@ -963,7 +942,6 @@ bool Network::AcquireTransaction(ConnectionState *cs)
 	// Make sure we have a valid connection
 	if (cs == NULL)
 	{
-		platform->Message(BOTH_ERROR_MESSAGE, "Attempting to allocate transaction for no connection!\n");
 		return false;
 	}
 
@@ -996,7 +974,7 @@ bool Network::AcquireTransaction(ConnectionState *cs)
 		transactionToUse = freeTransactions;
 		if (transactionToUse == NULL)
 		{
-			platform->Message(HOST_MESSAGE, "Could not acquire free transaction!\n");
+			platform->Message(HOST_MESSAGE, "Network: Could not acquire free transaction!\n");
 			return false;
 		}
 		freeTransactions = transactionToUse->next;
@@ -1363,7 +1341,8 @@ bool NetworkTransaction::Send()
 		tcp_sent(cs->pcb, conn_sent);
 		if (tcp_write(cs->pcb, sendingWindow, bytesBeingSent, 0 /*TCP_WRITE_FLAG_COPY*/ ) != ERR_OK) // Final arg - 1 means make a copy
 		{
-			RepRapNetworkMessage("tcp_write encountered an error, this should never happen!\n");
+
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Network: tcp_write encountered an error, this should never happen!\n");
 			tcp_abort(cs->pcb);
 			cs->pcb = NULL;
 		}

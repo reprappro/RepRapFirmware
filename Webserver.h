@@ -78,7 +78,7 @@ class ProtocolInterpreter
 {
 	public:
 
-		ProtocolInterpreter(Platform *p, Webserver *ws);
+		ProtocolInterpreter(Platform *p, Webserver *ws, Network *n);
 		virtual void ConnectionEstablished() { }
 		virtual void ConnectionLost(uint16_t local_port) { }
 		virtual bool CharFromClient(const char c) = 0;
@@ -98,6 +98,7 @@ class ProtocolInterpreter
 	    bool gotPassword;
 	    Platform *platform;
 	    Webserver *webserver;
+	    Network *network;
 
 	    // Information for file uploading
 	    enum UploadState
@@ -122,7 +123,7 @@ class Webserver
 {   
   public:
 
-    Webserver(Platform* p);
+    Webserver(Platform* p, Network *n);
     void Init();
     void Spin();
     void Exit();
@@ -159,7 +160,7 @@ class Webserver
 	{
 		public:
 
-			HttpInterpreter(Platform *p, Webserver *ws);
+			HttpInterpreter(Platform *p, Webserver *ws, Network *n);
 			bool CharFromClient(const char c);
 			void ResetState();
 
@@ -225,7 +226,7 @@ class Webserver
 	{
 		public:
 
-			FtpInterpreter(Platform *p, Webserver *ws);
+			FtpInterpreter(Platform *p, Webserver *ws, Network *n);
 			void ConnectionEstablished();
 			void ConnectionLost(uint16_t local_port);
 			bool CharFromClient(const char c);
@@ -267,7 +268,7 @@ class Webserver
 	{
 		public:
 
-			TelnetInterpreter(Platform *p, Webserver *ws);
+			TelnetInterpreter(Platform *p, Webserver *ws, Network *n);
 			void ConnectionEstablished();
 			void ConnectionLost(uint16_t local_port);
 			bool CharFromClient(const char c);
@@ -319,6 +320,7 @@ class Webserver
     char myName[SHORT_STRING_LENGTH + 1];
 
     Platform* platform;
+    Network* network;
     bool webserverActive;
     const ConnectionState *readingConnection;
 

@@ -1266,6 +1266,12 @@ void Platform::Message(char type, const char* message, ...)
 	Message(type, messageString);
 }
 
+void Platform::Message(char type, const char *fmt, va_list vargs)
+{
+	messageString.vprintf(fmt, vargs);
+	Message(type, messageString);
+}
+
 void Platform::Message(char type, const StringRef& message)
 {
 	if (WatchdogResetReason() == 0 && message.strlen() > 0)

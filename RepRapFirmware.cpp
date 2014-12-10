@@ -168,7 +168,7 @@ RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ti
 {
   platform = new Platform();
   network = new Network(platform);
-  webserver = new Webserver(platform);
+  webserver = new Webserver(platform, network);
   gCodes = new GCodes(platform, webserver);
   move = new Move(platform, gCodes);
   heat = new Heat(platform, gCodes);
@@ -218,7 +218,7 @@ void RepRap::Init()
   while (true)
   {
 	  Spin();
-	  if (gCodes->PrintingAFile())
+	  if (gCodes->DoingFileMacro())
 	  {
 		  runningTheFile = true;
 	  }
@@ -933,12 +933,10 @@ StringRef scratchString(scratchStringBuffer, ARRAY_SIZE(scratchStringBuffer));
 
 void debugPrintf(const char* fmt, ...)
 {
-	char message[STRING_LENGTH]; // Never use scratchString for messages, because it can mess up macro filenames
 	va_list vargs;
 	va_start(vargs, fmt);
-	vsnprintf(message, STRING_LENGTH - 1, fmt, vargs);
+	reprap.GetPlatform()->Message(DEBUG_MESSAGE, fmt, vargs);
 	va_end(vargs);
-	reprap.GetPlatform()->Message(DEBUG_MESSAGE, message);
 }
 
 // String testing

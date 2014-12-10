@@ -754,7 +754,6 @@ bool GCodes::SetPositions(GCodeBuffer *gb)
 		reprap.GetMove()->Transform(moveBuffer);
 		reprap.GetMove()->SetLiveCoordinates(moveBuffer);
 		reprap.GetMove()->SetPositions(moveBuffer);
-		reprap.GetMove()->SetFeedrate(platform->InstantDv(platform->SlowestDrive()));  // On a G92 we must effectively be stationary
 	}
 
 	return true;
@@ -1211,6 +1210,9 @@ const char* GCodes::GetCurrentCoordinates() const
 
 float GCodes::FractionOfFilePrinted() const
 {
+	if (doingFileMacro && !fileToPrint.IsLive())
+		return -1.0;
+
 	if (fractionOfFilePrinted < 0.0)
 	{
 		return fileBeingPrinted.FractionRead();
@@ -2014,7 +2016,7 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		}
 		else
 		{
-			CodeQueueItem *lastItem = internalCodeQueue, *next;
+			CodeQueueItem *lastItem = internalCodeQueue;
 			while (lastItem->Next() != NULL)
 			{
 				lastItem = lastItem->Next();

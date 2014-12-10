@@ -66,6 +66,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * Implemented M32 (Select fiel and start SD print)
 
+* Print status is not changed when a macro file is being executed unless it's part of a real G-Code file
+
 * PIDs return ABS_ZERO as the current temperature if a heater fault occurs
 
 * Move class can perform isolated moves (without the look-ahead ring) when a print has been paused

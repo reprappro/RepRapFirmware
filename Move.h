@@ -207,7 +207,6 @@ class Move
     void HitHighStop(int8_t drive, 				// What to do when a high endstop is hit
     		LookAhead* la, DDA* hitDDA);
     void SetPositions(float move[]);			// Force the coordinates to be these
-    void SetFeedrate(float feedRate);			// Sometimes we want to override the feedrate
     void SetLiveCoordinates(float coords[]);	// Force the live coordinates (see above) to be these
     void SetXBedProbePoint(int index, float x);	// Record the X coordinate of a probe point
     void SetYBedProbePoint(int index, float y);	// Record the Y coordinate of a probe point
@@ -694,7 +693,7 @@ inline void Move::ResetExtruderPositions()
 inline bool Move::AllMovesAreFinished()
 {
   addNoMoreMoves = true;
-  return (state == pausing || state == paused || LookAheadRingEmpty()) && NoLiveMovement();
+  return (IsPausing() || IsPaused() || LookAheadRingEmpty()) && NoLiveMovement();
 }
 
 inline void Move::AddMoreMoves()

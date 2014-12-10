@@ -593,6 +593,7 @@ public:
   
   void Message(char type, const char* message, ...);		// Send a message.  Messages may simply flash an LED, or,
   	  	  	  	  	  	  	  	  	  // say, display the messages on an LCD. This may also transmit the messages to the host.
+  void Message(char type, const char *fmt, va_list vargs);
   void Message(char type, const StringRef& message);
   void AppendMessage(char type, const char* message, ...);	// Send a message.  Messages may simply flash an LED, or,
   	  	  	  	  	  	  	  	  	  // say, display the messages on an LCD. This may also transmit the messages to the host.
