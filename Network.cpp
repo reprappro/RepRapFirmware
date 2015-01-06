@@ -705,8 +705,35 @@ void Network::ReceiveInput(pbuf *pb, ConnectionState* cs)
 // will return the same one.
 NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 {
+	// See if there is any transaction at all
 	NetworkTransaction *rs = readyTransactions;
-	if (rs == NULL || cs == NULL || rs->cs == cs)
+	if (rs == NULL)
+	{
+		return NULL;
+	}
+
+	// We only need to repeat a transaction if we're waiting for a connection on a data port
+	if (cs == NULL && rs->repeated)
+	{
+		const uint16_t localPort = rs->GetLocalPort();
+		for (NetworkTransaction *rsNext = rs->next; rsNext != NULL; rsNext = rs->next)
+		{
+			if (rsNext->status == connected && rsNext->GetLocalPort() > 1023)
+			{
+				rs->next = rsNext->next;		// remove rsNext from the list
+				rsNext->next = readyTransactions;
+				readyTransactions = rsNext;
+				return rsNext;
+			}
+
+			rs = rsNext;
+		}
+
+		return readyTransactions;	// nothing found, process this transaction once again
+	}
+
+	// See if the first one is the transaction we're looking for
+	if (cs == NULL || rs->cs == cs)
 	{
 		return rs;
 	}
@@ -835,18 +862,13 @@ void Network::CloseTransaction()
 }
 
 
-// The current NetworkTransaction must be processed again, e.g. because we're still waiting for another
-// data connection.
+// The current NetworkTransaction must be processed again,
+// e.g. because we're still waiting for another data connection.
 void Network::RepeatTransaction()
 {
 	NetworkTransaction *r = readyTransactions;
+	r->repeated = true;
 	r->inputPointer = 0; // behave as if this request hasn't been processed yet
-	if (r->next != NULL)
-	{
-		readyTransactions = r->next;
-
-		AppendTransaction(&readyTransactions, r);
-	}
 }
 
 void Network::OpenDataPort(uint16_t port)
@@ -1014,6 +1036,7 @@ void NetworkTransaction::Set(pbuf *p, ConnectionState *c, TransactionStatus s)
 	closeRequested = false;
 	nextWrite = NULL;
 	lastWriteTime = NAN;
+	repeated = false;
 }
 
 // How many incoming bytes do we have to process?
@@ -1368,6 +1391,11 @@ void NetworkTransaction::SetConnectionLost()
 	{
 		rs->cs = NULL;
 	}
+}
+
+uint32_t NetworkTransaction::GetRemoteIP() const
+{
+	return (cs != NULL) ? cs->pcb->remote_ip.addr : 0;
 }
 
 uint16_t NetworkTransaction::GetLocalPort() const

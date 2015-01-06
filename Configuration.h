@@ -68,12 +68,15 @@ enum Compatibility
 
 #define SILLY_Z_VALUE -9999.0
 
+// Status response sizes
+
+#define GCODE_REPLY_LENGTH 2048
+
 // Webserver stuff
 
 #define DEFAULT_PASSWORD "reprap"
 #define DEFAULT_NAME "My RepRap 1"
 #define INDEX_PAGE "reprap.htm"
-//#define MESSAGE_FILE "messages.txt"			// currently unused
 #define FOUR04_FILE "html404.htm"
 #define CONFIG_FILE "config.g"					// The file that sets the machine's parameters
 #define DEFAULT_FILE "default.g"				// If the config file isn't found

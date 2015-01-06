@@ -33,8 +33,15 @@ class RepRap
     void Interrupt();
     void Diagnostics();
     void Timing();
+
     bool Debug() const;
     void SetDebug(bool d);
+
+    bool CheckPassword(const char* pw) const;
+    void SetPassword(const char* pw);
+    const char *GetName() const;
+    void SetName(const char* nm);
+
     void AddTool(Tool* t);
     void SelectTool(int toolNumber);
     void StandbyTool(int toolNumber);
@@ -42,59 +49,90 @@ class RepRap
     Tool* GetTool(int toolNumber);
     Tool* GetToolByDrive(int driveNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+
     void AllowColdExtrude();
     void DenyColdExtrude();
     bool ColdExtrude();
+
     void GetExtruderCapabilities(bool canDrive[], const bool directions[]) const;
     void PrintTool(int toolNumber, StringRef& reply);
     void FlagTemperatureFault(int8_t dudHeater);
     void ClearTemperatureFault(int8_t wasDudHeater);
+
     Platform* GetPlatform() const;
     Move* GetMove() const;
     Heat* GetHeat() const;
     GCodes* GetGCodes() const;
     Network* GetNetwork() const;
     Webserver* GetWebserver() const;
+
     void Tick();
-    bool IsStopped() const;
     uint16_t GetTicksInSpinState() const;
+    bool IsStopped() const;
+
     uint16_t GetExtrudersInUse() const;
     uint16_t GetHeatersInUse() const;
-    void GetStatusResponse(StringRef& response, uint8_t type) const;
+
+    void GetStatusResponse(StringRef& response, uint8_t type);
     void GetNameResponse(StringRef& response) const;
     void GetFilesResponse(StringRef& response, const char* dir) const;
     void GetFileInfoResponse(StringRef& response, const char* filename) const;
+
     void StartingFilePrint(const char *filename);
+    void Beep(int freq, int ms);
+    void SetMessage(const char *msg);
     
+    void MessageToStatusResponse(const char *message);
+    void AppendMessageToStatusResponse(const char *message);
+    void AppendCharToStatusResponse(const char c);
+
+    const StringRef& GetGcodeReply() const;
+
   private:
 
-    void EncodeMachineName(StringRef& response) const;
+    static void CopyParameterText(const char* src, char *dst, size_t length);
+    static void EncodeString(StringRef& response, const char* src, size_t spaceToLeave, bool allowControlChars);
   
+    unsigned int GetReplySeq();
+
     Platform* platform;
     Network* network;
     Move* move;
     Heat* heat;
     GCodes* gCodes;
     Webserver* webserver;
+
     Tool* toolList;
     Tool* currentTool;
-    uint16_t ticksInSpinState;
-    uint8_t spinState;
-    bool debug;
-    float fastLoop, slowLoop;
-    float lastTime;
-    bool stopped;
-    bool active;
-    bool resetting;
     uint16_t activeExtruders;
     uint16_t activeHeaters;
     bool coldExtrude;
 
-    // File information about the file being printed
+    uint16_t ticksInSpinState;
+    uint8_t spinState;
+    float fastLoop, slowLoop;
+    float lastTime;
+
+    bool debug;
+    bool stopped;
+    bool active;
+    bool resetting;
+
+    char password[SHORT_STRING_LENGTH + 1];
+    char myName[SHORT_STRING_LENGTH + 1];
+
     bool fileInfoDetected;
     char fileBeingPrinted[255];
     GcodeFileInfo currentFileInfo;
     float printStartTime;
+
+    int beepFrequency, beepDuration;
+    char message[SHORT_STRING_LENGTH + 1];
+
+    char gcodeReplyBuffer[GCODE_REPLY_LENGTH];
+    StringRef gcodeReply;
+    unsigned int seq;
+    bool increaseSeq;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -160,6 +198,8 @@ inline void RepRap::SetDebug(bool d)
 inline void RepRap::Interrupt() { move->Interrupt(); }
 inline bool RepRap::IsStopped() const { return stopped; }
 inline uint16_t RepRap::GetTicksInSpinState() const { return ticksInSpinState; }
+
+inline const StringRef& RepRap::GetGcodeReply() const { return gcodeReply; }
 
 #endif
 

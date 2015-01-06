@@ -89,6 +89,7 @@ public:
 	void SetConnectionLost();
 	bool LostConnection() const { return cs == NULL || cs->pcb == NULL; }
 	ConnectionState *GetConnection() const { return cs; }
+	uint32_t GetRemoteIP() const;
 	uint16_t GetLocalPort() const;
 	TransactionStatus GetStatus() const { return status; }
 
@@ -109,6 +110,7 @@ private:
 	TransactionStatus status;
 	float lastWriteTime;
 	bool closeRequested;
+	bool repeated;
 };
 
 // This class holds data left to be sent to TCP clients.

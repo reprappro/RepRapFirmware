@@ -31,7 +31,6 @@ Licence: GPL
 #define WEBSERVER_H
 
 const unsigned int gcodeBufferLength = 512;			// size of our gcode ring buffer, preferably a power of 2
-const unsigned int gcodeReplyBufferLength = 2048;	// size of our gcode reply buffer
 
 /* HTTP */
 
@@ -47,6 +46,9 @@ const unsigned int maxQualKeys = 5;				// max number of key/value pairs in the q
 const unsigned int maxHeaders = 10;				// max number of key/value pairs in the headers
 
 const unsigned int jsonReplyLength = 2000;		// size of buffer used to hold JSON reply
+
+const unsigned int maxSessions = 8;				// maximum number of simultaneous HTTP sessions
+const unsigned int httpSessionTimeout = 30;		// HTTP session timeout in seconds
 
 /* FTP */
 
@@ -95,7 +97,6 @@ class ProtocolInterpreter
 
 	protected:
 
-	    bool gotPassword;
 	    Platform *platform;
 	    Webserver *webserver;
 	    Network *network;
@@ -129,32 +130,22 @@ class Webserver
     void Exit();
     void Diagnostics();
 
-    void SetPassword(const char* pw);
-    void SetName(const char* nm);
-    const char *GetName() const;
-    bool CheckPassword(const char* pw) const;
-
     bool GCodeAvailable();
     char ReadGCode();
-
-    const StringRef& GetGcodeReply() const { return gcodeReply; }
-    unsigned int GetReplySeq();
     unsigned int GetGcodeBufferSpace() const;
-
-    static bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info);
 
     void ConnectionLost(const ConnectionState *cs);
     void ConnectionError();
     void WebDebug(bool wdb);
 
+    static bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info);
+
     friend class Platform;
 
   protected:
 
-    void MessageStringToWebInterface(const char *s, bool error);
-    void AppendReplyToWebInterface(const char* s, bool error);
-
-  private:
+    void ResponseToWebInterface(const char *s, bool error);
+    void AppendResponseToWebInterface(const char* s);
 
 	class HttpInterpreter : public ProtocolInterpreter
 	{
@@ -163,6 +154,9 @@ class Webserver
 			HttpInterpreter(Platform *p, Webserver *ws, Network *n);
 			bool CharFromClient(const char c);
 			void ResetState();
+
+			void ResetSessions();
+			void CheckSessions();
 
 			virtual bool DebugEnabled() /*override*/ const { return webDebug; }
 			void SetDebug(bool b) { webDebug = b; }
@@ -202,6 +196,11 @@ class Webserver
 			bool ProcessMessage();
 			bool RejectMessage(const char* s, unsigned int code = 500);
 
+			bool Authenticate();
+			bool IsAuthenticated() const;
+			void UpdateAuthentication();
+			void RemoveAuthentication();
+
 			HttpState state;
 
 			// Buffers for processing HTTP input
@@ -219,6 +218,11 @@ class Webserver
 			char decodeChar;
 			uint16_t seq;									// reply sequence number, so that the client can tell if a json reply is new or not
 		    bool webDebug;
+
+		    // HTTP sessions
+		    unsigned int numActiveSessions;
+		    unsigned int sessionIP[maxSessions];
+		    float sessionLastQueryTime[maxSessions];
 	};
 	HttpInterpreter *httpInterpreter;
 
@@ -274,7 +278,7 @@ class Webserver
 			bool CharFromClient(const char c);
 			void ResetState();
 
-			void HandleGcodeReply(const char* reply, bool haveMore = false);
+			void HandleGcodeReply(const char* reply);
 			bool HasRemainingData() const;
 			void RemainingDataSent();
 
@@ -303,22 +307,13 @@ class Webserver
     // File info methods
     static bool FindHeight(const char* buf, size_t len, float& height);
     static bool FindLayerHeight(const char* buf, size_t len, float& layerHeight);
-    static unsigned int FindFilamentUsed(const char* buf, size_t len,  float *filamentUsed, unsigned int maxFilaments);
-    static void CopyParameterText(const char* src, char *dst, size_t length);
+    static unsigned int FindFilamentUsed(const char* buf, size_t len, float *filamentUsed, unsigned int maxFilaments);
 
     // Buffer to hold gcode that is ready for processing
     char gcodeBuffer[gcodeBufferLength];
     unsigned int gcodeReadIndex, gcodeWriteIndex;	// head and tail indices into gcodeBuffer
-    char gcodeReplyBuffer[gcodeReplyBufferLength];
-    StringRef gcodeReply;
-
-    unsigned int seq;
-    bool increaseSeq;
 
     // Misc
-    char password[SHORT_STRING_LENGTH + 1];
-    char myName[SHORT_STRING_LENGTH + 1];
-
     Platform* platform;
     Network* network;
     bool webserverActive;

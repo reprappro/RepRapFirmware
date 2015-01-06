@@ -674,6 +674,10 @@ public:
 
   void SetAutoSave(bool enabled);
 
+  // AUX device
+  bool HaveAux() const;
+  void Beep(int freq, int ms);
+
 //-------------------------------------------------------------------------------------------------------
   
 private:

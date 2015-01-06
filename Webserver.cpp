@@ -100,8 +100,8 @@ const float pasvPortTimeout = 10.0;	 					// seconds to wait for the FTP data po
 
 
 // Constructor and initialisation
-Webserver::Webserver(Platform* p, Network *n) : platform(p), network(n), webserverActive(false),
-		readingConnection(NULL), gcodeReply(gcodeReplyBuffer, gcodeReplyBufferLength)
+Webserver::Webserver(Platform* p, Network *n) : platform(p), network(n),
+		webserverActive(false), readingConnection(NULL)
 {
 	httpInterpreter = new HttpInterpreter(p, this, n);
 	ftpInterpreter = new FtpInterpreter(p, this, n);
@@ -111,20 +111,14 @@ Webserver::Webserver(Platform* p, Network *n) : platform(p), network(n), webserv
 void Webserver::Init()
 {
 	// initialise the webserver class
-	SetPassword(DEFAULT_PASSWORD);
-	SetName(DEFAULT_NAME);
-
 	gcodeReadIndex = gcodeWriteIndex = 0;
 	lastTime = platform->Time();
 	longWait = lastTime;
-	gcodeReply[0] = 0;
 	webserverActive = true;
-
-	increaseSeq = false;
-	seq = 0;
 
 	// initialise all protocol handlers
 	httpInterpreter->ResetState();
+	httpInterpreter->ResetSessions();
 	ftpInterpreter->ResetState();
 	telnetInterpreter->ResetState();
 }
@@ -138,6 +132,9 @@ void Webserver::Spin()
 
 	if (webserverActive && httpInterpreter->FlushUploadData() && ftpInterpreter->FlushUploadData())
 	{
+		// Check if we can purge any HTTP sessions
+		httpInterpreter->CheckSessions();
+
 		// We must ensure that we have exclusive access to LWIP
 
 		if (!network->Lock())
@@ -281,44 +278,6 @@ void Webserver::Diagnostics()
 	platform->AppendMessage(BOTH_MESSAGE, "Webserver Diagnostics:\n");
 }
 
-void Webserver::SetPassword(const char* pw)
-{
-	// Users sometimes put a tab character between the password and the comment, so allow for this
-	CopyParameterText(pw, password, ARRAY_SIZE(password));
-}
-
-void Webserver::SetName(const char* nm)
-{
-	// Users sometimes put a tab character between the machine name and the comment, so allow for this
-	CopyParameterText(nm, myName, ARRAY_SIZE(myName));
-}
-
-// Copy some parameter text, stopping at the first control character or when the destination buffer is full, and removing trailing spaces
-void Webserver::CopyParameterText(const char* src, char *dst, size_t length)
-{
-	size_t i;
-	for (i = 0; i + 1 < length && src[i] >= ' '; ++i)
-	{
-		dst[i] = src[i];
-	}
-	// Remove any trailing spaces
-	while (i > 0 && dst[i - 1] == ' ')
-	{
-		--i;
-	}
-	dst[i] = 0;
-}
-
-const char *Webserver::GetName() const
-{
-	return myName;
-}
-
-bool Webserver::CheckPassword(const char *pw) const
-{
-	return StringEquals(pw, password);
-}
-
 // Get the actual amount of gcode buffer space we have
 unsigned int Webserver::GetGcodeBufferSpace() const
 {
@@ -351,26 +310,25 @@ void Webserver::ProcessGcode(const char* gc)
 		FileStore *configFile = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
 		if (configFile == NULL)
 		{
-			MessageStringToWebInterface("Configuration file not found", true);
+			ResponseToWebInterface("Configuration file not found", true);
 		}
 		else
 		{
+			reprap.MessageToStatusResponse("");
+
 			char c;
-			size_t i = 0;
 			bool reading_whitespace = false;
-			while (i < gcodeReply.Length() - 1 && configFile->Read(c))
+			while (configFile->Read(c))
 			{
 				if (!reading_whitespace || (c != ' ' && c != '\t'))
 				{
-					gcodeReply[i++] = c;
+					reprap.AppendCharToStatusResponse(c);
 				}
 				reading_whitespace = (c == ' ' || c == '\t');
 			}
 			configFile->Close();
-			gcodeReply[i] = 0;
 
-			increaseSeq = true;
-			telnetInterpreter->HandleGcodeReply(gcodeReply.Pointer());
+			telnetInterpreter->HandleGcodeReply(reprap.GetGcodeReply().Pointer());
 		}
 	}
 	else
@@ -398,17 +356,6 @@ char Webserver::ReadGCode()
 		gcodeReadIndex = (gcodeReadIndex + 1u) % gcodeBufferLength;
 	}
 	return c;
-}
-
-unsigned int Webserver::GetReplySeq()
-{
-	if (increaseSeq)
-	{
-		seq++;
-		increaseSeq = false;
-	}
-
-	return seq;
 }
 
 // Process a received string of gcodes
@@ -467,8 +414,7 @@ void Webserver::StoreGcodeData(const char* data, size_t len)
 {
 	if (len > GetGcodeBufferSpace())
 	{
-		platform->Message(HOST_MESSAGE, "Webserver: GCode buffer overflow.\n");
-		MessageStringToWebInterface("Webserver: GCode buffer overflow", true);
+		platform->Message(BOTH_ERROR_MESSAGE, "GCode buffer overflow in Webserver!\n");
 	}
 	else
 	{
@@ -530,7 +476,7 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 	}
 }
 
-void Webserver::MessageStringToWebInterface(const char *s, bool error)
+void Webserver::ResponseToWebInterface(const char *s, bool error)
 {
 	if (!webserverActive)
 	{
@@ -539,39 +485,37 @@ void Webserver::MessageStringToWebInterface(const char *s, bool error)
 
 	if (strlen(s) == 0 && !error)
 	{
-		gcodeReply.copy("ok");
+		reprap.MessageToStatusResponse(s);
 		telnetInterpreter->HandleGcodeReply("ok");
 	}
 	else
 	{
 		if (error)
 		{
-			gcodeReply.printf("Error: %s", s);
-			telnetInterpreter->HandleGcodeReply("Error: ", true);
+			reprap.MessageToStatusResponse("Error: ");
+			reprap.AppendMessageToStatusResponse(s);
+
+			telnetInterpreter->HandleGcodeReply("Error: ");
 			telnetInterpreter->HandleGcodeReply(s);
 		}
 		else
 		{
-			gcodeReply.copy(s);
+			reprap.MessageToStatusResponse(s);
 			telnetInterpreter->HandleGcodeReply(s);
 		}
 	}
-	increaseSeq = true;
 }
 
-void Webserver::AppendReplyToWebInterface(const char *s, bool error)
+void Webserver::AppendResponseToWebInterface(const char *s)
 {
 	if (!webserverActive)
 	{
 		return;
 	}
 
-	gcodeReply.cat(s);
-
-	increaseSeq = true;
-	telnetInterpreter->HandleGcodeReply(s, true);
+	reprap.AppendMessageToStatusResponse(s);
+	telnetInterpreter->HandleGcodeReply(s);
 }
-
 
 //********************************************************************************************
 //
@@ -862,90 +806,117 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 // 'value' is null-terminated, but we also pass its length in case it contains embedded nulls, which matter when uploading files.
 bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef& response, const char* key, const char* value, size_t valueLength, bool& keepOpen)
 {
-	bool found = true;	// assume success
 	keepOpen = false;	// assume we don't want to persist the connection
+	bool found = true;	// assume success
 
-	if (StringEquals(request, "status"))	// new style status request
+	if (StringEquals(request, "connect") && StringEquals(key, "password"))
 	{
-		reprap.GetStatusResponse(response, 1);
-	}
-	else if (StringEquals(request, "poll"))		// old style status request
-	{
-		reprap.GetStatusResponse(response, 0);
-	}
-	else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
-	{
-		webserver->LoadGcodeBuffer(value);
-		response.printf("{\"buff\":%u}", webserver->GetGcodeBufferSpace());
-	}
-	else if (StringEquals(request, "upload_begin") && StringEquals(key, "name"))
-	{
-		FileStore *file = platform->GetFileStore("0:/", value, true);
-		StartUpload(file);
-
-		GetJsonUploadResponse(response);
-	}
-	else if (StringEquals(request, "upload_data") && StringEquals(key, "data"))
-	{
-		StoreUploadData(value, valueLength);
-
-		GetJsonUploadResponse(response);
-		keepOpen = true;
-	}
-	else if (StringEquals(request, "upload_end") && StringEquals(key, "size"))
-	{
-		uint32_t file_length = strtoul(value, NULL, 10);
-		FinishUpload(file_length);
-
-		GetJsonUploadResponse(response);
-	}
-	else if (StringEquals(request, "upload_cancel"))
-	{
-		CancelUpload();
-		response.copy("{\"err\":0}");
-	}
-	else if (StringEquals(request, "delete") && StringEquals(key, "name"))
-	{
-		bool ok = platform->GetMassStorage()->Delete("0:/", value);
-		response.printf("{\"err\":%d}", (ok) ? 0 : 1);
-	}
-	else if (StringEquals(request, "files"))
-	{
-		const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-		reprap.GetFilesResponse(response, dir);
-	}
-	else if (StringEquals(request, "fileinfo"))
-	{
-		reprap.GetFileInfoResponse(response, (StringEquals(key, "name")) ? value : NULL);
-	}
-	else if (StringEquals(request, "name"))
-	{
-		reprap.GetNameResponse(response);
-	}
-	else if (StringEquals(request, "password") && StringEquals(key, "password"))
-	{
-		gotPassword = webserver->CheckPassword(value);
-		response.printf("{\"password\":\"%s\"}", (gotPassword) ? "right" : "wrong");
-	}
-	else if (StringEquals(request, "axes"))
-	{
-		response.copy("{\"axes\":");
-		char ch = '[';
-		for (int8_t drive = 0; drive < AXES; drive++)
+		if (IsAuthenticated())
 		{
-			response.catf("%c%.1f", ch, platform->AxisTotalLength(drive));
-			ch = ',';
+			// We're already authenticated, no need to check the password again
+			response.copy("{\"err\":0}");
 		}
-		response.cat("]}");
+		else if (reprap.CheckPassword(value))
+		{
+			if (Authenticate())
+			{
+				// This is only possible if we have an HTTP session left
+				response.copy("{\"err\":0}");
+			}
+			else
+			{
+				// Otherwise report an error
+				response.copy("{\"err\":2}");
+			}
+		}
+		else
+		{
+			// Wrong password
+			response.copy("{\"err\":1}");
+		}
 	}
-	else if (StringEquals(request, "connect"))
+	else if (!IsAuthenticated())
 	{
-		CancelUpload();
-		reprap.GetStatusResponse(response, 1);
+		// Don't respond if this IP is not authenticated
+		found = false;
 	}
 	else
 	{
-		found = false;
+		UpdateAuthentication();
+
+		if (StringEquals(request, "disconnect"))
+		{
+			RemoveAuthentication();
+			response.copy("{\"err\":0}");
+		}
+		else if (StringEquals(request, "status"))
+		{
+			reprap.GetStatusResponse(response, 1);
+		}
+		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
+		{
+			webserver->LoadGcodeBuffer(value);
+			response.printf("{\"buff\":%u}", webserver->GetGcodeBufferSpace());
+		}
+		else if (StringEquals(request, "upload_begin") && StringEquals(key, "name"))
+		{
+			FileStore *file = platform->GetFileStore("0:/", value, true);
+			StartUpload(file);
+
+			GetJsonUploadResponse(response);
+		}
+		else if (StringEquals(request, "upload_data") && StringEquals(key, "data"))
+		{
+			StoreUploadData(value, valueLength);
+
+			GetJsonUploadResponse(response);
+			keepOpen = true;
+		}
+		else if (StringEquals(request, "upload_end") && StringEquals(key, "size"))
+		{
+			uint32_t file_length = strtoul(value, NULL, 10);
+			FinishUpload(file_length);
+
+			GetJsonUploadResponse(response);
+		}
+		else if (StringEquals(request, "upload_cancel"))
+		{
+			CancelUpload();
+			response.copy("{\"err\":0}");
+		}
+		else if (StringEquals(request, "delete") && StringEquals(key, "name"))
+		{
+			bool ok = platform->GetMassStorage()->Delete("0:/", value);
+			response.printf("{\"err\":%d}", (ok) ? 0 : 1);
+		}
+		else if (StringEquals(request, "files"))
+		{
+			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
+			reprap.GetFilesResponse(response, dir);
+		}
+		else if (StringEquals(request, "fileinfo"))
+		{
+			reprap.GetFileInfoResponse(response, (StringEquals(key, "name")) ? value : NULL);
+		}
+		else if (StringEquals(request, "name"))
+		{
+			reprap.GetNameResponse(response);
+		}
+		else if (StringEquals(request, "axes"))
+		{
+			response.copy("{\"axes\":");
+			char ch = '[';
+			for (int8_t drive = 0; drive < AXES; drive++)
+			{
+				response.catf("%c%.1f", ch, platform->AxisTotalLength(drive));
+				ch = ',';
+			}
+			response.cat("]}");
+		}
+		else
+		{
+			found = false;
+		}
 	}
 
 	return found;
@@ -964,6 +935,11 @@ void Webserver::HttpInterpreter::ResetState()
 	numQualKeys = 0;
 	numHeaderKeys = 0;
 	commandWords[0] = clientMessage;
+}
+
+void Webserver::HttpInterpreter::ResetSessions()
+{
+	numActiveSessions = 0;
 }
 
 // Process a character from the client
@@ -1331,6 +1307,81 @@ bool Webserver::HttpInterpreter::RejectMessage(const char* response, unsigned in
 	return true;
 }
 
+// Authenticate current IP and return true on success
+bool Webserver::HttpInterpreter::Authenticate()
+{
+	if (numActiveSessions < maxSessions)
+	{
+		sessionIP[numActiveSessions] = network->GetTransaction()->GetRemoteIP();
+		sessionLastQueryTime[numActiveSessions] = platform->Time();
+		numActiveSessions++;
+		return true;
+	}
+	return false;
+}
+
+bool Webserver::HttpInterpreter::IsAuthenticated() const
+{
+	unsigned int ip = network->GetTransaction()->GetRemoteIP();
+	for(uint8_t i=0; i<numActiveSessions; i++)
+	{
+		if (sessionIP[i] == ip)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void Webserver::HttpInterpreter::UpdateAuthentication()
+{
+	unsigned int ip = network->GetTransaction()->GetRemoteIP();
+	for(int i=numActiveSessions - 1; i>=0; i--)
+	{
+		if (sessionIP[i] == ip)
+		{
+			sessionLastQueryTime[i] = platform->Time();
+			break;
+		}
+	}
+}
+
+void Webserver::HttpInterpreter::RemoveAuthentication()
+{
+	unsigned int ip = network->GetTransaction()->GetRemoteIP();
+	for(int i=numActiveSessions - 1; i>=0; i--)
+	{
+		if (sessionIP[i] == ip)
+		{
+			for(int k=numActiveSessions - 1; k > i; k--)
+			{
+				sessionIP[k - 1] = sessionIP[k];
+				sessionLastQueryTime[k - 1] = sessionLastQueryTime[k];
+			}
+			numActiveSessions--;
+			break;
+		}
+	}
+}
+
+void Webserver::HttpInterpreter::CheckSessions()
+{
+	const float time = platform->Time();
+	for(int i=numActiveSessions - 1; i>=0; i--)
+	{
+		if (time - sessionLastQueryTime[i] > httpSessionTimeout)
+		{
+			for(int k=numActiveSessions - 1; k > i; k--)
+			{
+				sessionIP[k - 1] = sessionIP[k];
+				sessionLastQueryTime[k - 1] = sessionLastQueryTime[k];
+			}
+			numActiveSessions--;
+		}
+	}
+}
+
 
 //********************************************************************************************
 //
@@ -1515,7 +1566,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 				}
 				pass[pass_length] = 0;
 
-				if (webserver->CheckPassword(pass))
+				if (reprap.CheckPassword(pass))
 				{
 					state = authenticated;
 					SendReply(230, "Login successful.");
@@ -1587,7 +1638,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 				/* get local IP address */
 				const byte *ip_address = platform->IPAddress();
 
-				/* open random port > 1024 */
+				/* open random port > 1023 */
 				rand();
 				uint16_t pasv_port = random(1024, 65535);
 				network->OpenDataPort(pasv_port);
@@ -2096,7 +2147,7 @@ void Webserver::TelnetInterpreter::ProcessLine()
 	switch (state)
 	{
 		case authenticating:
-			if (webserver->CheckPassword(clientMessage))
+			if (reprap.CheckPassword(clientMessage))
 			{
 				network->SaveTelnetConnection();
 				state = authenticated;
@@ -2136,30 +2187,21 @@ void Webserver::TelnetInterpreter::ProcessLine()
 	}
 }
 
-void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply, bool haveMore)
+void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
 {
 	if (state >= authenticated && network->AcquireTelnetTransaction())
 	{
 		NetworkTransaction *req = network->GetTransaction();
 
 		// Whenever a new line is read, we also need to send a carriage return
-		bool append_line = false;
-		while (reply[0] != 0)
+		while (*reply != 0)
 		{
-			append_line = true;
-			if (reply[0] == '\n')
+			if (*reply == '\n')
 			{
 				req->Write('\r');
-				append_line = false;
 			}
-			req->Write(reply[0]);
+			req->Write(*reply);
 			reply++;
-		}
-
-		// Only append a line break if reply didn't contain one and if we aren't expecting any more data
-		if (append_line && !haveMore)
-		{
-			req->Write("\r\n");
 		}
 
 		// We must not send the message here, because then we'd have to deal with LWIP internals

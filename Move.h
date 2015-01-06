@@ -188,6 +188,7 @@ class Move
     bool Pause();								// Pause any moves in progress
     bool IsPaused() const;						// Are all the moves paused?
     bool IsPausing() const;						// Are we still waiting for the last move to finish?
+    bool IsResuming() const;					// Are we resuming a paused print?
     bool IsCancelled() const;					// Are we busy destroying look-ahead entries?
     bool Resume();								// Resume paused moves
     void Cancel();								// Cancel any pending moves
@@ -206,6 +207,7 @@ class Move
     		LookAhead* la, DDA* hitDDA);
     void HitHighStop(int8_t drive, 				// What to do when a high endstop is hit
     		LookAhead* la, DDA* hitDDA);
+    bool NoLiveMovement() const;				// Is a move running, or are there any queued if we're still running?
     void SetPositions(float move[]);			// Force the coordinates to be these
     void SetLiveCoordinates(float coords[]);	// Force the live coordinates (see above) to be these
     void SetXBedProbePoint(int index, float x);	// Record the X coordinate of a probe point
@@ -256,7 +258,6 @@ class Move
     bool DDARingAdd(LookAhead* lookAhead);				// Add a processed look-ahead entry to the DDA ring
     DDA* DDARingGet();									// Get the next DDA ring entry to be run
     bool DDARingEmpty() const;							// Anything there?
-    bool NoLiveMovement() const;						// Is a move running, or are there any queued if we're still running?
     bool DDARingFull() const;							// Any more room?
     bool GetDDARingLock();								// Lock the ring so only this function may access it
     void ReleaseDDARingLock();							// Release the DDA ring lock
@@ -332,6 +333,7 @@ class Move
     float extrusionFactors[DRIVES - AXES];			// Extrusion factors (normally 1.0)
     float speedFactor;								// Speed factor, changed feedrates are multiplied by this
 
+    bool isResuming;
     volatile bool slowingDown;
     volatile MoveStatus state;
 };
@@ -509,6 +511,11 @@ inline bool Move::IsPausing() const
 	return state == pausing;
 }
 
+inline bool Move::IsResuming() const
+{
+	return isResuming;
+}
+
 inline bool Move::IsCancelled() const
 {
 	return state == cancelled;
@@ -522,6 +529,7 @@ inline bool Move::Resume()
 	{
 		// Wait for isolated move to complete (if any)
 
+		isResuming = true;
 		if (!NoLiveMovement())
 		{
 			return false;
@@ -554,6 +562,7 @@ inline bool Move::Resume()
 			liveCoordinates[drive] = pauseCoordinates[drive];
 		}
 		currentFeedrate = pauseCoordinates[DRIVES];
+		isResuming = false;
 		state = running;
 	}
 
@@ -662,9 +671,7 @@ inline void Move::GetRawExtruderPositions(float e[]) const
 }
 
 
-// These are the actual numbers that we want to be the coordinates, so
-// don't transform them.
-
+// These are the actual numbers that we want to be the coordinates, so don't transform them.
 inline void Move::SetLiveCoordinates(float coords[])
 {
 	for(int8_t drive = 0; drive <= DRIVES; drive++)

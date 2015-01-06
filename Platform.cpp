@@ -569,6 +569,14 @@ void Platform::SetAutoSave(bool enabled)
 #endif
 }
 
+// AUX device
+void Platform::Beep(int freq, int ms)
+{
+	// Send the beep command to the aux channel. There is no flow control on this port, so it can't block for long.
+	scratchString.printf("{\"beep_freq\":%d,\"beep_length\":%d}\n", freq, ms);
+	aux->Write(scratchString.Pointer(), true);
+}
+
 // Note: the use of floating point time will cause the resolution to degrade over time.
 // For example, 1ms time resolution will only be available for about half an hour from startup.
 // Personally, I (dc42) would rather just maintain and provide the time in milliseconds in a uint32_t.
@@ -757,6 +765,21 @@ void Platform::InitialiseInterrupts()
 	currentHeater = 0;
 
 	active = true;							// this enables the tick interrupt, which keeps the watchdog happy
+}
+
+void Platform::SetInterrupt(float s) // Seconds
+{
+	if (s <= 0.0)
+	{
+		//NVIC_DisableIRQ(TC3_IRQn);
+		Message(BOTH_ERROR_MESSAGE, "Negative interrupt!\n");
+		s = STANDBY_INTERRUPT_RATE;
+	}
+	uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
+	TC_SetRA(TC1, 0, rc/2); //50% high, 50% low
+	TC_SetRC(TC1, 0, rc);
+	TC_Start(TC1, 0);
+	NVIC_EnableIRQ(TC3_IRQn);
 }
 
 //void Platform::DisableInterrupts()
@@ -1208,23 +1231,6 @@ float Platform::GetFanRPM()
 			: 0.0;															// else assume fan is off or tacho not connected
 }
 
-// Interrupts
-
-void Platform::SetInterrupt(float s) // Seconds
-{
-	if (s <= 0.0)
-	{
-		//NVIC_DisableIRQ(TC3_IRQn);
-		Message(BOTH_ERROR_MESSAGE, "Negative interrupt!\n");
-		s = STANDBY_INTERRUPT_RATE;
-	}
-	uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
-	TC_SetRA(TC1, 0, rc/2); //50% high, 50% low
-	TC_SetRC(TC1, 0, rc);
-	TC_Start(TC1, 0);
-	NVIC_EnableIRQ(TC3_IRQn);
-}
-
 //-----------------------------------------------------------------------------------------------------
 
 FileStore* Platform::GetFileStore(const char* directory, const char* fileName, bool write)
@@ -1307,12 +1313,12 @@ void Platform::Message(char type, const StringRef& message)
 
 	case WEB_MESSAGE:
 		// Message that is to be sent to the web
-		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), false);
+		reprap.GetWebserver()->ResponseToWebInterface(message.Pointer(), false);
 		break;
 
 	case WEB_ERROR_MESSAGE:
 		// Message that is to be sent to the web - flags an error
-		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), true);
+		reprap.GetWebserver()->ResponseToWebInterface(message.Pointer(), true);
 		break;
 
 	case BOTH_MESSAGE:
@@ -1325,7 +1331,7 @@ void Platform::Message(char type, const StringRef& message)
 			}
 		}
 		line->Write(message.Pointer());
-		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), false);
+		reprap.GetWebserver()->ResponseToWebInterface(message.Pointer(), false);
 		break;
 
 	case BOTH_ERROR_MESSAGE:
@@ -1341,7 +1347,7 @@ void Platform::Message(char type, const StringRef& message)
 			}
 		}
 		line->Write(message.Pointer());
-		reprap.GetWebserver()->MessageStringToWebInterface(message.Pointer(), true);
+		reprap.GetWebserver()->ResponseToWebInterface(message.Pointer(), true);
 		break;
 	}
 }
@@ -1390,30 +1396,14 @@ void Platform::AppendMessage(char type, const StringRef& message)
 		break;
 
 	case WEB_MESSAGE:
-		// Message that is to be sent to the web
-		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), false);
-		break;
-
 	case WEB_ERROR_MESSAGE:
-		// Message that is to be sent to the web - flags an error
-		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), true);
+		// Message that is to be sent to the web
+		reprap.GetWebserver()->AppendResponseToWebInterface(message.Pointer());
 		break;
 
 	case BOTH_MESSAGE:
-		// Message that is to be sent to the web & host
-		if (line->GetOutputColumn() == 0)
-		{
-			for(uint8_t i = 0; i < messageIndent; i++)
-			{
-				line->Write(' ');
-			}
-		}
-		line->Write(message.Pointer());
-		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), false);
-		break;
-
 	case BOTH_ERROR_MESSAGE:
-		// Message that is to be sent to the web & host - flags an error
+		// Message that is to be sent to the web & host
 		// Make this the default behaviour too.
 
 	default:
@@ -1425,7 +1415,7 @@ void Platform::AppendMessage(char type, const StringRef& message)
 			}
 		}
 		line->Write(message.Pointer());
-		reprap.GetWebserver()->AppendReplyToWebInterface(message.Pointer(), true);
+		reprap.GetWebserver()->AppendResponseToWebInterface(message.Pointer());
 		break;
 	}
 }

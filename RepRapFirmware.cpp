@@ -164,7 +164,7 @@ RepRap reprap;
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
 RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ticksInSpinState(0),
-		resetting(false), fileInfoDetected(false), printStartTime(0.0)
+		resetting(false), fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH)
 {
   platform = new Platform();
   network = new Network(platform);
@@ -181,6 +181,16 @@ void RepRap::Init()
   activeExtruders = 1;		// we always report at least 1 extruder to the web interface
   activeHeaters = 2;		// we always report the bed heater + 1 extruder heater to the web interface
 
+  SetPassword(DEFAULT_PASSWORD);
+  SetName(DEFAULT_NAME);
+
+  beepFrequency = beepDuration = 0;
+  message[0] = 0;
+
+  gcodeReply[0] = 0;
+  increaseSeq = false;
+  seq = 0;
+
   // All of the following init functions must execute reasonably quickly before the watchdog times us out
   platform->Init();
   gCodes->Init();
@@ -188,6 +198,7 @@ void RepRap::Init()
   move->Init();
   heat->Init();
   currentTool = NULL;
+
   const uint32_t wdtTicks = 256;	// number of watchdog ticks @ 32768Hz/128 before the watchdog times out (max 4095)
   WDT_Enable(WDT, (wdtTicks << WDT_MR_WDV_Pos) | (wdtTicks << WDT_MR_WDD_Pos) | WDT_MR_WDRSTEN);	// enable watchdog, reset the mcu if it times out
   coldExtrude = false;
@@ -516,150 +527,162 @@ void RepRap::Tick()
 }
 
 // Get the JSON status response for the web server or M105 command.
-// Type 0 is the old-style webserver status response (we should be able to bet rid of this soon).
-// Type 1 is the new-style webserver status response.
+// Type 1 is the webserver status response.
 // Type 2 is the M105 S2 response, which is like the new-style status response but some fields are omitted.
 // Type 3 is the M105 S3 response, which is like the M105 S2 response except that static values are also included.
 // 'seq' is the response sequence number, not needed for the type 2 response because that field is omitted.
-void RepRap::GetStatusResponse(StringRef& response, uint8_t type) const
+void RepRap::GetStatusResponse(StringRef& response, uint8_t type)
 {
-	const GCodes *gc = reprap.GetGCodes();
-	const Move *move = reprap.GetMove();
-	const float fractionPrinted = gc->FractionOfFilePrinted();
-	if (type != 0)
+	char ch;
+
+	// Send the printing/idle status (new style for web interface)
+	if (type == 1)
 	{
-		// New-style status request
-		// Send the printing/idle status
-		char ch = (reprap.IsStopped()) ? 'S' : (fractionPrinted >= 0.0) ? 'P' : 'I';
-		response.printf("{\"status\":\"%c\",\"heaters\":", ch);
-
-		// Send the heater actual temperatures
-		const Heat *heat = reprap.GetHeat();
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		if (IsStopped())
 		{
-			response.catf("%c%.1f", ch, heat->GetTemperature(heater));
-			ch = ',';
+			// Halted
+			ch = 'H';
 		}
-
-		// Send the heater active temperatures
-		response.catf("],\"active\":");
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		else if (move->IsPausing())
 		{
-			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
-			ch = ',';
+			// Pausing / Decelerating
+			ch = 'D';
 		}
-
-		// Send the heater standby temperatures
-		response.catf("],\"standby\":");
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		else if (move->IsPaused())
 		{
-			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
-			ch = ',';
+			// Paused / Stopped
+			ch = 'S';
 		}
-
-		// Send the heater statuses (0=off, 1=standby, 2=active)
-		response.cat("],\"hstat\":");
-		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		else if (move->IsResuming())
 		{
-			response.catf("%c%d", ch, (int)heat->GetStatus(heater));
-			ch = ',';
+			// Resuming
+			ch = 'R';
 		}
-
-		// Send XYZ positions
-		float liveCoordinates[DRIVES + 1];
-		const Tool* currentTool = reprap.GetCurrentTool();
-		if (currentTool != NULL)
+		else if (gCodes->PrintingAFile())
 		{
-			const float *offset = currentTool->GetOffset();
-			for (size_t i = 0; i < AXES; ++i)
-			{
-				liveCoordinates[i] += offset[i];
-			}
+			// Printing
+			ch = 'P';
 		}
-		move->LiveCoordinates(liveCoordinates);
-		response.catf("],\"pos\":");		// announce the XYZ position
-		ch = '[';
-		for (int8_t drive = 0; drive < AXES; drive++)
+		else if (gCodes->DoingFileMacro() || !move->NoLiveMovement())
 		{
-			response.catf("%c%.2f", ch, liveCoordinates[drive]);
-			ch = ',';
+			// Busy
+			ch = 'B';
 		}
-
-		// Send actual and theoretical extruder total extrusion since power up, last G92 or last M23
-		response.catf("],\"extr\":");		// announce actual extruder positions
-		ch = '[';
-		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
+		else
 		{
-			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
-			ch = ',';
+			// Idle
+			ch = 'I';
 		}
-		float rawExtruderPos[DRIVES - AXES];
-		move->GetRawExtruderPositions(rawExtruderPos);
-		response.cat("],\"extr_raw\":");	// announce theoretical, file-based extruder positions
-		ch = '[';
-		for (int8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)		// loop through extruders
-		{
-			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
-			ch = ',';
-		}
-		response.cat("]");
-
-		// Send the speed and extruder override factors
-		response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
-		for (uint8_t extruder = 0; extruder < reprap.GetExtrudersInUse(); extruder++)
-		{
-			response.catf("%c%.2f", (!extruder) ? '[' : ',', reprap.GetMove()->GetExtrusionFactor(extruder) * 100.0);
-		}
-		response.cat("]");
-
-		// Send the current tool number
-		int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
-		response.catf(",\"tool\":%d", toolNumber);
-
-		// Send current fan value
-		float fanValue = (gc->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
-		response.catf(",\"fanPercent\":%.2f", fanValue);
 	}
 	else
 	{
-		// The old (deprecated) poll response lists the status, then all the heater temperatures, then the XYZ positions, then all the extruder positions.
-		// These are all returned in a single vector called "poll".
-		// This is a poor choice of format because we can't easily tell which is which unless we already know the number of heaters and extruders.
-		// RRP reversed the order at version 0.65 to send the positions before the heaters, but we haven't yet done that.
-		char c = (fractionPrinted >= 0.0) ? 'P' : 'I';
-		response.printf("{\"poll\":[\"%c\",", c); // Printing
-		for (int8_t heater = 0; heater < HEATERS; heater++)
+		ch = (IsStopped()) ? 'S' : (gCodes->PrintingAFile()) ? 'P' : 'I';
+	}
+	response.printf("{\"status\":\"%c\",\"heaters\":", ch);
+
+	// Send the heater actual temperatures
+	ch = '[';
+	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
+	{
+		response.catf("%c%.1f", ch, heat->GetTemperature(heater));
+		ch = ',';
+	}
+
+	// Send the heater active temperatures
+	response.catf("],\"active\":");
+	ch = '[';
+	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
+	{
+		response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
+		ch = ',';
+	}
+
+	// Send the heater standby temperatures
+	response.catf("],\"standby\":");
+	ch = '[';
+	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
+	{
+		response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
+		ch = ',';
+	}
+
+	// Send the heater statuses (0=off, 1=standby, 2=active)
+	response.cat("],\"hstat\":");
+	ch = '[';
+	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
+	{
+		response.catf("%c%d", ch, (int)heat->GetStatus(heater));
+		ch = ',';
+	}
+
+	// Send XYZ positions
+	float liveCoordinates[DRIVES + 1];
+	if (currentTool != NULL)
+	{
+		const float *offset = currentTool->GetOffset();
+		for (size_t i = 0; i < AXES; ++i)
 		{
-			response.catf("\"%.1f\",", reprap.GetHeat()->GetTemperature(heater));
-		}
-		// Send XYZ and extruder positions
-		float liveCoordinates[DRIVES + 1];
-		reprap.GetMove()->LiveCoordinates(liveCoordinates);
-		for (int8_t drive = 0; drive < DRIVES; drive++)	// loop through extruders
-		{
-			char ch = (drive == DRIVES - 1) ? ']' : ',';	// append ] to the last one but , to the others
-			response.catf("\"%.2f\"%c", liveCoordinates[drive], ch);
+			liveCoordinates[i] += offset[i];
 		}
 	}
+	move->LiveCoordinates(liveCoordinates);
+	response.catf("],\"pos\":");		// announce the XYZ position
+	ch = '[';
+	for (int8_t drive = 0; drive < AXES; drive++)
+	{
+		response.catf("%c%.2f", ch, liveCoordinates[drive]);
+		ch = ',';
+	}
+
+	// Send actual and theoretical extruder total extrusion since power up, last G92 or last M23
+	response.catf("],\"extr\":");		// announce actual extruder positions
+	ch = '[';
+	for (int8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
+	{
+		response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
+		ch = ',';
+	}
+	float rawExtruderPos[DRIVES - AXES];
+	move->GetRawExtruderPositions(rawExtruderPos);
+	response.cat("],\"extr_raw\":");	// announce theoretical, file-based extruder positions
+	ch = '[';
+	for (int8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
+	{
+		response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
+		ch = ',';
+	}
+	response.cat("]");
+
+	// Send the speed and extruder override factors
+	response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
+	for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)
+	{
+		response.catf("%c%.2f", (!extruder) ? '[' : ',', move->GetExtrusionFactor(extruder) * 100.0);
+	}
+	response.cat("]");
+
+	// Send the current tool number
+	int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
+	response.catf(",\"tool\":%d", toolNumber);
+
+	// Send current fan value
+	float fanValue = (gCodes->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
+	response.catf(",\"fanPercent\":%.2f", fanValue);
 
 	// Send the Z probe value
 	int v0 = platform->ZProbe();
 	int v1, v2;
 	switch (platform->GetZProbeSecondaryValues(v1, v2))
 	{
-	case 1:
-		response.catf(",\"probe\":\"%d (%d)\"", v0, v1);
-		break;
-	case 2:
-		response.catf(",\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
-		break;
-	default:
-		response.catf(",\"probe\":\"%d\"", v0);
-		break;
+		case 1:
+			response.catf(",\"probe\":\"%d (%d)\"", v0, v1);
+			break;
+		case 2:
+			response.catf(",\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
+			break;
+		default:
+			response.catf(",\"probe\":\"%d\"", v0);
+			break;
 	}
 
 	// Send fan RPM value
@@ -669,23 +692,41 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type) const
 	if (type != 0)
 	{
 		response.catf(",\"homed\":[%d,%d,%d]",
-				(gc->GetAxisIsHomed(0)) ? 1 : 0,
-				(gc->GetAxisIsHomed(1)) ? 1 : 0,
-				(gc->GetAxisIsHomed(2)) ? 1 : 0);
+				(gCodes->GetAxisIsHomed(0)) ? 1 : 0,
+				(gCodes->GetAxisIsHomed(1)) ? 1 : 0,
+				(gCodes->GetAxisIsHomed(2)) ? 1 : 0);
 	}
 	else
 	{
 		response.catf(",\"hx\":%d,\"hy\":%d,\"hz\":%d",
-				(gc->GetAxisIsHomed(0)) ? 1 : 0,
-				(gc->GetAxisIsHomed(1)) ? 1 : 0,
-				(gc->GetAxisIsHomed(2)) ? 1 : 0);
+				(gCodes->GetAxisIsHomed(0)) ? 1 : 0,
+				(gCodes->GetAxisIsHomed(1)) ? 1 : 0,
+				(gCodes->GetAxisIsHomed(2)) ? 1 : 0);
 	}
 
-	// Retrieve the gcode buffer from Webserver
-	const char *p = webserver->GetGcodeReply().Pointer();
-
 	// Send the fraction printed
-	response.catf(",\"fraction_printed\":%.4f", max<float>(0.0, fractionPrinted));
+	if (gCodes->PrintingAFile())
+	{
+		response.catf(",\"fraction_printed\":%.4f", gCodes->FractionOfFilePrinted());
+	}
+
+	// If there is an AUX device available, send message to it only
+	response.cat(",\"message\":");
+	if ((!gCodes->HaveAux() && type == 1) || (gCodes->HaveAux() && type != 1))
+	{
+		EncodeString(response, message, 2, false);
+	}
+	else
+	{
+		response.cat("\"\"");
+	}
+
+	// Report beep to web interface
+	if (type == 1 && beepDuration > 0 && beepFrequency > 0)
+	{
+		response.catf(",\"beepDuration\":%d,\"beepFrequency\":%d", beepDuration, beepFrequency);
+		beepDuration = beepFrequency = 0;
+	}
 
 	if (type < 2)
 	{
@@ -693,79 +734,84 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type) const
 		response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());
 
 		// Send the response sequence number
-		response.catf(",\"seq\":%u", webserver->GetReplySeq());
+		response.catf(",\"seq\":%u", GetReplySeq());
 
 		// Send the response to the last command. Do this last because it is long and may need to be truncated.
-		response.cat(",\"resp\":\"");
-		size_t jp = response.strlen();
-		while (*p != 0 && jp < response.Length() - 3)	// leave room for the final '"}\0'
-		{
-			char c = *p++;
-			char esc;
-			switch (c)
-			{
-			case '\r':
-				esc = 'r';
-				break;
-			case '\n':
-				esc = 'n';
-				break;
-			case '\t':
-				esc = 't';
-				break;
-			case '"':
-				esc = '"';
-				break;
-			case '\\':
-				esc = '\\';
-				break;
-			default:
-				esc = 0;
-				break;
-			}
-			if (esc)
-			{
-				if (jp == response.Length() - 4)
-				{
-					break;
-				}
-				response[jp++] = '\\';
-				response[jp++] = esc;
-			}
-			else
-			{
-				response[jp++] = c;
-			}
-		}
-		response[jp] = 0;
-		response.cat("\"");
+		response.cat(",\"resp\":");
+		EncodeString(response, gcodeReplyBuffer, 2, true);
 	}
 	else if (type == 3)
 	{
 		// Add the static fields. For now this is just the machine name, but other fields could be added e.g. axis lengths.
-		response.cat(",");
-		EncodeMachineName(response);
+		response.cat(",\"myName\":");
+		EncodeString(response, myName, 2, false);
 	}
 	response.cat("}");
 }
 
-// Copy the machine name variable in JSON format, leaving enough room to append "}" to it
-void RepRap::EncodeMachineName(StringRef& response) const
+// Copy some parameter text, stopping at the first control character or when the destination buffer is full, and removing trailing spaces
+void RepRap::CopyParameterText(const char* src, char *dst, size_t length)
 {
-	response.cat("\"myName\":\"");
-	size_t j = response.strlen();
-	const char *myName = webserver->GetName();
-	for (size_t i = 0; i < response.Length() - 4; ++i)
+	size_t i;
+	for (i = 0; i + 1 < length && src[i] >= ' '; ++i)
 	{
-		char c = myName[i];
-		if (c < ' ')	// if null terminator or bad character
-			break;
-		if (c == '"' || c == '\\')
+		dst[i] = src[i];
+	}
+	// Remove any trailing spaces
+	while (i > 0 && dst[i - 1] == ' ')
+	{
+		--i;
+	}
+	dst[i] = 0;
+}
+
+// Encode a string in JSON format and append it to a string buffer, truncating it if necessary to leave the specified amount of room
+void RepRap::EncodeString(StringRef& response, const char* src, size_t spaceToLeave, bool allowControlChars)
+{
+	response.cat("\"");
+	size_t j = response.strlen();
+	while (j + spaceToLeave + 2 <= response.Length())	// while there is room for a character and a trailing quote
+	{
+		char c = *src++;
+		if (c == 0 || (c < ' ' && !allowControlChars))	// if null terminator or bad character
 		{
-			// Need to escape the quote-mark or backslash for JSON
-			response[j++] = '\\';
+			break;
 		}
-		response[j++] = c;
+		char esc;
+		switch (c)
+		{
+		case '\r':
+			esc = 'r';
+			break;
+		case '\n':
+			esc = 'n';
+			break;
+		case '\t':
+			esc = 't';
+			break;
+		case '"':
+			esc = '"';
+			break;
+		case '\\':
+			esc = '\\';
+			break;
+		default:
+			esc = 0;
+			break;
+		}
+		if (esc)
+		{
+			if (j + spaceToLeave + 2 == response.Length())
+			{
+				break;					// if no room for the extra backslash then quit
+			}
+			response[j++] = '\\';
+			response[j++] = esc;
+		}
+		else
+		{
+			response[j++] = c;
+		}
 	}
 	response[j++] = '"';
 	response[j] = 0;
@@ -774,33 +820,28 @@ void RepRap::EncodeMachineName(StringRef& response) const
 // Get just the machine name in JSON format
 void RepRap::GetNameResponse(StringRef& response) const
 {
-	response.copy("{");
-	EncodeMachineName(response);
+	response.copy("{\"myName\":");
+	EncodeString(response, myName, 2, false);
 	response.cat("}");
 }
 
 // Get the list of files in the specified directory in JSON format
 void RepRap::GetFilesResponse(StringRef& response, const char* dir) const
 {
+	response.copy("{\"files\":");
+	char c = '[';
 	FileInfo file_info;
-	if (platform->GetMassStorage()->FindFirst(dir, file_info))
+	bool gotFile = platform->GetMassStorage()->FindFirst(dir, file_info);
+	while (gotFile && response.strlen() + strlen(file_info.fileName) + 6 < response.Length())
 	{
-		response.copy("{\"files\":[");
-
-		do {
-			// build the file list here, but keep 2 characters free to terminate the JSON message
-			response.catf("%c%s%c%c", FILE_LIST_BRACKET, file_info.fileName, FILE_LIST_BRACKET, FILE_LIST_SEPARATOR);
-		} while (platform->GetMassStorage()->FindNext(file_info));
-
-		response[response.strlen() - 1] = 0;	// remove last separator
-		response[response.Length() - 3] = 0;	// ensure room for 2 more characters and a null
-		response.cat("]}");
+		response.catf("%c", c);
+		EncodeString(response, file_info.fileName, 3, false);
+		c = ',';
+		gotFile = platform->GetMassStorage()->FindNext(file_info);
 	}
-	else
-	{
-		response.copy("{\"files\":[]}");
-	}
+	response.cat("]}");
 }
+
 // Get information for the specified file, or the currently printing file, in JSON format
 void RepRap::GetFileInfoResponse(StringRef& response, const char* filename) const
 {
@@ -866,6 +907,78 @@ void RepRap::StartingFilePrint(const char *filename)
 	printStartTime = platform->Time();
 	strncpy(fileBeingPrinted, filename, ARRAY_SIZE(fileBeingPrinted));
 	fileBeingPrinted[ARRAY_UPB(fileBeingPrinted)] = 0;
+}
+
+void RepRap::Beep(int freq, int ms)
+{
+	if (gCodes->HaveAux())
+	{
+		// If there is an LCD device present, make it beep
+		platform->Beep(freq, ms);
+	}
+	else
+	{
+		// Otherwise queue it until the webserver can process it
+		beepFrequency = freq;
+		beepDuration = ms;
+	}
+}
+
+void RepRap::SetMessage(const char *msg)
+{
+	strncpy(message, msg, SHORT_STRING_LENGTH);
+	message[SHORT_STRING_LENGTH] = 0;
+}
+
+void RepRap::MessageToStatusResponse(const char *message)
+{
+	gcodeReply.copy(message);
+	increaseSeq = true;
+}
+
+void RepRap::AppendMessageToStatusResponse(const char *message)
+{
+	gcodeReply.cat(message);
+	increaseSeq = true;
+}
+
+void RepRap::AppendCharToStatusResponse(const char c)
+{
+	gcodeReply.catf("%c", c);
+	increaseSeq = true;
+}
+
+unsigned int RepRap::GetReplySeq()
+{
+	if (increaseSeq)
+	{
+		seq++;
+		increaseSeq = false;
+	}
+
+	return seq;
+}
+
+bool RepRap::CheckPassword(const char *pw) const
+{
+	return (!password[0]) || (StringEquals(pw, password));
+}
+
+void RepRap::SetPassword(const char* pw)
+{
+	// Users sometimes put a tab character between the password and the comment, so allow for this
+	CopyParameterText(pw, password, ARRAY_SIZE(password));
+}
+
+const char *RepRap::GetName() const
+{
+	return myName;
+}
+
+void RepRap::SetName(const char* nm)
+{
+	// Users sometimes put a tab character between the machine name and the comment, so allow for this
+	CopyParameterText(nm, myName, ARRAY_SIZE(myName));
 }
 
 //*************************************************************************************************

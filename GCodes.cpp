@@ -25,7 +25,8 @@
 
 #include "RepRapFirmware.h"
 
-const float secondsToMinutes = 1.0/60.0;
+const float minutesToSeconds = 60.0;
+const float secondsToMinutes = 1.0/minutesToSeconds;
 
 GCodes::GCodes(Platform* p, Webserver* w)
 {
@@ -99,7 +100,7 @@ void GCodes::Reset()
 	fileToPrint.Close();
 	fileBeingWritten = NULL;
 	endStopsToCheck = 0;
-	doingFileMacro = doResumeMacro = false;
+	doingFileMacro = doPauseMacro = doResumeMacro = false;
 	fractionOfFilePrinted = -1.0;
 	dwellWaiting = false;
 	stackPointer = 0;
@@ -107,6 +108,7 @@ void GCodes::Reset()
 	probeCount = 0;
 	cannedCycleMoveCount = 0;
 	cannedCycleMoveQueued = false;
+	auxDetected = false;
 }
 
 void GCodes::DoFilePrint(GCodeBuffer* gb)
@@ -181,6 +183,7 @@ void GCodes::Spin()
 			platform->GetAux()->Read(b);
 			if (auxGCode->Put(b))	// add char to buffer and test whether the gcode is complete
 			{
+				auxDetected = true;
 				auxGCode->SetFinished(ActOnCode(auxGCode, true));
 				break;	// stop after receiving a complete gcode in case we haven't finished processing it
 			}
@@ -384,6 +387,10 @@ bool GCodes::Push()
 		extruderPositionStack[stackPointer][extruder] = lastExtruderPosition[extruder];
 	}
 	fileStack[stackPointer].CopyFrom(fileBeingPrinted);
+	if (stackPointer == 0)
+	{
+		fractionOfFilePrinted = fileBeingPrinted.FractionRead();	// save this so that we don't return the fraction of the macro file read
+	}
 	stackPointer++;
 	platform->PushMessageIndent();
 	return true;
@@ -403,6 +410,10 @@ bool GCodes::Pop()
 		return false;
 
 	stackPointer--;
+	if (stackPointer == 0)
+	{
+		fractionOfFilePrinted = -1.0;			// restore live updates of fraction read from the file being printed
+	}
 	drivesRelative = drivesRelativeStack[stackPointer];
 	axesRelative = axesRelativeStack[stackPointer];
 	moveBuffer[DRIVES] = feedrateStack[stackPointer];
@@ -631,11 +642,6 @@ bool GCodes::DoFileMacro(const char* fileName)
 			return false;
 		}
 
-		if (reprap.GetMove()->IsRunning())
-		{
-			fractionOfFilePrinted = fileBeingPrinted.FractionRead();
-		}
-
 		FileStore *f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
 		if (f == NULL)
 		{
@@ -669,11 +675,6 @@ bool GCodes::DoFileMacro(const char* fileName)
 		if (!Pop())
 		{
 			return false;
-		}
-
-		if (reprap.GetMove()->IsRunning())
-		{
-			fractionOfFilePrinted = -1.0;
 		}
 
 		doingFileMacro = false;
@@ -2353,7 +2354,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			if (reprap.GetMove()->IsPaused())
 			{
-				result = DoFileMacro(PAUSE_G);
+				if (doPauseMacro)
+				{
+					result = DoFileMacro(PAUSE_G);
+					doPauseMacro = !result;
+				}
 			}
 			else if (!PrintingAFile())
 			{
@@ -2372,6 +2377,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				fileToPrint.MoveFrom(fileBeingPrinted);
 				fileGCode->Pause();
 				queuedGCode->Pause();
+				doPauseMacro = true;
 				result = false;
 			}
 		}
@@ -2458,21 +2464,21 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		reply.copy("GCode end-of-file being interpreted.\n");
 		break;
 
-	case 30:	// Delete file
+	case 30: // Delete file
 		DeleteFile(gb->GetUnprecedentedString());
 		break;
 
 	// For case 32, see case 24
 
-	case 36:	// Return file information
+	case 36: // Return file information
 		{
 			const char* filename = gb->GetUnprecedentedString(true);	// get filename, or NULL if none provided
 			reprap.GetFileInfoResponse(reply, filename);
 		}
 		break;
 
-	case 80:	// ATX power on
-	case 81:	// ATX power off
+	case 80: // ATX power on
+	case 81: // ATX power off
 		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			return false;
 
@@ -2483,7 +2489,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		platform->SetAtxPower(code == 80);
 		break;
 
-	case 82:	// Use absolute extruder positioning
+	case 82: // Use absolute extruder positioning
 		if (drivesRelative)	// don't reset the absolute extruder position if it was already absolute
 		{
 			for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
@@ -2494,7 +2500,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 83:	// Use relative extruder positioning
+	case 83: // Use relative extruder positioning
 		if (!drivesRelative)	// don't reset the absolute extruder position if it was already relative
 		{
 			for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
@@ -2665,7 +2671,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		platform->SetFanValue(coolingInverted ? 255.0 : 0.0);
 		break;
 
-	case 109: // Deprecated
+	case 109: // Set Extruder Temperature and Wait - deprecated
 		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			return false;
 
@@ -2756,7 +2762,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-    case 119:
+	case 117: // Display message
+		reprap.SetMessage(gb->GetUnprecedentedString());
+		break;
+
+	case 119: // Get Endstop Status
 		{
 			reply.copy("Endstops - ");
 			char* es;
@@ -2789,15 +2799,15 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 120:
+	case 120: // Push
 		result = Push();
 		break;
 
-	case 121:
+	case 121: // Pop
 		result = Pop();
 		break;
 
-	case 122:
+	case 122: // Diagnostics
 		{
 			int val = (gb->Seen('P') ? gb->GetIValue() : 0);
 			if (val == 0)
@@ -2859,7 +2869,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 //		}
 //		break;
 
-	case 190: // Deprecated...
+	case 190: // Wait for bed temperature to reach target temp - deprecated
 		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			return false;
 
@@ -3036,7 +3046,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 220:	// Set/report speed factor override percentage
+	case 220: // Set/report speed factor override percentage
 		if (gb->Seen('S'))
 		{
 			float speedFactor = gb->GetFValue() / 100.0;
@@ -3056,7 +3066,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 221:	// Set/report extrusion factor override percentage
+	case 221: // Set/report extrusion factor override percentage
 		{
 			int extruder = 0;
 			if (gb->Seen('D'))	// D parameter (if present) selects the extruder number
@@ -3081,6 +3091,17 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	// For case 226, see case 25
+
+	case 300: // Beep
+		if (gb->Seen('P'))
+		{
+			int ms = gb->GetIValue();
+			if (gb->Seen('S'))
+			{
+				reprap.Beep(gb->GetIValue(), ms);
+			}
+		}
+		break;
 
 	case 301: // Set/report hot end PID values
 		SetPidParameters(gb, 1, reply);
@@ -3156,18 +3177,18 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 550: // Set/report machine name
 		if (gb->Seen('P'))
 		{
-			reprap.GetWebserver()->SetName(gb->GetString());
+			reprap.SetName(gb->GetString());
 		}
 		else
 		{
-			reply.printf("RepRap name: %s\n", reprap.GetWebserver()->GetName());
+			reply.printf("RepRap name: %s\n", reprap.GetName());
 		}
 		break;
 
 	case 551: // Set password (no option to report it)
 		if (gb->Seen('P'))
 		{
-			reprap.GetWebserver()->SetPassword(gb->GetString());
+			reprap.SetPassword(gb->GetString());
 		}
 		break;
 
@@ -3383,7 +3404,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 561:
+	case 561: // Disable bed transform
 		reprap.GetMove()->SetIdentityTransform();
 		break;
 
@@ -3527,7 +3548,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 998:
+	case 998: // Request resend of line
 		if (gb->Seen('P'))
 		{
 			reply.printf("%d\n", gb->GetIValue());
@@ -3568,7 +3589,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		}
 		break;
 
-	case 999:
+	case 999: // Restart after being stopped by error
 		result = DoDwellTime(0.5);		// wait half a second to allow the response to be sent back to the web server, otherwise it may retry
 		if (result)
 		{
@@ -3692,7 +3713,7 @@ void GCodes::CancelPrint()
 	}
 
 	totalMoves = movesCompleted = 0;
-	moveAvailable = doResumeMacro = false;
+	moveAvailable = doPauseMacro = doResumeMacro = false;
 	fractionOfFilePrinted = -1.0;
 
 	fileGCode->CancelPause();	// if we paused it and then asked to print a new file, cancel any pending command
@@ -3730,6 +3751,11 @@ void GCodes::MoveQueued()
 void GCodes::MoveCompleted()
 {
 	movesCompleted++;
+}
+
+bool GCodes::HaveAux() const
+{
+	return auxDetected;
 }
 
 //*************************************************************************************

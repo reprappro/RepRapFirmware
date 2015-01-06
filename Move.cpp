@@ -147,6 +147,8 @@ void Move::Init()
 
   doingSplitMove = false;
   slowingDown = false;
+
+  isResuming = false;
   state = running;
   active = true;
 }
