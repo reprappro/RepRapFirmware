@@ -45,7 +45,7 @@ const unsigned int maxCommandWords = 4;			// max number of space-separated words
 const unsigned int maxQualKeys = 5;				// max number of key/value pairs in the qualifier
 const unsigned int maxHeaders = 10;				// max number of key/value pairs in the headers
 
-const unsigned int jsonReplyLength = 2000;		// size of buffer used to hold JSON reply
+const unsigned int jsonReplyLength = 1024;		// size of buffer used to hold JSON reply
 
 const unsigned int maxSessions = 8;				// maximum number of simultaneous HTTP sessions
 const unsigned int httpSessionTimeout = 30;		// HTTP session timeout in seconds
@@ -190,6 +190,7 @@ class Webserver
 			};
 
 			void SendFile(const char* nameOfFileToSend);
+			void SendGCodeReply();
 			void SendJsonResponse(const char* command);
 			bool GetJsonResponse(const char* request, StringRef& response, const char* key, const char* value, size_t valueLength, bool& keepOpen);
 			void GetJsonUploadResponse(StringRef& response);

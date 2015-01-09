@@ -558,6 +558,7 @@ public:
   void ClassReport(const char* className, float &lastTime);  // Called on return to check everything's live.
   void RecordError(ErrorCode ec) { errorCodeBits |= ec; }
   void SoftwareReset(uint16_t reason);
+  bool AtxPower() const;
   void SetAtxPower(bool on);
 
   // Timing

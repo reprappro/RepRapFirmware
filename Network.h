@@ -110,7 +110,7 @@ private:
 	TransactionStatus status;
 	float lastWriteTime;
 	bool closeRequested;
-	bool repeated;
+	bool waitingForDataConnection;
 };
 
 // This class holds data left to be sent to TCP clients.
@@ -146,7 +146,7 @@ public:
 	NetworkTransaction *GetTransaction(const ConnectionState *cs = NULL);
 	void SendAndClose(FileStore *f, bool keepConnectionOpen = false);
 	void CloseTransaction();
-	void RepeatTransaction();
+	void WaitForDataConection();
 
 	void OpenDataPort(uint16_t port);
 	uint16_t GetDataPort() const;

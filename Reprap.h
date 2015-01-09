@@ -73,7 +73,7 @@ class RepRap
     uint16_t GetExtrudersInUse() const;
     uint16_t GetHeatersInUse() const;
 
-    void GetStatusResponse(StringRef& response, uint8_t type);
+    void GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver);
     void GetNameResponse(StringRef& response) const;
     void GetFilesResponse(StringRef& response, const char* dir) const;
     void GetFileInfoResponse(StringRef& response, const char* filename) const;
@@ -82,8 +82,8 @@ class RepRap
     void Beep(int freq, int ms);
     void SetMessage(const char *msg);
     
-    void MessageToStatusResponse(const char *message);
-    void AppendMessageToStatusResponse(const char *message);
+    void MessageToGCodeReply(const char *message);
+    void AppendMessageToGCodeReply(const char *message);
     void AppendCharToStatusResponse(const char c);
 
     const StringRef& GetGcodeReply() const;

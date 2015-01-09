@@ -2592,28 +2592,23 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 105: // Get Extruder Temperature / Get Status Message
 		{
 			int param = (gb->Seen('S')) ? gb->GetIValue() : 0;
-			switch (param)
+			if (param <= 0 || param > 3)
 			{
-				case 2:
-					reprap.GetStatusResponse(reply, 2);				// send JSON-formatted status response
-					break;
-
-				case 3:
-					reprap.GetStatusResponse(reply, 3);				// send extended JSON-formatted response
-					break;
-
-				default:
-					reply.copy("T:");
-					for(int8_t heater = 1; heater < HEATERS; heater++)
+				reply.copy("T:");
+				for(int8_t heater = 1; heater < HEATERS; heater++)
+				{
+					Heat::HeaterStatus hs = reprap.GetHeat()->GetStatus(heater);
+					if (hs != Heat::HS_off && hs != Heat::HS_fault)
 					{
-						Heat::HeaterStatus hs = reprap.GetHeat()->GetStatus(heater);
-						if (hs != Heat::HS_off && hs != Heat::HS_fault)
-						{
-							reply.catf("%.1f ", reprap.GetHeat()->GetTemperature(heater));
-						}
+						reply.catf("%.1f ", reprap.GetHeat()->GetTemperature(heater));
 					}
-					reply.catf("B:%.1f\n", reprap.GetHeat()->GetTemperature(HOT_BED));
-					break;
+				}
+				reply.catf("B:%.1f\n", reprap.GetHeat()->GetTemperature(HOT_BED));
+			}
+			else
+			{
+				// Send a JSON-formatted status response
+				reprap.GetStatusResponse(reply, param, false);
 			}
 		}
 		break;

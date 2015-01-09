@@ -4,12 +4,10 @@
 
  This class serves a single-page web applications to the attached network.  This page forms the user's
  interface with the RepRap machine.  This software interprests returned values from the page and uses it
- to Generate G Codes, which it sends to the RepRap.  It also collects values from the RepRap like
+ to generate G Codes, which it sends to the RepRap.  It also collects values from the RepRap like
  temperature and uses those to construct the web page.
 
- The page itself - reprap.htm - uses Knockout.js and Jquery.js.  See:
-
- http://knockoutjs.com/
+ The page itself - reprap.htm - uses Jquery.js to perform AJAX.  See:
 
  http://jquery.com/
 
@@ -31,32 +29,23 @@
  SD card), and the following. These all start with "/rr_". Ordinary files used for the web interface
  must not have names starting "/rr_" or they will not be found.
 
- rr_connect	 Sent by the web interface software to establish an initial connection, indicating that
+ rr_connect?password=xxx
+             Sent by the web interface software to establish an initial connection, indicating that
  	 	 	 any state variables relating to the web interface (e.g. file upload in progress) should
- 	 	 	 be reset. Returns the same response as rr_status.
-
- rr_poll	 Returns the old-style status response. Not recommended because all the position,
- 	 	 	 extruder position and temperature variables are returned in a single array, which means
- 	 	 	 that the web interface has to know in advance how many heaters and extruders there are.
- 	 	 	 Provided only for backwards compatibility with older web interface software. Likely to
- 	 	 	 be removed in a future version.
+ 	 	 	 be reset. This only happens if the password could be verified.
 
  rr_status	 New-style status response, in which temperatures, axis positions and extruder positions
  	 	 	 are returned in separate variables. Another difference is that extruder positions are
- 	 	 	 returned as absolute positions instead of relative to the previous gcode.
+ 	 	 	 returned as absolute positions instead of relative to the previous gcode. A client
+ 	 	 	 may also request different status responses by specifying the "type" keyword, followed
+ 	 	 	 by a custom status response type. Also see "M105 S1".
 
  rr_files?dir=xxx
  	 	 	 Returns a listing of the filenames in the /gcode directory of the SD card. 'dir' is a
  	 	 	 directory path relative to the root of the SD card. If the 'dir' variable is not present,
  	 	 	 it defaults to the /gcode directory.
 
- rr_axes	 Returns the axis lengths.
-
- rr_name	 Returns the machine name in variable myname.
-
- rr_password?password=xxx
- 	 	 	 Returns variable "password" having value "right" if xxx is the correct password and
- 	 	 	 "wrong" otherwise.
+ rr_reply    Returns the last-known G-code reply as plain text (not encapsulated as JSON).
 
  rr_upload_begin?name=xxx
  	 	 	 Indicates that we wish to upload the specified file. xxx is the filename relative
@@ -314,7 +303,7 @@ void Webserver::ProcessGcode(const char* gc)
 		}
 		else
 		{
-			reprap.MessageToStatusResponse("");
+			reprap.MessageToGCodeReply("");
 
 			char c;
 			bool reading_whitespace = false;
@@ -485,22 +474,22 @@ void Webserver::ResponseToWebInterface(const char *s, bool error)
 
 	if (strlen(s) == 0 && !error)
 	{
-		reprap.MessageToStatusResponse(s);
+		reprap.MessageToGCodeReply(s);
 		telnetInterpreter->HandleGcodeReply("ok");
 	}
 	else
 	{
 		if (error)
 		{
-			reprap.MessageToStatusResponse("Error: ");
-			reprap.AppendMessageToStatusResponse(s);
+			reprap.MessageToGCodeReply("Error: ");
+			reprap.AppendMessageToGCodeReply(s);
 
 			telnetInterpreter->HandleGcodeReply("Error: ");
 			telnetInterpreter->HandleGcodeReply(s);
 		}
 		else
 		{
-			reprap.MessageToStatusResponse(s);
+			reprap.MessageToGCodeReply(s);
 			telnetInterpreter->HandleGcodeReply(s);
 		}
 	}
@@ -513,7 +502,7 @@ void Webserver::AppendResponseToWebInterface(const char *s)
 		return;
 	}
 
-	reprap.AppendMessageToStatusResponse(s);
+	reprap.AppendMessageToGCodeReply(s);
 	telnetInterpreter->HandleGcodeReply(s);
 }
 
@@ -745,8 +734,25 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 	network->SendAndClose(fileToSend);
 }
 
+void Webserver::HttpInterpreter::SendGCodeReply()
+{
+	NetworkTransaction *req = network->GetTransaction();
+	req->Write("HTTP/1.1 200 OK\n");
+	req->Write("Content-Type: text/plain\n");
+	req->Printf("Content-Length: %u\n", reprap.GetGcodeReply().strlen());
+	req->Write("Connection: close\n\n");
+	req->Write(reprap.GetGcodeReply());
+	network->SendAndClose(NULL);
+}
+
 void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 {
+	if (IsAuthenticated() && StringEquals(command, "reply"))
+	{
+		SendGCodeReply();
+		return;
+	}
+
 	NetworkTransaction *req = network->GetTransaction();
 	bool keepOpen = false;
 	bool mayKeepOpen;
@@ -851,7 +857,17 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		}
 		else if (StringEquals(request, "status"))
 		{
-			reprap.GetStatusResponse(response, 1);
+			int type = 1;
+			if (StringEquals(key, "type"))
+			{
+				type = atoi(value);
+				if (type < 1 || type > 3)
+				{
+					type = 1;
+				}
+			}
+
+			reprap.GetStatusResponse(response, type, true);
 		}
 		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
 		{
@@ -891,27 +907,13 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		}
 		else if (StringEquals(request, "files"))
 		{
+			// TODO: get rid of GetFilesResponse and write directly to NetworkTransaction!
 			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
 			reprap.GetFilesResponse(response, dir);
 		}
 		else if (StringEquals(request, "fileinfo"))
 		{
 			reprap.GetFileInfoResponse(response, (StringEquals(key, "name")) ? value : NULL);
-		}
-		else if (StringEquals(request, "name"))
-		{
-			reprap.GetNameResponse(response);
-		}
-		else if (StringEquals(request, "axes"))
-		{
-			response.copy("{\"axes\":");
-			char ch = '[';
-			for (int8_t drive = 0; drive < AXES; drive++)
-			{
-				response.catf("%c%.1f", ch, platform->AxisTotalLength(drive));
-				ch = ',';
-			}
-			response.cat("]}");
 		}
 		else
 		{
@@ -1796,7 +1798,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			}
 			else
 			{
-				network->RepeatTransaction();
+				network->WaitForDataConection();
 			}
 
 			break;

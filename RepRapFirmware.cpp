@@ -526,226 +526,360 @@ void RepRap::Tick()
 	}
 }
 
+// NOTE! I (zpl) rewrote the JSON status responses, this inevitably breaks backward-compatibility!!!
+
 // Get the JSON status response for the web server or M105 command.
-// Type 1 is the webserver status response.
-// Type 2 is the M105 S2 response, which is like the new-style status response but some fields are omitted.
-// Type 3 is the M105 S3 response, which is like the M105 S2 response except that static values are also included.
-// 'seq' is the response sequence number, not needed for the type 2 response because that field is omitted.
-void RepRap::GetStatusResponse(StringRef& response, uint8_t type)
+// Type 1 is the ordinary JSON status response.
+// Type 2 is the same except that static parameters are also included.
+// Type 3 is the same but instead of static parameters we report print estimation values.
+void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver)
 {
 	char ch;
 
-	// Send the printing/idle status (new style for web interface)
-	if (type == 1)
+	// Machine status
+	if (IsStopped())
 	{
-		if (IsStopped())
-		{
-			// Halted
-			ch = 'H';
-		}
-		else if (move->IsPausing())
-		{
-			// Pausing / Decelerating
-			ch = 'D';
-		}
-		else if (move->IsPaused())
-		{
-			// Paused / Stopped
-			ch = 'S';
-		}
-		else if (move->IsResuming())
-		{
-			// Resuming
-			ch = 'R';
-		}
-		else if (gCodes->PrintingAFile())
-		{
-			// Printing
-			ch = 'P';
-		}
-		else if (gCodes->DoingFileMacro() || !move->NoLiveMovement())
-		{
-			// Busy
-			ch = 'B';
-		}
-		else
-		{
-			// Idle
-			ch = 'I';
-		}
+		// Halted
+		ch = 'H';
+	}
+	else if (move->IsPausing())
+	{
+		// Pausing / Decelerating
+		ch = 'D';
+	}
+	else if (move->IsPaused())
+	{
+		// Paused / Stopped
+		ch = 'S';
+	}
+	else if (move->IsResuming())
+	{
+		// Resuming
+		ch = 'R';
+	}
+	else if (gCodes->PrintingAFile())
+	{
+		// Printing
+		ch = 'P';
+	}
+	else if (gCodes->DoingFileMacro() || !move->NoLiveMovement())
+	{
+		// Busy
+		ch = 'B';
 	}
 	else
 	{
-		ch = (IsStopped()) ? 'S' : (gCodes->PrintingAFile()) ? 'P' : 'I';
+		// Idle
+		ch = 'I';
 	}
-	response.printf("{\"status\":\"%c\",\"heaters\":", ch);
+	response.printf("{\"status\":\"%c\",\"coords\":{", ch);
 
-	// Send the heater actual temperatures
-	ch = '[';
-	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
+	/* Coordinates */
 	{
-		response.catf("%c%.1f", ch, heat->GetTemperature(heater));
-		ch = ',';
-	}
-
-	// Send the heater active temperatures
-	response.catf("],\"active\":");
-	ch = '[';
-	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
-	{
-		response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
-		ch = ',';
-	}
-
-	// Send the heater standby temperatures
-	response.catf("],\"standby\":");
-	ch = '[';
-	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
-	{
-		response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
-		ch = ',';
-	}
-
-	// Send the heater statuses (0=off, 1=standby, 2=active)
-	response.cat("],\"hstat\":");
-	ch = '[';
-	for (int8_t heater = 0; heater < GetHeatersInUse(); heater++)
-	{
-		response.catf("%c%d", ch, (int)heat->GetStatus(heater));
-		ch = ',';
-	}
-
-	// Send XYZ positions
-	float liveCoordinates[DRIVES + 1];
-	if (currentTool != NULL)
-	{
-		const float *offset = currentTool->GetOffset();
-		for (size_t i = 0; i < AXES; ++i)
+		float liveCoordinates[DRIVES + 1];
+		if (currentTool != NULL)
 		{
-			liveCoordinates[i] += offset[i];
+			const float *offset = currentTool->GetOffset();
+			for (size_t i = 0; i < AXES; ++i)
+			{
+				liveCoordinates[i] += offset[i];
+			}
+		}
+		move->LiveCoordinates(liveCoordinates);
+
+		// Homed axes (TODO: only send one entry for Delta configurations)
+		response.catf("\"axesHomed\":[%d,%d,%d]",
+				(gCodes->GetAxisIsHomed(0)) ? 1 : 0,
+				(gCodes->GetAxisIsHomed(1)) ? 1 : 0,
+				(gCodes->GetAxisIsHomed(2)) ? 1 : 0);
+
+		// Actual and theoretical extruder positions since power up, last G92 or last M23
+		response.catf(",\"extr\":");		// announce actual extruder positions
+		ch = '[';
+		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)
+		{
+			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
+			ch = ',';
+		}
+
+		float rawExtruderPos[DRIVES - AXES];
+		move->GetRawExtruderPositions(rawExtruderPos);
+		response.cat("],\"extrRaw\":");
+		ch = '[';
+		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
+		{
+			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
+			ch = ',';
+		}
+
+		// XYZ positions
+		response.cat("],\"xyz\":");
+		ch = '[';
+		for (uint8_t axis = 0; axis < AXES; axis++)
+		{
+			response.catf("%c%.2f", ch, liveCoordinates[axis]);
+			ch = ',';
 		}
 	}
-	move->LiveCoordinates(liveCoordinates);
-	response.catf("],\"pos\":");		// announce the XYZ position
-	ch = '[';
-	for (int8_t drive = 0; drive < AXES; drive++)
-	{
-		response.catf("%c%.2f", ch, liveCoordinates[drive]);
-		ch = ',';
-	}
 
-	// Send actual and theoretical extruder total extrusion since power up, last G92 or last M23
-	response.catf("],\"extr\":");		// announce actual extruder positions
-	ch = '[';
-	for (int8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
-	{
-		response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
-		ch = ',';
-	}
-	float rawExtruderPos[DRIVES - AXES];
-	move->GetRawExtruderPositions(rawExtruderPos);
-	response.cat("],\"extr_raw\":");	// announce theoretical, file-based extruder positions
-	ch = '[';
-	for (int8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
-	{
-		response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
-		ch = ',';
-	}
-	response.cat("]");
-
-	// Send the speed and extruder override factors
-	response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
-	for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)
-	{
-		response.catf("%c%.2f", (!extruder) ? '[' : ',', move->GetExtrusionFactor(extruder) * 100.0);
-	}
-	response.cat("]");
-
-	// Send the current tool number
+	// Current tool number
 	int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
-	response.catf(",\"tool\":%d", toolNumber);
+	response.catf("]},\"currentTool\":%d", toolNumber);
 
-	// Send current fan value
-	float fanValue = (gCodes->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
-	response.catf(",\"fanPercent\":%.2f", fanValue);
-
-	// Send the Z probe value
-	int v0 = platform->ZProbe();
-	int v1, v2;
-	switch (platform->GetZProbeSecondaryValues(v1, v2))
+	/* Output - only reported once */
 	{
-		case 1:
-			response.catf(",\"probe\":\"%d (%d)\"", v0, v1);
-			break;
-		case 2:
-			response.catf(",\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
-			break;
-		default:
-			response.catf(",\"probe\":\"%d\"", v0);
-			break;
+		bool sendBeep = (beepDuration != 0 && beepFrequency != 0);
+		bool sendMessage = (message[0]) && ((gCodes->HaveAux() && !forWebserver) || (!gCodes->HaveAux() && forWebserver));
+		if (sendBeep || sendMessage)
+		{
+			response.cat(",\"output\":{");
+
+			// Report beep values
+			if (sendBeep)
+			{
+				response.catf("\"beepDuration\":%d,\"beepFrequency\":%d", beepDuration, beepFrequency);
+				if (sendMessage)
+				{
+					response.cat(",");
+				}
+
+				beepFrequency = beepDuration = 0;
+			}
+
+			// Report message
+			if (sendMessage)
+			{
+				response.cat("\"message\":");
+				EncodeString(response, message, 2, false);
+
+				message[0] = 0;
+			}
+			response.cat("}");
+		}
 	}
 
-	// Send fan RPM value
-	response.catf(",\"fanRPM\":%d", (unsigned int)platform->GetFanRPM());
+	/* Parameters */
+	{
+		// ATX power
+		response.catf(",\"params\":{\"atxPower\":%d", platform->AtxPower() ? 1 : 0);
 
-	// Send the home state. To keep the messages short, we send 1 for homed and 0 for not homed, instead of true and false.
-	if (type != 0)
-	{
-		response.catf(",\"homed\":[%d,%d,%d]",
-				(gCodes->GetAxisIsHomed(0)) ? 1 : 0,
-				(gCodes->GetAxisIsHomed(1)) ? 1 : 0,
-				(gCodes->GetAxisIsHomed(2)) ? 1 : 0);
-	}
-	else
-	{
-		response.catf(",\"hx\":%d,\"hy\":%d,\"hz\":%d",
-				(gCodes->GetAxisIsHomed(0)) ? 1 : 0,
-				(gCodes->GetAxisIsHomed(1)) ? 1 : 0,
-				(gCodes->GetAxisIsHomed(2)) ? 1 : 0);
-	}
+		// Cooling fan value
+		float fanValue = (gCodes->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
+		response.catf(",\"fanPercent\":%.2f", fanValue * 100.0);
 
-	// Send the fraction printed
-	if (gCodes->PrintingAFile())
-	{
-		response.catf(",\"fraction_printed\":%.4f", gCodes->FractionOfFilePrinted());
+		// Speed and Extrusion factors
+		response.catf(",\"speedFactor\":%.2f,\"extrFactors\":", move->GetSpeedFactor() * 100.0);
+		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)
+		{
+			response.catf("%c%.2f", (!extruder) ? '[' : ',', move->GetExtrusionFactor(extruder) * 100.0);
+		}
+		response.cat("]}");
 	}
 
-	// If there is an AUX device available, send message to it only
-	response.cat(",\"message\":");
-	if ((!gCodes->HaveAux() && type == 1) || (gCodes->HaveAux() && type != 1))
+	// G-code reply sequence for webserver
+	if (forWebserver)
 	{
-		EncodeString(response, message, 2, false);
-	}
-	else
-	{
-		response.cat("\"\"");
+		response.catf(",\"seq\":%d", GetReplySeq());
+
+		// There currently appears to be no need for this one, so skip it
+		//response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());
 	}
 
-	// Report beep to web interface
-	if (type == 1 && beepDuration > 0 && beepFrequency > 0)
+	/* Sensors */
 	{
-		response.catf(",\"beepDuration\":%d,\"beepFrequency\":%d", beepDuration, beepFrequency);
-		beepDuration = beepFrequency = 0;
+		response.cat(",\"sensors\":{");
+
+		// Probe
+		int v0 = platform->ZProbe();
+		int v1, v2;
+		switch (platform->GetZProbeSecondaryValues(v1, v2))
+		{
+			case 1:
+				response.catf("\"probe\":\"%d (%d)\"", v0, v1);
+				break;
+			case 2:
+				response.catf("\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
+				break;
+			default:
+				response.catf("\"probe\":\"%d\"", v0);
+				break;
+		}
+
+		// Fan RPM
+		response.catf(",\"fanRPM\":%d}", (unsigned int)platform->GetFanRPM());
 	}
 
-	if (type < 2)
+	/* Temperatures */
 	{
-		// Send the amount of buffer space available for gcodes
-		response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());
+		response.cat(",\"temps\":{");
 
-		// Send the response sequence number
-		response.catf(",\"seq\":%u", GetReplySeq());
+		/* Bed */
+#if HOT_BED != -1
+		{
+			response.catf("\"bed\":{\"current\":%1.f,\"active\":%.1f,\"state\":%d},",
+					heat->GetTemperature(HOT_BED), heat->GetActiveTemperature(HOT_BED),
+					heat->GetStatus(HOT_BED));
+		}
+#endif
 
-		// Send the response to the last command. Do this last because it is long and may need to be truncated.
-		response.cat(",\"resp\":");
-		EncodeString(response, gcodeReplyBuffer, 2, true);
+		/* Heads */
+		{
+			response.cat("\"heads\":{\"current\":");
+
+			// Current temperatures
+			ch = '[';
+			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			{
+				response.catf("%c%.1f", ch, heat->GetTemperature(heater));
+				ch = ',';
+			}
+
+			// Active temperatures
+			response.catf("],\"active\":");
+			ch = '[';
+			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			{
+				response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
+				ch = ',';
+			}
+
+			// Standby temperatures
+			response.catf("],\"standby\":");
+			ch = '[';
+			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			{
+				response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
+				ch = ',';
+			}
+
+			// Heater statuses (0=off, 1=standby, 2=active, 3=fault)
+			response.cat("],\"state\":");
+			ch = '[';
+			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			{
+				response.catf("%c%d", ch, (int)heat->GetStatus(heater));
+				ch = ',';
+			}
+		}
+		response.cat("]}}");
 	}
-	else if (type == 3)
+
+	// Include static parameters
+	if (type == 2)
 	{
-		// Add the static fields. For now this is just the machine name, but other fields could be added e.g. axis lengths.
-		response.cat(",\"myName\":");
+		// Axis minima
+		response.cat(",\"axisMins\":");
+		ch = '[';
+		for (uint8_t axis = 0; axis < AXES; axis++)
+		{
+			response.catf("%c%.2f", ch, platform->AxisMinimum(axis));
+			ch = ',';
+		}
+
+		// Axis maxima
+		response.cat("],\"axisMaxes\":");
+		ch = '[';
+		for (uint8_t axis = 0; axis < AXES; axis++)
+		{
+			response.catf("%c%.2f", ch, platform->AxisMaximum(axis));
+			ch = ',';
+		}
+
+		// Accelerations
+		response.cat("],\"accelerations\":");
+		ch = '[';
+		for (uint8_t drive = 0; drive < DRIVES; drive++)
+		{
+			response.catf("%c%.2f", ch, platform->Acceleration(drive));
+			ch = ',';
+		}
+
+		// Minimum feedrates
+		response.cat("],\"minFeedrates\":");
+		ch = '[';
+		for (uint8_t drive = 0; drive < DRIVES; drive++)
+		{
+			response.catf("%c%.2f", ch, platform->InstantDv(drive));
+			ch = ',';
+		}
+
+		// Maximum feedrates
+		response.cat("],\"maxFeedrates\":");
+		ch = '[';
+		for (uint8_t drive = 0; drive < DRIVES; drive++)
+		{
+			response.catf("%c%.2f", ch, platform->MaxFeedrate(drive));
+			ch = ',';
+		}
+
+		// Machine name
+		response.cat("],\"name\":");
 		EncodeString(response, myName, 2, false);
+
+		/* Probe */
+		{
+			ZProbeParameters probeParams;
+			platform->GetZProbeParameters(probeParams);
+
+			// Trigger threshold
+			response.catf(",\"probe\":{\"threshold\":%d", probeParams.adcValue);
+
+			// Trigger height
+			response.catf(",\"height\":%.2f", probeParams.height);
+
+			// Type
+			response.catf(",\"type\":%d}", platform->GetZProbeType());
+		}
+
+		/* Tool Mapping */
+		{
+			response.cat(",\"tools\":[");
+			for(Tool *tool=toolList; tool != NULL; tool = tool->Next())
+			{
+				// Heaters
+				response.cat("{\"heaters\":[");
+				for(uint8_t heater=0; heater<tool->HeaterCount(); heater++)
+				{
+					response.catf("%d", tool->Heater(heater));
+					if (heater < tool->HeaterCount() - 1)
+					{
+						response.cat(",");
+					}
+				}
+
+				// Extruder drives
+				response.cat("],\"drives\":[");
+				for(uint8_t drive=0; drive<tool->DriveCount(); drive++)
+				{
+					response.catf("%d", tool->Drive(drive));
+					if (drive < tool->DriveCount() - 1)
+					{
+						response.cat(",");
+					}
+				}
+
+				// Do we have any more tools?
+				if (tool->Next() != NULL)
+				{
+					response.cat("]},");
+				}
+				else
+				{
+					response.cat("]}");
+				}
+			}
+			response.cat("]");
+		}
 	}
+	else
+	{
+		// Send the fraction printed
+		response.catf(",\"fraction_printed\":%.3f", gCodes->FractionOfFilePrinted() * 100.0);
+
+		// TODO: print estimations
+	}
+
+
 	response.cat("}");
 }
 
@@ -930,13 +1064,13 @@ void RepRap::SetMessage(const char *msg)
 	message[SHORT_STRING_LENGTH] = 0;
 }
 
-void RepRap::MessageToStatusResponse(const char *message)
+void RepRap::MessageToGCodeReply(const char *message)
 {
 	gcodeReply.copy(message);
 	increaseSeq = true;
 }
 
-void RepRap::AppendMessageToStatusResponse(const char *message)
+void RepRap::AppendMessageToGCodeReply(const char *message)
 {
 	gcodeReply.cat(message);
 	increaseSeq = true;

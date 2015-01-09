@@ -1420,6 +1420,11 @@ void Platform::AppendMessage(char type, const StringRef& message)
 	}
 }
 
+bool Platform::AtxPower() const
+{
+	return (digitalReadNonDue(atxPowerPin) == HIGH);
+}
+
 void Platform::SetAtxPower(bool on)
 {
 	digitalWriteNonDue(atxPowerPin, (on) ? HIGH : LOW);

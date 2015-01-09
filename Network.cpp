@@ -712,8 +712,8 @@ NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 		return NULL;
 	}
 
-	// We only need to repeat a transaction if we're waiting for a connection on a data port
-	if (cs == NULL && rs->repeated)
+	// If we're waiting for a new connection on a data port, see if there is a matching transaction available
+	if (cs == NULL && rs->waitingForDataConnection)
 	{
 		const uint16_t localPort = rs->GetLocalPort();
 		for (NetworkTransaction *rsNext = rs->next; rsNext != NULL; rsNext = rs->next)
@@ -864,10 +864,10 @@ void Network::CloseTransaction()
 
 // The current NetworkTransaction must be processed again,
 // e.g. because we're still waiting for another data connection.
-void Network::RepeatTransaction()
+void Network::WaitForDataConection()
 {
 	NetworkTransaction *r = readyTransactions;
-	r->repeated = true;
+	r->waitingForDataConnection = true;
 	r->inputPointer = 0; // behave as if this request hasn't been processed yet
 }
 
@@ -1036,7 +1036,7 @@ void NetworkTransaction::Set(pbuf *p, ConnectionState *c, TransactionStatus s)
 	closeRequested = false;
 	nextWrite = NULL;
 	lastWriteTime = NAN;
-	repeated = false;
+	waitingForDataConnection = false;
 }
 
 // How many incoming bytes do we have to process?
