@@ -695,13 +695,13 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		switch (platform->GetZProbeSecondaryValues(v1, v2))
 		{
 			case 1:
-				response.catf("\"probe\":\"%d (%d)\"", v0, v1);
+				response.catf("\"probe\":\%d,\"probeSecondary\":[%d]", v0, v1);
 				break;
 			case 2:
-				response.catf("\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
+				response.catf("\"probe\":\%d,\"probeSecondary\":[%d,%d]", v0, v1, v2);
 				break;
 			default:
-				response.catf("\"probe\":\"%d\"", v0);
+				response.catf("\"probe\":%d", v0);
 				break;
 		}
 
