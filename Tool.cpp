@@ -25,40 +25,52 @@ Licence: GPL
 
 #include "RepRapFirmware.h"
 
+
+
 Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 {
 	myNumber = toolNumber;
 	next = NULL;
+	Init(d, dCount, h, hCount);
+}
+
+void Tool::Init(long d[], int dCount, long h[], int hCount)
+{
 	active = false;
 	driveCount = dCount;
 	heaterCount = hCount;
+	heaterFault = false;
+	mixing = false;
+
+	for(int8_t axis = 0; axis < AXES; axis++)
+		offsets[axis] = 0.0;
 
 	if(driveCount > 0)
 	{
 		if(driveCount > DRIVES - AXES)
 		{
-			reprap.GetPlatform()->Message(HOST_MESSAGE, "Tool creation: attempt to use more drives than there are in the RepRap...");
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Tool initialisation: attempt to use more drives than there are in the RepRap...");
 			driveCount = 0;
 			heaterCount = 0;
 			return;
 		}
-		drives = new int[driveCount];
+		float r = 1.0/(float)driveCount;
 		for(int8_t drive = 0; drive < driveCount; drive++)
+		{
 			drives[drive] = d[drive];
+			mix[drive] = r;
+		}
 	}
 
 	if(heaterCount > 0)
 	{
 		if(heaterCount > HEATERS)
 		{
-			reprap.GetPlatform()->Message(HOST_MESSAGE, "Tool creation: attempt to use more heaters than there are in the RepRap...");
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Tool initialisation: attempt to use more heaters than there are in the RepRap...");
 			driveCount = 0;
 			heaterCount = 0;
 			return;
 		}
-		heaters = new int[heaterCount];
-		activeTemperatures = new float[heaterCount];
-		standbyTemperatures = new float[heaterCount];
 		for(int8_t heater = 0; heater < heaterCount; heater++)
 		{
 			heaters[heater] = h[heater];
@@ -66,6 +78,50 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 			standbyTemperatures[heater] = ABS_ZERO;
 		}
 	}
+}
+
+void Tool::Print(char* reply)
+{
+	reply[0] = 0;
+	PrintInternal(reply, STRING_LENGTH);
+}
+
+void Tool::PrintInternal(char* reply, int bufferSize)
+{
+	snprintf(scratchString, STRING_LENGTH, "Tool %d - drives: ", myNumber);
+	strncat(reply, scratchString, bufferSize);
+	char comma = ',';
+	for(int8_t drive = 0; drive < driveCount; drive++)
+	{
+		if(drive >= driveCount - 1)
+			comma = ';';
+		snprintf(scratchString, STRING_LENGTH, "%d%c ", drives[drive], comma);
+		strncat(reply, scratchString, bufferSize);
+	}
+	strncat(reply, "heaters (active/standby temps): ", bufferSize);
+	comma = ',';
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+	{
+		if(heater >= heaterCount - 1)
+			comma = ';';
+		snprintf(scratchString, STRING_LENGTH, "%d (%.1f/%.1f)%c ", heaters[heater],
+				activeTemperatures[heater], standbyTemperatures[heater], comma);
+		strncat(reply, scratchString, bufferSize);
+	}
+	strncat(reply, " Offsets: ", bufferSize);
+	comma = ',';
+	for(int8_t axis = 0; axis < AXES; axis++)
+	{
+		if(axis >= AXES-1)
+			comma = ';';
+		snprintf(scratchString, STRING_LENGTH, "%.1f%c ", offsets[axis], comma);
+		strncat(reply, scratchString, bufferSize);
+	}
+	strncat(reply, " status: ", bufferSize);
+	if(active)
+		strncat(reply, "selected", bufferSize);
+	else
+		strncat(reply, "standby", bufferSize);
 }
 
 float Tool::MaxFeedrate()
@@ -107,17 +163,79 @@ float Tool::InstantDv()
 // Add a tool to the end of the linked list.
 // (We must already be in it.)
 
-void Tool::AddTool(Tool* t)
+void Tool::AddTool(Tool* tool)
 {
-	Tool* last = this;
-	Tool* n = next;
+	Tool* t = this;
+	Tool* last;
+	while(t != NULL)
+	{
+		if(t->Number() == tool->Number())
+		{
+			// Should never happen (checked in RepRap class).
+
+			reprap.GetPlatform()->Message(HOST_MESSAGE, "Add tool: tool number already in use.\n");
+			return;
+		}
+		last = t;
+		t = t->Next();
+	}
+	tool->next = NULL; // Defensive...
+	last->next = tool;
+}
+
+// There is a temperature fault on a heater.
+// Disable all tools using that heater.
+// This function must be called for the first
+// entry in the linked list.
+
+void Tool::FlagTemperatureFault(int8_t heater)
+{
+	Tool* n = this;
 	while(n != NULL)
 	{
-		last = n;
+		n->SetTemperatureFault(heater);
 		n = n->Next();
 	}
-	t->next = NULL; // Defensive...
-	last->next = t;
+}
+
+void Tool::ClearTemperatureFault(int8_t heater)
+{
+	Tool* n = this;
+	while(n != NULL)
+	{
+		n->ResetTemperatureFault(heater);
+		n = n->Next();
+	}
+}
+
+void Tool::SetTemperatureFault(int8_t dudHeater)
+{
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+		if(dudHeater == heaters[heater])
+		{
+			heaterFault = true;
+			return;
+		}
+}
+
+void Tool::ResetTemperatureFault(int8_t wasDudHeater)
+{
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+		if(wasDudHeater == heaters[heater])
+		{
+			heaterFault = false;
+			return;
+		}
+}
+
+bool Tool::AllHeatersAtHighTemperature()
+{
+	for(int8_t heater = 0; heater < heaterCount; heater++)
+	{
+		if(reprap.GetHeat()->GetTemperature(heaters[heater]) < HOT_ENOUGH_TO_EXTRUDE)
+			return false;
+	}
+	return true;
 }
 
 void Tool::Activate(Tool* currentlyActive)
@@ -147,7 +265,7 @@ void Tool::Standby()
 	active = false;
 }
 
-void Tool::SetVariables(float* standby, float* active)
+void Tool::SetTemperatureVariables(float* standby, float* active)
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
@@ -158,7 +276,7 @@ void Tool::SetVariables(float* standby, float* active)
 	}
 }
 
-void Tool::GetVariables(float* standby, float* active)
+void Tool::GetTemperatureVariables(float* standby, float* active)
 {
 	for(int8_t heater = 0; heater < heaterCount; heater++)
 	{
@@ -167,4 +285,24 @@ void Tool::GetVariables(float* standby, float* active)
 	}
 }
 
+void Tool::SetOffsets(float* off)
+{
+	for(int8_t axis = 0; axis < AXES; axis++)
+		offsets[axis] = off[axis];
+}
+
+void Tool::GetOffsets(float* off)
+{
+	for(int8_t axis = 0; axis < AXES; axis++)
+		off[axis] = offsets[axis];
+}
+
+bool Tool::ToolCanDrive()
+{
+	if(heaterFault)
+		return false;
+	if(reprap.ColdExtrude() || AllHeatersAtHighTemperature())
+		return true;
+	return false;
+}
 
