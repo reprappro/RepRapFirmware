@@ -164,7 +164,9 @@ RepRap reprap;
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
 RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ticksInSpinState(0),
-		resetting(false), fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH)
+		resetting(false), fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH),
+		currentLayer(0), firstLayerDuration(0.0), firstLayerHeight(0.0), firstLayerFilament(0.0), firstLayerProgress(0.0),
+		warmUpDuration(0.0), layerEstimatedTimeLeft(0.0), lastLayerTime(0.0), lastLayerFilament(0.0), numLayerSamples(0)
 {
   platform = new Platform();
   network = new Network(platform);
@@ -190,6 +192,7 @@ void RepRap::Init()
   gcodeReply[0] = 0;
   increaseSeq = false;
   seq = 0;
+  processingConfig = true;
 
   // All of the following init functions must execute reasonably quickly before the watchdog times us out
   platform->Init();
@@ -238,6 +241,7 @@ void RepRap::Init()
 		  break;
 	  }
   }
+  processingConfig = false;
 
   if(network->IsEnabled())
   {
@@ -297,6 +301,9 @@ void RepRap::Spin()
 
 	spinState = 0;
 	ticksInSpinState = 0;
+
+	// Update the print stats
+	UpdatePrintProgress();
 
 	// Keep track of the loop time
 
@@ -372,7 +379,6 @@ void RepRap::EmergencyStop()
 /*
  * The first tool added becomes the one selected.  This will not happen in future releases.
  */
-
 void RepRap::AddTool(Tool* tool)
 {
 	if(toolList == NULL)
@@ -526,9 +532,7 @@ void RepRap::Tick()
 	}
 }
 
-// NOTE! I (zpl) rewrote the JSON status responses, this inevitably breaks backward-compatibility!!!
-
-// Get the JSON status response for the web server or M105 command.
+// Get the JSON status response for the web server (or later for the M105 command).
 // Type 1 is the ordinary JSON status response.
 // Type 2 is the same except that static parameters are also included.
 // Type 3 is the same but instead of static parameters we report print estimation values.
@@ -537,25 +541,30 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	char ch;
 
 	// Machine status
-	if (IsStopped())
+	if (processingConfig)
+	{
+		// Reading the configuration file
+		ch = 'C';
+	}
+	else if (IsStopped())
 	{
 		// Halted
 		ch = 'H';
 	}
-	else if (move->IsPausing())
+	else if (gCodes->IsPausing())
 	{
 		// Pausing / Decelerating
 		ch = 'D';
+	}
+	else if (gCodes->IsResuming())
+	{
+		// Resuming
+		ch = 'R';
 	}
 	else if (move->IsPaused())
 	{
 		// Paused / Stopped
 		ch = 'S';
-	}
-	else if (move->IsResuming())
-	{
-		// Resuming
-		ch = 'R';
 	}
 	else if (gCodes->PrintingAFile())
 	{
@@ -587,7 +596,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		}
 		move->LiveCoordinates(liveCoordinates);
 
-		// Homed axes (TODO: only send one entry for Delta configurations)
+		// Homed axes
 		response.catf("\"axesHomed\":[%d,%d,%d]",
 				(gCodes->GetAxisIsHomed(0)) ? 1 : 0,
 				(gCodes->GetAxisIsHomed(1)) ? 1 : 0,
@@ -599,16 +608,6 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)
 		{
 			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
-			ch = ',';
-		}
-
-		float rawExtruderPos[DRIVES - AXES];
-		move->GetRawExtruderPositions(rawExtruderPos);
-		response.cat("],\"extrRaw\":");
-		ch = '[';
-		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
-		{
-			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
 			ch = ',';
 		}
 
@@ -695,13 +694,13 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		switch (platform->GetZProbeSecondaryValues(v1, v2))
 		{
 			case 1:
-				response.catf("\"probe\":\%d,\"probeSecondary\":[%d]", v0, v1);
+				response.catf("\"probeValue\":\%d,\"probeSecondary\":[%d]", v0, v1);
 				break;
 			case 2:
-				response.catf("\"probe\":\%d,\"probeSecondary\":[%d,%d]", v0, v1, v2);
+				response.catf("\"probeValue\":\%d,\"probeSecondary\":[%d,%d]", v0, v1, v2);
 				break;
 			default:
-				response.catf("\"probe\":%d", v0);
+				response.catf("\"probeValue\":%d", v0);
 				break;
 		}
 
@@ -716,7 +715,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		/* Bed */
 #if HOT_BED != -1
 		{
-			response.catf("\"bed\":{\"current\":%1.f,\"active\":%.1f,\"state\":%d},",
+			response.catf("\"bed\":{\"current\":%.1f,\"active\":%.1f,\"state\":%d},",
 					heat->GetTemperature(HOT_BED), heat->GetActiveTemperature(HOT_BED),
 					heat->GetStatus(HOT_BED));
 		}
@@ -764,56 +763,21 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		response.cat("]}}");
 	}
 
-	// Include static parameters
+	// Time since last reset
+	response.catf(",\"time\":%.1f", platform->Time());
+
+	/* Extended Status Response */
 	if (type == 2)
 	{
-		// Axis minima
-		response.cat(",\"axisMins\":");
-		ch = '[';
-		for (uint8_t axis = 0; axis < AXES; axis++)
-		{
-			response.catf("%c%.2f", ch, platform->AxisMinimum(axis));
-			ch = ',';
-		}
+		// Cold Extrude/Retract
+		response.catf(",\"coldExtrudeTemp\":%1.f", ColdExtrude() ? 0 : HOT_ENOUGH_TO_EXTRUDE);
+		response.catf(",\"coldRetractTemp\":%1.f", ColdExtrude() ? 0 : HOT_ENOUGH_TO_RETRACT);
 
-		// Axis maxima
-		response.cat("],\"axisMaxes\":");
-		ch = '[';
-		for (uint8_t axis = 0; axis < AXES; axis++)
-		{
-			response.catf("%c%.2f", ch, platform->AxisMaximum(axis));
-			ch = ',';
-		}
-
-		// Accelerations
-		response.cat("],\"accelerations\":");
-		ch = '[';
-		for (uint8_t drive = 0; drive < DRIVES; drive++)
-		{
-			response.catf("%c%.2f", ch, platform->Acceleration(drive));
-			ch = ',';
-		}
-
-		// Minimum feedrates
-		response.cat("],\"minFeedrates\":");
-		ch = '[';
-		for (uint8_t drive = 0; drive < DRIVES; drive++)
-		{
-			response.catf("%c%.2f", ch, platform->InstantDv(drive));
-			ch = ',';
-		}
-
-		// Maximum feedrates
-		response.cat("],\"maxFeedrates\":");
-		ch = '[';
-		for (uint8_t drive = 0; drive < DRIVES; drive++)
-		{
-			response.catf("%c%.2f", ch, platform->MaxFeedrate(drive));
-			ch = ',';
-		}
+		// Delta configuration
+		response.catf(",\"isDelta\":%d", 0);	// TODO: implement this
 
 		// Machine name
-		response.cat("],\"name\":");
+		response.cat(",\"name\":");
 		EncodeString(response, myName, 2, false);
 
 		/* Probe */
@@ -871,14 +835,285 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 			response.cat("]");
 		}
 	}
-	else
+	else if (type == 3)
 	{
-		// Send the fraction printed
-		response.catf(",\"fraction_printed\":%.3f", gCodes->FractionOfFilePrinted() * 100.0);
+		// Current Layer
+		response.catf(",\"currentLayer\":%d", currentLayer);
 
-		// TODO: print estimations
+		// Current Layer Time
+		response.catf(",\"currentLayerTime\":%.1f", (lastLayerTime > 0.0) ? (platform->Time() - lastLayerTime) : 0.0);
+
+		// Raw Extruder Positions
+		float rawExtruderPos[DRIVES - AXES];
+		move->GetRawExtruderPositions(rawExtruderPos);
+		response.cat(",\"extrRaw\":");
+		ch = '[';
+		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
+		{
+			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
+			ch = ',';
+		}
+
+		// Fraction of file printed
+		response.catf("],\"fractionPrinted\":%.1f", (gCodes->PrintingAFile()) ? (gCodes->FractionOfFilePrinted() * 100.0) : 0.0);
+
+		// First Layer Duration
+		response.catf(",\"firstLayerDuration\":%.1f", firstLayerDuration);
+
+		// First Layer Height
+		response.catf(",\"firstLayerHeight\":%.2f", firstLayerHeight);
+
+		// Print Duration
+		response.catf(",\"printDuration\":%.1f", (printStartTime > 0.0) ? (platform->Time() - printStartTime) : 0.0);
+
+		// Warm-Up Time
+		response.catf(",\"warmUpDuration\":%.1f", warmUpDuration);
+
+		/* Print Time Estimations */
+		{
+			// Based on file progress
+			response.catf(",\"timesLeft\":{\"file\":%.1f", EstimateTimeLeft(0));
+
+			// Based on filament usage
+			response.catf(",\"filament\":%.1f", EstimateTimeLeft(1));
+
+			// Based on layers
+			response.catf(",\"layer\":%.1f}", EstimateTimeLeft(2));
+		}
 	}
 
+	response.cat("}");
+}
+
+/*void RepRap::GetConfigResponse(StringRef& response, uint8_t type)
+{
+	// Axis minima
+	response.cat("{\"axisMins\":");
+	char ch = '[';
+	for (uint8_t axis = 0; axis < AXES; axis++)
+	{
+		response.catf("%c%.2f", ch, platform->AxisMinimum(axis));
+		ch = ',';
+	}
+
+	// Axis maxima
+	response.cat("],\"axisMaxes\":");
+	ch = '[';
+	for (uint8_t axis = 0; axis < AXES; axis++)
+	{
+		response.catf("%c%.2f", ch, platform->AxisMaximum(axis));
+		ch = ',';
+	}
+
+	// Accelerations
+	response.cat("],\"accelerations\":");
+	ch = '[';
+	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		response.catf("%c%.2f", ch, platform->Acceleration(drive));
+		ch = ',';
+	}
+
+	// Minimum feedrates
+	response.cat("],\"minFeedrates\":");
+	ch = '[';
+	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		response.catf("%c%.2f", ch, platform->InstantDv(drive));
+		ch = ',';
+	}
+
+	// Maximum feedrates
+	response.cat("],\"maxFeedrates\":");
+	ch = '[';
+	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	{
+		response.catf("%c%.2f", ch, platform->MaxFeedrate(drive));
+		ch = ',';
+	}
+
+	// Configuration File
+	response.cat("],\"configFile\":");
+	EncodeString(response, , 2, false);
+
+	response.cat("}");
+}*/
+
+// Get the legacy JSON status response for the web server or M105 command.
+// Type 0 is the old-style webserver status response (zpl fork doesn't support it any more).
+// Type 1 is the new-style webserver status response.
+// Type 2 is the M105 S2 response, which is like the new-style status response but some fields are omitted.
+// Type 3 is the M105 S3 response, which is like the M105 S2 response except that static values are also included.
+// 'seq' is the response sequence number, not needed for the type 2 response because that field is omitted.
+void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
+{
+	const GCodes *gc = reprap.GetGCodes();
+	if (type != 0)
+	{
+		// New-style status request
+		// Send the printing/idle status
+		char ch = (reprap.IsStopped()) ? 'S' : (gc->PrintingAFile()) ? 'P' : 'I';
+		response.printf("{\"status\":\"%c\",\"heaters\":", ch);
+
+		// Send the heater actual temperatures
+		const Heat *heat = reprap.GetHeat();
+		ch = '[';
+		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		{
+			response.catf("%c%.1f", ch, heat->GetTemperature(heater));
+			ch = ',';
+		}
+
+		// Send the heater active temperatures
+		response.catf("],\"active\":");
+		ch = '[';
+		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		{
+			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
+			ch = ',';
+		}
+
+		// Send the heater standby temperatures
+		response.catf("],\"standby\":");
+		ch = '[';
+		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		{
+			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
+			ch = ',';
+		}
+
+		// Send the heater statuses (0=off, 1=standby, 2=active)
+		response.cat("],\"hstat\":");
+		ch = '[';
+		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		{
+			response.catf("%c%d", ch, (int)heat->GetStatus(heater));
+			ch = ',';
+		}
+
+		// Send XYZ positions
+		float liveCoordinates[DRIVES + 1];
+		reprap.GetMove()->LiveCoordinates(liveCoordinates);
+		const Tool* currentTool = reprap.GetCurrentTool();
+		if (currentTool != NULL)
+		{
+			const float *offset = currentTool->GetOffset();
+			for (size_t i = 0; i < AXES; ++i)
+			{
+				liveCoordinates[i] += offset[i];
+			}
+		}
+		response.catf("],\"pos\":");		// announce the XYZ position
+		ch = '[';
+		for (int8_t drive = 0; drive < AXES; drive++)
+		{
+			response.catf("%c%.2f", ch, liveCoordinates[drive]);
+			ch = ',';
+		}
+
+		// Send extruder total extrusion since power up, last G92 or last M23
+		response.catf("],\"extr\":");		// announce the extruder positions
+		ch = '[';
+		for (int8_t drive = 0; drive < reprap.GetExtrudersInUse(); drive++)		// loop through extruders
+		{
+			response.catf("%c%.1f", ch, liveCoordinates[drive + AXES]);
+			ch = ',';
+		}
+		response.cat("]");
+
+		// Send the speed and extruder override factors
+		response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
+		for (unsigned int i = 0; i < reprap.GetExtrudersInUse(); ++i)
+		{
+			response.catf("%c%.2f", (i == 0) ? '[' : ',', move->GetExtrusionFactor(i) * 100.0);
+		}
+		response.cat("]");
+
+		// Send the current tool number
+		int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
+		response.catf(",\"tool\":%d", toolNumber);
+	}
+	else
+	{
+		// The old (deprecated) poll response lists the status, then all the heater temperatures, then the XYZ positions, then all the extruder positions.
+		// These are all returned in a single vector called "poll".
+		// This is a poor choice of format because we can't easily tell which is which unless we already know the number of heaters and extruders.
+		// RRP reversed the order at version 0.65 to send the positions before the heaters, but we haven't yet done that.
+		char c = (gc->PrintingAFile()) ? 'P' : 'I';
+		response.printf("{\"poll\":[\"%c\",", c); // Printing
+		for (int8_t heater = 0; heater < HEATERS; heater++)
+		{
+			response.catf("\"%.1f\",", reprap.GetHeat()->GetTemperature(heater));
+		}
+		// Send XYZ and extruder positions
+		float liveCoordinates[DRIVES + 1];
+		reprap.GetMove()->LiveCoordinates(liveCoordinates);
+		for (int8_t drive = 0; drive < DRIVES; drive++)	// loop through extruders
+		{
+			char ch = (drive == DRIVES - 1) ? ']' : ',';	// append ] to the last one but , to the others
+			response.catf("\"%.2f\"%c", liveCoordinates[drive], ch);
+		}
+	}
+
+	// Send the Z probe value
+	int v0 = platform->ZProbe();
+	int v1, v2;
+	switch (platform->GetZProbeSecondaryValues(v1, v2))
+	{
+	case 1:
+		response.catf(",\"probe\":\"%d (%d)\"", v0, v1);
+		break;
+	case 2:
+		response.catf(",\"probe\":\"%d (%d, %d)\"", v0, v1, v2);
+		break;
+	default:
+		response.catf(",\"probe\":\"%d\"", v0);
+		break;
+	}
+
+	// Send fan RPM value
+	response.catf(",\"fanRPM\":%u", (unsigned int)platform->GetFanRPM());
+
+	// Send the home state. To keep the messages short, we send 1 for homed and 0 for not homed, instead of true and false.
+	if (type != 0)
+	{
+		response.catf(",\"homed\":[%d,%d,%d]",
+				(gc->GetAxisIsHomed(0)) ? 1 : 0,
+				(gc->GetAxisIsHomed(1)) ? 1 : 0,
+				(gc->GetAxisIsHomed(2)) ? 1 : 0);
+	}
+	else
+	{
+		response.catf(",\"hx\":%d,\"hy\":%d,\"hz\":%d",
+				(gc->GetAxisIsHomed(0)) ? 1 : 0,
+				(gc->GetAxisIsHomed(1)) ? 1 : 0,
+				(gc->GetAxisIsHomed(2)) ? 1 : 0);
+	}
+
+	if (gc->PrintingAFile())
+	{
+		// Send the fraction printed
+		response.catf(",\"fraction_printed\":%.4f", max<float>(0.0, gc->FractionOfFilePrinted()));
+	}
+
+	response.cat(",\"message\":");
+	EncodeString(response, message, 2, false);
+
+	if (type < 2)
+	{
+		response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());	// send the amount of buffer space available for gcodes
+		response.catf(",\"seq\":%u", GetReplySeq());						// send the response sequence number
+
+		// Send the response to the last command. Do this last because it is long and may need to be truncated.
+		response.cat(",\"resp\":");
+		EncodeString(response, GetGcodeReply().Pointer(), 2, true);
+	}
+	else if (type == 3)
+	{
+		// Add the static fields. For now this is just the machine name, but other fields could be added e.g. axis lengths.
+		response.cat(",\"myName\":");
+		EncodeString(response, GetName(), 2, false);
+	}
 
 	response.cat("}");
 }
@@ -962,15 +1197,19 @@ void RepRap::GetNameResponse(StringRef& response) const
 // Get the list of files in the specified directory in JSON format
 void RepRap::GetFilesResponse(StringRef& response, const char* dir) const
 {
-	response.copy("{\"files\":");
-	char c = '[';
+	response.copy("{\"files\":[");
 	FileInfo file_info;
+	bool firstFile = true;
 	bool gotFile = platform->GetMassStorage()->FindFirst(dir, file_info);
 	while (gotFile && response.strlen() + strlen(file_info.fileName) + 6 < response.Length())
 	{
-		response.catf("%c", c);
+		if (!firstFile)
+		{
+			response.catf(",");
+		}
 		EncodeString(response, file_info.fileName, 3, false);
-		c = ',';
+
+		firstFile = false;
 		gotFile = platform->GetMassStorage()->FindNext(file_info);
 	}
 	response.cat("]}");
@@ -1113,6 +1352,280 @@ void RepRap::SetName(const char* nm)
 {
 	// Users sometimes put a tab character between the machine name and the comment, so allow for this
 	CopyParameterText(nm, myName, ARRAY_SIZE(myName));
+}
+
+// The following methods keep track of the current print
+
+void RepRap::UpdatePrintProgress()
+{
+	if (gCodes->IsPausing() || move->IsPaused() || gCodes->IsResuming())
+	{
+		return;
+	}
+
+	if (gCodes->PrintingAFile())
+	{
+		// May have just started a print, see if we're heating up
+		if (warmUpDuration == 0.0)
+		{
+			// When a new print starts, the total (raw) extruder positions are zeroed
+			float extrRaw[DRIVES - AXES], totalRawFilament = 0.0;
+			move->GetRawExtruderPositions(extrRaw);
+			for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+			{
+				totalRawFilament += extrRaw[extruder];
+			}
+
+			// See if at least one heater is active and set
+			bool heatersAtHighTemperature = false;
+			for(uint8_t heater=E0_HEATER; heater<HEATERS; heater++)
+			{
+				if (heat->GetStatus(heater) == Heat::HS_active &&
+					heat->GetActiveTemperature(heater) > TEMPERATURE_LOW_SO_DONT_CARE &&
+					heat->HeaterAtSetTemperature(heater))
+				{
+					heatersAtHighTemperature = true;
+					break;
+				}
+			}
+
+			if (heatersAtHighTemperature && totalRawFilament != 0.0)
+			{
+				lastLayerTime = platform->Time();
+				warmUpDuration = lastLayerTime - printStartTime;
+
+				if (fileInfoDetected && currentFileInfo.layerHeight > 0.0) {
+					currentLayer = 1;
+				}
+			}
+		}
+		// Looks like the print has started
+		else if (currentLayer > 0)
+		{
+			float liveCoords[DRIVES + 1];
+			move->LiveCoordinates(liveCoords);
+
+			// See if we can determine the first layer height (must be smaller than the nozzle diameter)
+			if (firstLayerHeight == 0.0)
+			{
+				if (liveCoords[Z_AXIS] < NOZZLE_DIAMETER && !gCodes->DoingFileMacro())
+				{
+					firstLayerHeight = liveCoords[Z_AXIS];
+				}
+			}
+			// Then check if we've finished the first layer
+			else if (firstLayerDuration == 0.0)
+			{
+				if (liveCoords[Z_AXIS] > firstLayerHeight * 1.05) // allow some tolerance for transform operations
+				{
+					firstLayerFilament = 0.0;
+					float extrRaw[DRIVES - AXES];
+					move->GetRawExtruderPositions(extrRaw);
+					for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+					{
+						firstLayerFilament += extrRaw[extruder];
+					}
+					firstLayerDuration = platform->Time() - lastLayerTime;
+					firstLayerProgress = gCodes->FractionOfFilePrinted();
+				}
+			}
+			// We have enough values to estimate the following layer heights
+			else if (currentFileInfo.objectHeight > 0.0)
+			{
+				unsigned int estimatedLayer = round((liveCoords[Z_AXIS] - firstLayerHeight) / currentFileInfo.layerHeight) + 1;
+				if (estimatedLayer == currentLayer + 1) // on layer change
+				{
+					// Record untainted extruder positions for filament-based estimation
+					float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
+					move->GetRawExtruderPositions(extrRaw);
+					for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+					{
+						extrRawTotal += extrRaw[extruder];
+					}
+
+					const float now = platform->Time();
+					unsigned int remainingLayers;
+					remainingLayers = round((currentFileInfo.objectHeight - firstLayerHeight) / currentFileInfo.layerHeight) + 1;
+					remainingLayers -= currentLayer;
+
+					if (currentLayer > 1)
+					{
+						// Record a new set
+						if (numLayerSamples < MAX_LAYER_SAMPLES)
+						{
+							layerDurations[numLayerSamples] = now - lastLayerTime;
+							if (!numLayerSamples)
+							{
+								filamentUsagePerLayer[numLayerSamples] = extrRawTotal - firstLayerFilament;
+							}
+							else
+							{
+								filamentUsagePerLayer[numLayerSamples] = extrRawTotal - lastLayerFilament;
+							}
+							fileProgressPerLayer[numLayerSamples] = gCodes->FractionOfFilePrinted();
+							numLayerSamples++;
+						}
+						else
+						{
+							for(unsigned int i=1; i<MAX_LAYER_SAMPLES; i++)
+							{
+								layerDurations[i - 1] = layerDurations[i];
+								filamentUsagePerLayer[i - 1] = filamentUsagePerLayer[i];
+								fileProgressPerLayer[i - 1] = fileProgressPerLayer[i];
+							}
+
+							layerDurations[MAX_LAYER_SAMPLES - 1] = now - lastLayerTime;
+							filamentUsagePerLayer[MAX_LAYER_SAMPLES - 1] = extrRawTotal - lastLayerFilament;
+							fileProgressPerLayer[MAX_LAYER_SAMPLES - 1] = gCodes->FractionOfFilePrinted();
+						}
+					}
+
+					// Update layer-based estimation times
+					float avgLayerTime, avgLayerDelta = 0.0;
+					if (numLayerSamples)
+					{
+						avgLayerTime = 0.0;
+						for(unsigned int layer=0; layer<numLayerSamples; layer++)
+						{
+							avgLayerTime += layerDurations[layer];
+							if (layer)
+							{
+								avgLayerDelta += layerDurations[layer] - layerDurations[layer - 1];
+							}
+						}
+						avgLayerTime /= numLayerSamples;
+						avgLayerDelta /= numLayerSamples;
+					}
+					else
+					{
+						avgLayerTime = firstLayerDuration * FIRST_LAYER_SPEED_FACTOR;
+					}
+
+					layerEstimatedTimeLeft = (avgLayerTime * remainingLayers) - (avgLayerDelta * remainingLayers);
+					if (layerEstimatedTimeLeft < 0.0)
+					{
+						layerEstimatedTimeLeft = avgLayerTime * remainingLayers;
+					}
+
+					// TODO: maybe move other estimation methods here too?
+					// And move whole estimation code to a separate class?
+
+					// Set new layer values
+					currentLayer = estimatedLayer;
+					lastLayerTime = now;
+					lastLayerFilament = extrRawTotal;
+				}
+			}
+		}
+	}
+	else if (printStartTime > 0.0 && move->NoLiveMovement())
+	{
+		currentLayer = numLayerSamples = 0;
+		firstLayerDuration = firstLayerHeight = firstLayerFilament = firstLayerProgress = 0.0;
+		layerEstimatedTimeLeft = printStartTime = warmUpDuration = 0.0;
+		lastLayerTime = lastLayerFilament = 0.0;
+	}
+}
+
+float RepRap::EstimateTimeLeft(uint8_t method) const
+{
+	// We can't provide an estimation if we're not printing (yet)
+	if (!gCodes->PrintingAFile() || warmUpDuration == 0.0)
+	{
+		return 0.0;
+	}
+
+	// Take into account the first layer time only if we haven't got any other samples
+	float realPrintDuration = (platform->Time() - printStartTime) - warmUpDuration - firstLayerDuration;
+	if (!numLayerSamples)
+	{
+		realPrintDuration += firstLayerDuration;
+	}
+
+	// Actual estimations
+	switch (method)
+	{
+		case 0: // File-Based
+		{
+			// Provide rough estimation only if we haven't collected any layer samples
+			float fractionPrinted = gCodes->FractionOfFilePrinted();
+			if (!numLayerSamples || !fileInfoDetected || currentFileInfo.objectHeight == 0.0)
+			{
+				return realPrintDuration * (1.0 / fractionPrinted) - realPrintDuration;
+			}
+
+			// Each layer takes time to achieve more file progress, so take an average over our samples
+			float avgSecondsByProgress = 0.0, lastLayerProgress = 0.0;
+			for(unsigned int layer=0; layer<numLayerSamples; layer++)
+			{
+				avgSecondsByProgress += layerDurations[layer] / (fileProgressPerLayer[layer] - lastLayerProgress);
+				lastLayerProgress = fileProgressPerLayer[layer];
+			}
+			avgSecondsByProgress /= numLayerSamples;
+
+			// Then we know how many seconds it takes to finish 1% and we know how much file progress is left
+			return avgSecondsByProgress * (1.0 - fractionPrinted);
+		}
+
+		case 1: // Filament-Based
+		{
+			// Need some file information, otherwise this method won't work
+			if (!fileInfoDetected || !currentFileInfo.numFilaments)
+			{
+				return 0.0;
+			}
+
+			// Sum up the filament usage and the filament needed
+			float totalFilamentNeeded = 0.0;
+			float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
+			move->GetRawExtruderPositions(extrRaw);
+			for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+			{
+				totalFilamentNeeded += currentFileInfo.filamentNeeded[extruder];
+				extrRawTotal += extrRaw[extruder];
+			}
+
+			// If we have a reasonable amount of filament extruded, calculate estimated times left
+			if (totalFilamentNeeded > 0.0 && extrRawTotal > totalFilamentNeeded * ESTIMATION_MIN_FILAMENT_USAGE)
+			{
+				if (firstLayerFilament == 0.0)
+				{
+					return realPrintDuration * (totalFilamentNeeded - extrRawTotal) / extrRawTotal;
+				}
+
+				float filamentRate;
+				if (numLayerSamples)
+				{
+					filamentRate = 0.0;
+					for(unsigned int i=0; i<numLayerSamples; i++)
+					{
+						filamentRate += filamentUsagePerLayer[i] / layerDurations[i];
+					}
+					filamentRate /= numLayerSamples;
+				}
+				else
+				{
+					filamentRate = firstLayerFilament / firstLayerDuration;
+				}
+
+				return (totalFilamentNeeded - extrRawTotal) / filamentRate;
+			}
+			break;
+		}
+
+		case 2: // Layer-Based
+			if (layerEstimatedTimeLeft > 0.0)
+			{
+				float timeLeft = layerEstimatedTimeLeft - (platform->Time() - lastLayerTime);
+				if (timeLeft > 0.0)
+				{
+					return timeLeft;
+				}
+			}
+			break;
+	}
+
+	return 0.0;
 }
 
 //*************************************************************************************************

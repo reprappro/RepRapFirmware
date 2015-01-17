@@ -1678,6 +1678,14 @@ bool MassStorage::PathExists(const char *path) const
 	return (f_opendir(&dir, path) == FR_OK);
 }
 
+bool MassStorage::PathExists(const char* directory, const char* fileName)
+{
+	const char* location = (directory != NULL)
+							? platform->GetMassStorage()->CombineName(directory, fileName)
+								: fileName;
+	return PathExists(location);
+}
+
 //------------------------------------------------------------------------------------------------
 
 FileStore::FileStore(Platform* p) : platform(p)
@@ -1701,7 +1709,6 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 	const char* location = (directory != NULL)
 							? platform->GetMassStorage()->CombineName(directory, fileName)
 								: fileName;
-
 	writing = write;
 	lastBufferEntry = FILE_BUF_LEN - 1;
 	bytesRead = 0;

@@ -70,6 +70,8 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * PIDs return ABS_ZERO as the current temperature if a heater fault occurs
 
+* New-style JSON status and config responses (see http://reprap.org/wiki/Proposed_RepRap_Duet_Status_Responses) including firmware-based print end-time estimations
+
 * Move class can perform isolated moves (without the look-ahead ring) when a print has been paused
 
 * Bug fix: Old-fashioned G32 call (without macro utilisation) initially resets bed compensation parameters

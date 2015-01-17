@@ -310,6 +310,8 @@ class Webserver
     static bool FindLayerHeight(const char* buf, size_t len, float& layerHeight);
     static unsigned int FindFilamentUsed(const char* buf, size_t len, float *filamentUsed, unsigned int maxFilaments);
 
+  private:
+
     // Buffer to hold gcode that is ready for processing
     char gcodeBuffer[gcodeBufferLength];
     unsigned int gcodeReadIndex, gcodeWriteIndex;	// head and tail indices into gcodeBuffer

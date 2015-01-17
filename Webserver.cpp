@@ -122,6 +122,7 @@ void Webserver::Spin()
 	if (webserverActive && httpInterpreter->FlushUploadData() && ftpInterpreter->FlushUploadData())
 	{
 		// Check if we can purge any HTTP sessions
+
 		httpInterpreter->CheckSessions();
 
 		// We must ensure that we have exclusive access to LWIP
@@ -475,7 +476,7 @@ void Webserver::ResponseToWebInterface(const char *s, bool error)
 	if (strlen(s) == 0 && !error)
 	{
 		reprap.MessageToGCodeReply(s);
-		telnetInterpreter->HandleGcodeReply("ok");
+		telnetInterpreter->HandleGcodeReply("ok\r\n");
 	}
 	else
 	{
@@ -857,7 +858,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		}
 		else if (StringEquals(request, "status"))
 		{
-			int type = 1;
+			int type = 0;
 			if (StringEquals(key, "type"))
 			{
 				type = atoi(value);
@@ -865,9 +866,14 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 				{
 					type = 1;
 				}
-			}
 
-			reprap.GetStatusResponse(response, type, true);
+				reprap.GetStatusResponse(response, type, true);
+			}
+			else
+			{
+				// Deprecated
+				reprap.GetLegacyStatusResponse(response, 1);
+			}
 		}
 		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
 		{
@@ -914,6 +920,19 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		else if (StringEquals(request, "fileinfo"))
 		{
 			reprap.GetFileInfoResponse(response, (StringEquals(key, "name")) ? value : NULL);
+		}
+		else if (StringEquals(request, "mkdir") && StringEquals(key, "dir"))
+		{
+			bool ok = (platform->GetMassStorage()->MakeDirectory(value));
+			response.printf("{\"err\":%d}", (ok) ? 0 : 1);
+		}
+		else if (StringEquals(request, "config"))
+		{
+			if (StringEquals(key, "type"))
+			{
+				int type = max<int>(2, min<int>(0, atoi(value)));
+				// TODO: implement this
+			}
 		}
 		else
 		{
@@ -1578,10 +1597,10 @@ void Webserver::FtpInterpreter::ProcessLine()
 					SendReply(530, "Login incorrect.", false);
 				}
 			}
-			// if this is different, disconnect immediately
+			// if it's different, send response 500 to indicate we don't know the code (might be AUTH or so)
 			else
 			{
-				SendReply(500, "Unknown login command.", false);
+				SendReply(500, "Unknown login command.");
 			}
 
 			break;
@@ -2231,6 +2250,12 @@ void Webserver::TelnetInterpreter::RemainingDataSent()
 // Get information for a file on the SD card
 bool Webserver::GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info)
 {
+	if (reprap.GetPlatform()->GetMassStorage()->PathExists(directory, fileName))
+	{
+		// Webserver can use this method to determine if a file was passed or not
+		return false;
+	}
+
 	FileStore *f = reprap.GetPlatform()->GetFileStore(directory, fileName, false);
 	if (f != NULL)
 	{
@@ -2591,4 +2616,3 @@ void Webserver::WebDebug(bool wdb)
 {
 	httpInterpreter->SetDebug(wdb);
 }
-

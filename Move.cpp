@@ -146,7 +146,6 @@ void Move::Init()
   speedFactor = 1.0;
 
   doingSplitMove = false;
-  slowingDown = false;
 
   isResuming = false;
   state = running;
@@ -663,11 +662,10 @@ DDA* Move::DDARingGet()
 			return result;
 		}
 
-		// If we've decelerated to a minimum velocity, or ran out of moves, stop here
+		// If we've finished the last move while pausing or ran out of moves, stop here
 
-		if ((IsPausing() && !slowingDown) || DDARingEmpty())
+		if (IsPausing() || DDARingEmpty())
 		{
-			slowingDown = false;
 			ReleaseDDARingLock();
 			return NULL;
 		}
@@ -1311,7 +1309,7 @@ MovementProfile DDA::AccelerationCalculation(float& u, float& v, MovementProfile
 
 MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 {
-  active = slowingDown = false;
+  active = isDecelerating = false;
   myLookAheadEntry = lookAhead;
   MovementProfile result = moving;
   totalSteps = -1;
@@ -1464,13 +1462,10 @@ void DDA::Step()
   if(!active || !move->active)
     return;
   
-  // Try to slow down the current move, because we can't stop immediately and don't want to risk missed steps
+  // Try to slow down the current move to achieve a better deceleration profile
 
-  if (move->IsPausing() && !slowingDown)
+  if (move->IsPausing() && !isDecelerating)
   {
-	  slowingDown = true;
-	  distance -= (stepCount / totalSteps) * distance;		// take into account how far we've gone so far
-
 	  float u = velocity, v = instantDv;
 	  if (AccelerationCalculation(u, v, moving) & change)	// calculate stopAStep and startDStep again
 	  {
@@ -1478,12 +1473,8 @@ void DDA::Step()
 		  {
 			  next->velocity = v;
 		  }
-		  move->SlowDown();									// cannot finish deceleration with only one move
 	  }
-	  else
-	  {
-		  move->DecelerationComplete();						// we can decelerate quickly enough
-	  }
+	  isDecelerating = true;
   }
 
   // Step each drive and possibly check for endstops

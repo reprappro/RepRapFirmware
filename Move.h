@@ -166,7 +166,7 @@ private:
     float instantDv;						// The lowest possible velocity
     float feedRate;
     bool eMoveAllowed[DRIVES-AXES];			// Which extruder is allowed to move?
-    bool slowingDown;						// Do we need to decelerate during this move?
+    bool isDecelerating;					// Is the DDA is trying to slow down while pausing?
     volatile bool active;					// Is the DDA running?
 };
 
@@ -274,8 +274,6 @@ class Move
 			EndstopChecks ce);
     bool SetUpIsolatedMove(float to[], float feedRate,
     		bool axesOnly);
-    void SlowDown();									// Couldn't get down to instantDv quickly enough, need more moves
-    void DecelerationComplete();						// DDA has finished and we could decelerate to instantDv
     bool SplitNextMove();								// Split the next move to improve 5-point bed compensation
 
     Platform* platform;									// The RepRap machine
@@ -334,7 +332,6 @@ class Move
     float speedFactor;								// Speed factor, changed feedrates are multiplied by this
 
     bool isResuming;
-    volatile bool slowingDown;
     volatile MoveStatus state;
 };
 
@@ -454,9 +451,9 @@ inline bool Move::IsRunning() const
 	return state == running;
 }
 
-// Note: This method should be called twice:
-// - Call it once to stop the current movement
-// - Call it again when there is no more live movement
+// Note: This method should be called at least twice:
+// - First call initiates a movement stop
+// - Other calls check if all moves have finished
 // Returns true on success and false if it needs to be called again
 
 inline bool Move::Pause()
@@ -468,16 +465,22 @@ inline bool Move::Pause()
 	}
 	else if (state == pausing)
 	{
+		// If there is no live movement...
+
 		if (!NoLiveMovement() || !GetDDARingLock())
 		{
 			return false;
 		}
+
+		// ...and if we don't have any pending moves left...
 
 		if (readIsolatedMove)
 		{
 			ReleaseDDARingLock();
 			return false;
 		}
+
+		// ...we can record the current coordinates, so the machine knows where to resume the print
 
 		for(uint8_t drive=0; drive<DRIVES; drive++)
 		{
@@ -487,8 +490,9 @@ inline bool Move::Pause()
 		pauseCoordinates[DRIVES] = currentFeedrate;
 		isolatedMove->Release();
 
-		state = paused;
+		// Take care of our state and of the next move to be executed when the print resumes
 
+		state = paused;
 		if (ddaRingGetPointer != NULL)
 		{
 			// Our current move has almost stopped (velocity is instantDv), so make sure the next one accelerates nicely
@@ -574,16 +578,6 @@ inline void Move::Cancel()
 	state = cancelled;
 }
 
-inline void Move::SlowDown()
-{
-	slowingDown = true;
-}
-
-inline void Move::DecelerationComplete()
-{
-	slowingDown = false;
-}
-
 inline bool Move::DDARingEmpty() const
 {
   return ddaRingGetPointer == ddaRingAddPointer;
@@ -591,8 +585,7 @@ inline bool Move::DDARingEmpty() const
 
 inline bool Move::NoLiveMovement() const
 {
-	return (dda == NULL) &&
-			(state != pausing || !slowingDown) &&
+	return	(dda == NULL) &&
 			(state != paused || !isolatedMoveAvailable) &&
 			(state != running || DDARingEmpty());
 }

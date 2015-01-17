@@ -100,7 +100,7 @@ void GCodes::Reset()
 	fileToPrint.Close();
 	fileBeingWritten = NULL;
 	endStopsToCheck = 0;
-	doingFileMacro = doPauseMacro = doResumeMacro = false;
+	doingFileMacro = isPausing = isResuming = false;
 	fractionOfFilePrinted = -1.0;
 	dwellWaiting = false;
 	stackPointer = 0;
@@ -130,7 +130,10 @@ void GCodes::DoFilePrint(GCodeBuffer* gb)
 			{
 				gb->SetFinished(ActOnCode(gb, doingFileMacro));
 			}
-			fileBeingPrinted.Close();
+
+			if (!gb->Active() && AllMovesAreFinishedAndMoveBufferIsLoaded()) {
+				fileBeingPrinted.Close();
+			}
 		}
 	}
 }
@@ -642,7 +645,16 @@ bool GCodes::DoFileMacro(const char* fileName)
 			return false;
 		}
 
-		FileStore *f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
+		FileStore *f;
+		if (fileName[0] == '/')
+		{
+			f = platform->GetFileStore("0:", fileName, false);
+		}
+		else
+		{
+			f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
+		}
+
 		if (f == NULL)
 		{
 			platform->Message(BOTH_ERROR_MESSAGE, "Macro file %s not found.\n", fileName);
@@ -1211,12 +1223,14 @@ const char* GCodes::GetCurrentCoordinates() const
 
 float GCodes::FractionOfFilePrinted() const
 {
-	if (doingFileMacro && !fileToPrint.IsLive())
-		return -1.0;
-
-	if (fractionOfFilePrinted < 0.0)
+	if (fractionOfFilePrinted >= 0.0)
 	{
-		return fileBeingPrinted.FractionRead();
+		return fractionOfFilePrinted;
+	}
+
+	if (doingFileMacro && !fileToPrint.IsLive())
+	{
+		return -1.0;
 	}
 
 	if (reprap.GetMove()->IsPaused() && fileToPrint.IsLive())
@@ -1229,7 +1243,7 @@ float GCodes::FractionOfFilePrinted() const
 		return (internalCodeQueue == NULL ? -1.0 : 0.9999);
 	}
 
-	return fractionOfFilePrinted;
+	return fileBeingPrinted.FractionRead();
 }
 
 bool GCodes::OpenFileToWrite(const char* directory, const char* fileName, GCodeBuffer *gb)
@@ -2300,6 +2314,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 	case 23: // Set file to print
 	case 32: // Select file and start SD print
+		if (reprap.GetMove()->IsPaused())
+		{
+			reply.copy("Cannot set file to print, because another print is still paused. Run M0 first.");
+			break;
+		}
+		else
 		{
 			const char* filename = gb->GetUnprecedentedString();
 			reprap.StartingFilePrint(filename);
@@ -2324,19 +2344,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 		}
 
-		if (doResumeMacro)
+		if (reprap.GetMove()->IsPaused())
 		{
-			if (!DoFileMacro("resume.g"))
+			isResuming = true;
+			if (!DoFileMacro(RESUME_G))
 			{
 				result = false;
 				break;
 			}
-			doResumeMacro = false;
 		}
 
 		result = reprap.GetMove()->Resume();
 		if (result)
 		{
+			isResuming = false;
 			fileBeingPrinted.MoveFrom(fileToPrint);
 			fractionOfFilePrinted = -1.0;
 			fileGCode->Resume();
@@ -2350,17 +2371,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		// no break
 
 	case 25: // Pause the print
-		if (!reprap.GetMove()->IsPausing())
+		if (!isPausing)
 		{
-			if (reprap.GetMove()->IsPaused())
-			{
-				if (doPauseMacro)
-				{
-					result = DoFileMacro(PAUSE_G);
-					doPauseMacro = !result;
-				}
-			}
-			else if (!PrintingAFile())
+			if (!PrintingAFile())
 			{
 				reply.copy("Cannot pause print, because no file is being printed!\n");
 				error = true;
@@ -2372,26 +2385,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			else
 			{
+				isPausing = true;
 				reprap.GetMove()->Pause();				// tell Move we wish to pause the current print
 				fractionOfFilePrinted = fileBeingPrinted.FractionRead();
 				fileToPrint.MoveFrom(fileBeingPrinted);
 				fileGCode->Pause();
 				queuedGCode->Pause();
-				doPauseMacro = true;
 				result = false;
 			}
 		}
 		else
 		{
-			if (reprap.GetMove()->Pause())				// wait until it has finished
-			{
-				doResumeMacro = true;
-				result = DoFileMacro(PAUSE_G);
-			}
-			else
-			{
-				result = false;
-			}
+			// Wait until Move has finished the last move(s) and until the pause macro has been processed
+			result = (reprap.GetMove()->Pause() && DoFileMacro(PAUSE_G));
+			isPausing = !result;
 		}
 		break;
 
@@ -2597,14 +2604,16 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				// case 1 is reserved for future Pronterface versions, see
 				// http://reprap.org/wiki/G-code#M105:_Get_Extruder_Temperature
 
+				/* NOTE: The following responses are subject to deprecation */
 				case 2:
-					reprap.GetStatusResponse(reply, 1, false);		// send JSON-formatted status response
+					reprap.GetLegacyStatusResponse(reply, 2);		// send JSON-formatted status response
 					break;
 
 				case 3:
-					reprap.GetStatusResponse(reply, 2, false);		// send extended JSON-formatted response
+					reprap.GetLegacyStatusResponse(reply, 3);		// send extended JSON-formatted response
 					break;
 
+				/* This one isn't */
 				case 4:
 					reprap.GetStatusResponse(reply, 3, false);		// send print status JSON-formatted response
 					break;
@@ -3720,7 +3729,7 @@ void GCodes::CancelPrint()
 	}
 
 	totalMoves = movesCompleted = 0;
-	moveAvailable = doPauseMacro = doResumeMacro = false;
+	moveAvailable = isPausing = isResuming = false;
 	fractionOfFilePrinted = -1.0;
 
 	fileGCode->CancelPause();	// if we paused it and then asked to print a new file, cancel any pending command
@@ -3763,6 +3772,16 @@ void GCodes::MoveCompleted()
 bool GCodes::HaveAux() const
 {
 	return auxDetected;
+}
+
+bool GCodes::IsPausing() const
+{
+	return (isPausing || reprap.GetMove()->IsPausing());
+}
+
+bool GCodes::IsResuming() const
+{
+	return (isResuming || reprap.GetMove()->IsResuming());
 }
 
 //*************************************************************************************

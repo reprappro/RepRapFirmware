@@ -142,6 +142,9 @@ class GCodes
     void MoveCompleted();												// Called by the DDA class to indicate that a move has been completed (called by ISR)
     bool HaveAux() const;												// Any device on the AUX line?
     
+    bool IsPausing() const;
+    bool IsResuming() const;
+
   private:
   
     void DoFilePrint(GCodeBuffer* gb);									// Get G Codes from a file and print them
@@ -224,7 +227,7 @@ class GCodes
     FileStore* fileBeingWritten;				// A file to write G Codes (or sometimes HTML) in
     FileStore* configFile;						// A file containing a macro
     bool doingFileMacro;						// Are we executing a macro file?
-    bool doPauseMacro, doResumeMacro;			// Are we executing a pause/resume macro file?
+    bool isPausing, isResuming;					// Are we executing a pause/resume macro file?
     float fractionOfFilePrinted;				// Only used to record the main file when a macro is being printed
     char* eofString;							// What's at the end of an HTML file?
     uint8_t eofStringCounter;					// Check the...

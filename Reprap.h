@@ -74,6 +74,7 @@ class RepRap
     uint16_t GetHeatersInUse() const;
 
     void GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver);
+    void GetLegacyStatusResponse(StringRef &response, uint8_t type);
     void GetNameResponse(StringRef& response) const;
     void GetFilesResponse(StringRef& response, const char* dir) const;
     void GetFileInfoResponse(StringRef& response, const char* filename) const;
@@ -94,6 +95,9 @@ class RepRap
     static void EncodeString(StringRef& response, const char* src, size_t spaceToLeave, bool allowControlChars);
   
     unsigned int GetReplySeq();
+
+    void UpdatePrintProgress();
+    float EstimateTimeLeft(uint8_t method) const;
 
     Platform* platform;
     Network* network;
@@ -117,6 +121,7 @@ class RepRap
     bool stopped;
     bool active;
     bool resetting;
+    bool processingConfig;
 
     char password[SHORT_STRING_LENGTH + 1];
     char myName[SHORT_STRING_LENGTH + 1];
@@ -124,7 +129,6 @@ class RepRap
     bool fileInfoDetected;
     char fileBeingPrinted[255];
     GcodeFileInfo currentFileInfo;
-    float printStartTime;
 
     int beepFrequency, beepDuration;
     char message[SHORT_STRING_LENGTH + 1];
@@ -133,6 +137,22 @@ class RepRap
     StringRef gcodeReply;
     unsigned int seq;
     bool increaseSeq;
+
+    float printStartTime;
+    unsigned int currentLayer;
+    float warmUpDuration;
+
+    float firstLayerDuration;
+    float firstLayerHeight;
+    float firstLayerFilament;
+    float firstLayerProgress;
+
+    float lastLayerTime, lastLayerFilament;
+    unsigned int numLayerSamples;
+    float layerDurations[MAX_LAYER_SAMPLES];
+    float filamentUsagePerLayer[MAX_LAYER_SAMPLES];
+    float fileProgressPerLayer[MAX_LAYER_SAMPLES];
+    float layerEstimatedTimeLeft;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
