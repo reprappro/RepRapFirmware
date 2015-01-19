@@ -129,7 +129,7 @@ void Webserver::Spin()
 
 		if (!network->Lock())
 		{
-			platform->ClassReport("Webserver", longWait);
+			platform->ClassReport(longWait);
 			return;
 		}
 
@@ -251,7 +251,7 @@ void Webserver::Spin()
 		}
 
 		network->Unlock();
-		platform->ClassReport("Webserver", longWait);
+		platform->ClassReport(longWait);
 	}
 }
 
@@ -453,9 +453,9 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 			platform->Message(BOTH_ERROR_MESSAGE, "Webserver: Connection closed at local port %d, but no handler found!\n", local_port);
 			return;
 	}
-	if (interpreter->DebugEnabled())
+	if (reprap.Debug(moduleWebserver))
 	{
-		debugPrintf("Webserver: ConnectionLost called with port %d\n", local_port);
+		platform->Message(HOST_MESSAGE, "Webserver: ConnectionLost called with port %d\n", local_port);
 	}
 	interpreter->ConnectionLost(local_port);
 
@@ -647,12 +647,6 @@ void ProtocolInterpreter::FinishUpload(uint32_t file_length)
 	filenameBeingUploaded[0] = 0;
 }
 
-// This is overridden in class HttpInterpreter
-bool ProtocolInterpreter::DebugEnabled() const
-{
-	return reprap.Debug();
-}
-
 
 
 //********************************************************************************************
@@ -664,7 +658,7 @@ bool ProtocolInterpreter::DebugEnabled() const
 
 
 Webserver::HttpInterpreter::HttpInterpreter(Platform *p, Webserver *ws, Network *n)
-	: ProtocolInterpreter(p, ws, n), state(doingCommandWord), seq(0), webDebug(false)
+	: ProtocolInterpreter(p, ws, n), state(doingCommandWord)
 {
 }
 
@@ -772,7 +766,7 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 	if (found)
 	{
 		jsonResponseBuffer[ARRAY_UPB(jsonResponseBuffer)] = 0;
-		if (webDebug)
+		if (reprap.Debug(moduleWebserver))
 		{
 			platform->Message(HOST_MESSAGE, "JSON response: %s queued\n", jsonResponseBuffer);
 		}
@@ -1272,7 +1266,7 @@ bool Webserver::HttpInterpreter::CharFromClient(char c)
 // Return true if the message is complete, false if we want to continue receiving data (i.e. postdata)
 bool Webserver::HttpInterpreter::ProcessMessage()
 {
-    if(webDebug)
+	if (reprap.Debug(moduleWebserver))
     {
     	platform->Message(HOST_MESSAGE, "HTTP request:");
     	for (unsigned int i = 0; i < numCommandWords; ++i)
@@ -1343,6 +1337,12 @@ bool Webserver::HttpInterpreter::Authenticate()
 
 bool Webserver::HttpInterpreter::IsAuthenticated() const
 {
+	if (reprap.NoPasswordSet())
+	{
+		// Make password authentication optional if there is no explicit password set
+		return true;
+	}
+
 	unsigned int ip = network->GetTransaction()->GetRemoteIP();
 	for(uint8_t i=0; i<numActiveSessions; i++)
 	{
@@ -1418,9 +1418,9 @@ Webserver::FtpInterpreter::FtpInterpreter(Platform *p, Webserver *ws, Network *n
 
 void Webserver::FtpInterpreter::ConnectionEstablished()
 {
-	if (DebugEnabled())
+	if (reprap.Debug(moduleWebserver))
 	{
-		platform->Message(DEBUG_MESSAGE, "Webserver: FTP connection established!\n");
+		platform->Message(HOST_MESSAGE, "Webserver: FTP connection established!\n");
 	}
 
 	NetworkTransaction *req = network->GetTransaction();
@@ -1509,9 +1509,9 @@ bool Webserver::FtpInterpreter::CharFromClient(char c)
 		case '\n':
 			clientMessage[clientPointer++] = 0;
 
-			if (DebugEnabled())
+			if (reprap.Debug(moduleWebserver))
 			{
-				platform->Message(DEBUG_MESSAGE, "FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
+				platform->Message(HOST_MESSAGE, "FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
 			}
 
 			if (clientPointer > 1) // only process a new line if we actually received data
@@ -1521,9 +1521,9 @@ bool Webserver::FtpInterpreter::CharFromClient(char c)
 				return true;
 			}
 
-			if (DebugEnabled())
+			if (reprap.Debug(moduleWebserver))
 			{
-				platform->Message(DEBUG_MESSAGE, "FtpInterpreter::ProcessLine call finished.\n");
+				platform->Message(HOST_MESSAGE, "FtpInterpreter::ProcessLine call finished.\n");
 			}
 
 			clientPointer = 0;
@@ -1808,7 +1808,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			break;
 
 		case waitingForPasvPort:
-			if (!DebugEnabled() && platform->Time() - portOpenTime > pasvPortTimeout)
+			if (!reprap.Debug(moduleWebserver) && platform->Time() - portOpenTime > pasvPortTimeout)
 			{
 				SendReply(425, "Failed to establish connection.");
 
@@ -2610,9 +2610,4 @@ unsigned int Webserver::FindFilamentUsed(const char* buf, size_t len, float *fil
 	}
 
 	return filamentsFound;
-}
-
-void Webserver::WebDebug(bool wdb)
-{
-	httpInterpreter->SetDebug(wdb);
 }

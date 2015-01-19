@@ -91,8 +91,6 @@ class ProtocolInterpreter
 	    void CancelUpload();
 		bool IsUploading() const { return uploadState != notUploading; }
 
-		virtual bool DebugEnabled() const;
-
 		virtual ~ProtocolInterpreter() { }					// to keep Eclipse happy
 
 	protected:
@@ -136,7 +134,6 @@ class Webserver
 
     void ConnectionLost(const ConnectionState *cs);
     void ConnectionError();
-    void WebDebug(bool wdb);
 
     static bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info);
 
@@ -157,9 +154,6 @@ class Webserver
 
 			void ResetSessions();
 			void CheckSessions();
-
-			virtual bool DebugEnabled() /*override*/ const { return webDebug; }
-			void SetDebug(bool b) { webDebug = b; }
 
 		private:
 
@@ -207,6 +201,7 @@ class Webserver
 			// Buffers for processing HTTP input
 			char clientMessage[webMessageLength];			// holds the command, qualifier, and headers
 			unsigned int clientPointer;						// current index into clientMessage
+			char decodeChar;
 
 			const char* commandWords[maxCommandWords];
 			KeyValueIndices qualifiers[maxQualKeys + 1];	// offsets into clientQualifier of the key/value pairs, the +1 is needed so that values can contain nulls
@@ -214,11 +209,6 @@ class Webserver
 			unsigned int numCommandWords;
 			unsigned int numQualKeys;						// number of qualifier keys we have found, <= maxQualKeys
 			unsigned int numHeaderKeys;						// number of keys we have found, <= maxHeaders
-
-			// Buffers to hold reply
-			char decodeChar;
-			uint16_t seq;									// reply sequence number, so that the client can tell if a json reply is new or not
-		    bool webDebug;
 
 		    // HTTP sessions
 		    unsigned int numActiveSessions;

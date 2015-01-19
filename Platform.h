@@ -269,7 +269,8 @@ namespace DiagnosticTest
 	enum
 	{
 		TestWatchdog = 1001,			// test that we get a watchdog reset if the tick interrupt stops
-		TestSpinLockup = 1002			// test that we get a software reset if a Spin() function takes too long
+		TestSpinLockup = 1002,			// test that we get a software reset if a Spin() function takes too long
+		TestSerialBlock = 1003			// test what happens when we write a blocking message via debugPrintf()
 	};
 }
 
@@ -556,7 +557,7 @@ public:
   void SetEmulating(Compatibility c);
   void Diagnostics();
   void DiagnosticTest(int d);
-  void ClassReport(const char* className, float &lastTime);  // Called on return to check everything's live.
+  void ClassReport(float &lastTime);  // Called on Spin() return to check everything's live.
   void RecordError(ErrorCode ec) { errorCodeBits |= ec; }
   void SoftwareReset(uint16_t reason);
   bool AtxPower() const;
@@ -684,19 +685,28 @@ public:
   
 private:
   
-  // This is the structure used to hold out non-volatile data.
+  // These are the structures used to hold out non-volatile data.
   // The SAM3X doesn't have EEPROM so we save the data to flash. This unfortunately means that it gets cleared
   // every time we reprogram the firmware. So there is no need to cater for writing one version of this
   // struct and reading back another.
 
-  struct FlashData
+  struct SoftwareResetData
   {
-	  static const uint16_t magicValue = 0x59B2;	// value we use to recognise that the flash data has been written
+	  static const uint16_t magicValue = 0x59B2;	// value we use to recognise that all the flash data has been written
+	  static const uint32_t nvAddress = 0;			// address in flash where we store the nonvolatile data
 
 	  uint16_t magic;
 	  uint16_t resetReason;							// this records why we did a software reset, for diagnostic purposes
-	  char lastMessage[256];						// the last known message before a software reset occurred
 	  size_t neverUsedRam;							// the amount of never used RAM at the last abnormal software reset
+	  char lastMessage[256];						// the last known message before a software reset occurred
+  };
+
+  struct FlashData
+  {
+	  static const uint16_t magicValue = 0x59B2;	// value we use to recognise that the flash data has been written
+	  static const uint32_t nvAddress = SoftwareResetData::nvAddress + sizeof(struct SoftwareResetData);
+
+	  uint16_t magic;
 
 	  // The remaining data could alternatively be saved to SD card.
 	  // Note however that if we save them as G codes, we need to provide a way of saving IR and ultrasonic G31 parameters separately.
@@ -713,11 +723,8 @@ private:
 	  Compatibility compatibility;
   };
 
-  static const uint32_t nvAddress = 0;				// address in flash where we store the nonvolatile data
   FlashData nvData;
   bool autoSaveEnabled;
-  StringRef lastMessage;
-  uint8_t WatchdogResetReason() const;
 
   float lastTime;
   float longWait;

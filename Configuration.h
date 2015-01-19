@@ -28,6 +28,9 @@ Licence: GPL
 #define DATE "2015-01-17"
 #define AUTHORS "reprappro, dc42, zpl"
 
+// Comment out the following line if you don't want to build the firmware with Flash save support
+#define FLASH_SAVE_ENABLED
+
 // Other firmware that we might switch to be compatible with.
 
 enum Compatibility
@@ -90,6 +93,7 @@ enum Compatibility
 #define HOME_Y_G "homey.g"
 #define HOME_Z_G "homez.g"
 #define HOME_ALL_G "homeall.g"
+#define HOME_DELTA_G "homedelta.g"
 #define SET_BED_EQUATION "bed.g"
 #define PAUSE_G "pause.g"
 #define RESUME_G "resume.g"

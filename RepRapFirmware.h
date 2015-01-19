@@ -26,6 +26,31 @@ Licence: GPL
 #include <cfloat>
 #include <cstdarg>
 
+// Module numbers and names, used for diagnostics and debug
+enum Module
+{
+	modulePlatform = 0,
+	moduleNetwork = 1,
+	moduleWebserver = 2,
+	moduleGcodes = 3,
+	moduleMove = 4,
+	moduleHeat = 5,
+	moduleDda = 6,			// not yet implemented in zpl fork
+	noModule = 15
+};
+
+static const char *moduleName[] =
+{
+	"Platform",
+	"Network",
+	"Webserver",
+	"GCodes",
+	"Move",
+	"Heat",
+	"DDA",
+	"?","?","?","?","?","?","?","?",
+	"none"
+};
 
 // Warn of what's to come, so we can use pointers to classes...
 

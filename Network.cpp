@@ -41,12 +41,13 @@
 #include "RepRapFirmware.h"
 #include "ethernet_sam.h"
 
-extern "C"
-{
-#include "lwipopts.h"
 #ifdef LWIP_STATS
 #include "lwip/src/include/lwip/stats.h"
 #endif
+
+extern "C"
+{
+#include "lwipopts.h"
 #include "lwip/src/include/lwip/tcp.h"
 
 void RepRapNetworkSetMACAddress(const u8_t macAddress[]);
@@ -381,7 +382,7 @@ void Network::Spin()
 
 	if (!LockLWIP())
 	{
-		platform->ClassReport("Network", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -435,7 +436,7 @@ void Network::Spin()
 	}
 
 	UnlockLWIP();
-	platform->ClassReport("Network", longWait);
+	platform->ClassReport(longWait);
 }
 
 void Network::Interrupt()
@@ -477,6 +478,15 @@ void Network::Diagnostics()
 		freeSendBuff = freeSendBuff->next;
 	}
 	platform->AppendMessage(BOTH_MESSAGE, "Free send buffers: %d of %d\n", numFreeSendBuffs, tcpOutputBufferCount);
+
+
+#if LWIP_STATS
+	// Normally we should NOT try to display LWIP stats here, because it uses debugPrintf(), which will hang the system is no USB cable is connected.
+	if (reprap.Debug(moduleNetwork))
+	{
+		stats_display();
+	}
+#endif
 }
 
 void Network::Enable()

@@ -20,9 +20,9 @@
  ****************************************************************************************************/
 
 #include "RepRapFirmware.h"
-#include "DueFlashStorage.h"						// comment this out if you don't want to build with Flash support
-#if LWIP_STATS
-#include "lwip/src/include/lwip/stats.h"
+
+#ifdef FLASH_SAVE_ENABLED
+#include "DueFlashStorage.h"
 #endif
 
 extern char _end;
@@ -100,8 +100,7 @@ bool PidParameters::operator==(const PidParameters& other) const
 
 Platform::Platform() :
 		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
-		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer)), autoSaveEnabled(false),
-		lastMessage(nvData.lastMessage, ARRAY_SIZE(nvData.lastMessage))
+		messageString(messageStringBuffer, ARRAY_SIZE(messageStringBuffer)), autoSaveEnabled(false)
 {
 	line = new Line(SerialUSB);
 	aux = new Line(Serial);
@@ -126,14 +125,12 @@ void Platform::Init()
 	SerialUSB.begin(BAUD_RATE);
 	Serial.begin(BAUD_RATE);	// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
 
-#ifdef DUEFLASHSTORAGE_H
-	DueFlashStorage::init();
-	// We really want to use static_assert here, but the ancient version of gcc used by Arduino doesn't support it
-	//static_assert(sizeof(nvData) <= 1024, "NVData too large");
-	// So instead, create a reference to a non-existent declaration if the condition fails.
+#if __cplusplus >= 201103L
+	static_assert(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024, "NVData too large");
+#else
 	// We are relying on the compiler optimizing this out if the condition is false
-	// Watch out for the build warning "undefined reference to 'NonExistantFunction()' if this fails.
-	if (!(sizeof(nvData) <= 1024))
+	// Watch out for the build warning "undefined reference to 'BadStaticAssert()' if this fails.
+	if (!(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024))
 	{
 		extern void BadStaticAssert();
 		BadStaticAssert();
@@ -528,44 +525,41 @@ void Platform::ResetNvData()
 		pp.adcLowOffset = pp.adcHighOffset = 0.0;
 	}
 
-	nvData.resetReason = 0;
-	nvData.lastMessage[0] = 0;
-	GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
-#ifdef DUEFLASHSTORAGE_H
+#ifdef FLASH_SAVE_ENABLED
 	nvData.magic = FlashData::magicValue;
 #endif
 }
 
 void Platform::ReadNvData()
 {
-#ifdef DUEFLASHSTORAGE_H
-	DueFlashStorage::read(nvAddress, &nvData, sizeof(nvData));
+#ifdef FLASH_SAVE_ENABLED
+	DueFlashStorage::read(FlashData::nvAddress, &nvData, sizeof(nvData));
 	if (nvData.magic != FlashData::magicValue)
 	{
 		// Nonvolatile data has not been initialized since the firmware was last written, so set up default values
 		ResetNvData();
-		WriteNvData();
+		// No point in writing it back here
 	}
 #else
-	Message(BOTH_ERROR_MESSAGE, "Cannot load non-volatile data, because Flash support has been disabled!");
+	Message(BOTH_ERROR_MESSAGE, "Cannot load non-volatile data, because Flash support has been disabled!\n");
 #endif
 }
 
 void Platform::WriteNvData()
 {
-#ifdef DUEFLASHSTORAGE_H
-	DueFlashStorage::write(nvAddress, &nvData, sizeof(nvData));
+#ifdef FLASH_SAVE_ENABLED
+	DueFlashStorage::write(FlashData::nvAddress, &nvData, sizeof(nvData));
 #else
-	Message(BOTH_ERROR_MESSAGE, "Cannot write non-volatile data, because Flash support has been disabled!");
+	Message(BOTH_ERROR_MESSAGE, "Cannot write non-volatile data, because Flash support has been disabled!\n");
 #endif
 }
 
 void Platform::SetAutoSave(bool enabled)
 {
-#ifdef DUEFLASHSTORAGE_H
+#ifdef FLASH_SAVE_ENABLED
 	autoSaveEnabled = enabled;
 #else
-	Message(BOTH_ERROR_MESSAGE, "Cannot enable auto-save, because Flash support has been disabled!");
+	Message(BOTH_ERROR_MESSAGE, "Cannot enable auto-save, because Flash support has been disabled!\n");
 #endif
 }
 
@@ -671,12 +665,12 @@ void Platform::Spin()
 	line->Spin();
 	aux->Spin();
 
-	ClassReport("Platform", longWait);
+	ClassReport(longWait);
 }
 
 void Platform::SoftwareReset(uint16_t reason)
 {
-	if (reason != 0)
+	if (reason != SoftwareResetReason::user)
 	{
 		if (line->inWrite)
 		{
@@ -691,18 +685,27 @@ void Platform::SoftwareReset(uint16_t reason)
 			reason |= SoftwareResetReason::inAuxOutput;	// if we are resetting because we are stuck in a Spin function, record whether we are trying to send to aux
 		}
 	}
+	reason |= reprap.GetSpinningModule();
 
-	if (reason != 0 || reason != nvData.resetReason)
+	// Record the reason for the software reset
+	SoftwareResetData temp;
+	temp.magic = SoftwareResetData::magicValue;
+	temp.resetReason = reason;
+	GetStackUsage(NULL, NULL, &temp.neverUsedRam);
+
+	// zpl fork usually includes the last-known message as it might provide debug info
+	if (reason != SoftwareResetReason::user)
 	{
-		// Here we must ensure that no changed values are saved, so load last-known values first.
-		// But make sure the last message is properly written to Flash, might be useful for debugging.
-		messageString.copy(nvData.lastMessage);
-		ReadNvData();
-		lastMessage.copy(messageString.Pointer());
-		nvData.resetReason = reason;
-		GetStackUsage(NULL, NULL, &nvData.neverUsedRam);
-		WriteNvData();
+		strncpy(temp.lastMessage, messageString.Pointer(), sizeof(temp.lastMessage) - 1);
+		temp.lastMessage[sizeof(temp.lastMessage) - 1] = 0;
 	}
+	else
+	{
+		temp.lastMessage[0] = 0;
+	}
+
+	// Save diagnostics data to Flash and reset the software
+	DueFlashStorage::write(SoftwareResetData::nvAddress, &temp, sizeof(SoftwareResetData));
 
 	rstc_start_software_reset(RSTC);
 	for(;;) {}
@@ -913,17 +916,25 @@ void Platform::Diagnostics()
 
 	// Show the up time and reason for the last reset
 	const uint32_t now = (uint32_t)Time();		// get up time in seconds
-	const unsigned int watchdogResetReason = WatchdogResetReason();
 	const char* resetReasons[8] = { "power up", "backup", "watchdog", "software", "external", "?", "?", "?" };
 	AppendMessage(BOTH_MESSAGE, "Last reset %02d:%02d:%02d ago, cause: %s\n",
 			(unsigned int)(now/3600), (unsigned int)((now % 3600)/60), (unsigned int)(now % 60),
-			resetReasons[watchdogResetReason]);
+			resetReasons[(REG_RSTC_SR & RSTC_SR_RSTTYP_Msk) >> RSTC_SR_RSTTYP_Pos]);
 
-	// Show the error code stored at the last software reset and maybe the last message
-	AppendMessage(BOTH_MESSAGE, "Last software reset code & available RAM: 0x%04x, %u\n", nvData.resetReason, nvData.neverUsedRam);
-	if (watchdogResetReason != 0)
+	// Show the error code stored at the last software reset
 	{
-		AppendMessage(BOTH_MESSAGE, "Last message before reset: %s\n", nvData.lastMessage);
+		SoftwareResetData temp;
+		temp.magic = 0;
+		DueFlashStorage::read(SoftwareResetData::nvAddress, &temp, sizeof(SoftwareResetData));
+		if (temp.magic == SoftwareResetData::magicValue)
+		{
+			AppendMessage(BOTH_MESSAGE, "Last software reset code & available RAM: 0x%04x, %u\n", temp.resetReason, temp.neverUsedRam);
+			AppendMessage(BOTH_MESSAGE, "Spinning module during software reset: %s\n", moduleName[temp.resetReason & 0x0F]);
+			if (temp.lastMessage[0])
+			{
+				AppendMessage(BOTH_MESSAGE, "Last message before reset: %s", temp.lastMessage); // usually ends with NL
+			}
+		}
 	}
 
 	// Show the current error codes
@@ -952,14 +963,6 @@ void Platform::Diagnostics()
 	AppendMessage(BOTH_MESSAGE, "Longest block write time: %.1fms\n", FileStore::GetAndClearLongestWriteTime());
 
 	reprap.Timing();
-
-#if LWIP_STATS
-	// Normally we should NOT try to display LWIP stats here, because it uses debugPrintf(), which will hang the system is no USB cable is connected.
-	if (reprap.Debug())
-	{
-		stats_display();
-	}
-#endif
 }
 
 void Platform::DiagnosticTest(int d)
@@ -973,15 +976,14 @@ void Platform::DiagnosticTest(int d)
 	case DiagnosticTest::TestSpinLockup:
 		debugCode = d;									// tell the Spin function to loop
 		break;
+
+	case DiagnosticTest::TestSerialBlock:				// write an arbitary message via debugPrintf()
+		debugPrintf("Diagnostic Test\n");
+		break;
+
 	default:
 		break;
 	}
-}
-
-// Get the last reset reason
-inline uint8_t Platform::WatchdogResetReason() const
-{
-	return (REG_RSTC_SR & RSTC_SR_RSTTYP_Msk) >> RSTC_SR_RSTTYP_Pos;
 }
 
 // Return the stack usage and amount of memory that has never been used, in bytes
@@ -1000,14 +1002,17 @@ void Platform::GetStackUsage(size_t* currentStack, size_t* maxStack, size_t* nev
 	if (neverUsed) { *neverUsed = stack_lwm - heapend; }
 }
 
-void Platform::ClassReport(const char* className, float &lastTime)
+void Platform::ClassReport(float &lastTime)
 {
-	if (!reprap.Debug())
-		return;
-	if (Time() - lastTime < LONG_TIME)
-		return;
-	lastTime = Time();
-	Message(HOST_MESSAGE, "Class %s spinning.\n", className);
+	const Module spinningModule = reprap.GetSpinningModule();
+	if (reprap.Debug(spinningModule))
+	{
+		if (Time() - lastTime >= LONG_TIME)
+		{
+			lastTime = Time();
+			Message(HOST_MESSAGE, "Class %s spinning.\n", moduleName[spinningModule]);
+		}
+	}
 }
 
 //===========================================================================
@@ -1280,10 +1285,10 @@ void Platform::Message(char type, const char *fmt, va_list vargs)
 
 void Platform::Message(char type, const StringRef& message)
 {
-	if (WatchdogResetReason() == 0 && message.strlen() > 0)
+	if (message.Pointer() != messageString.Pointer())
 	{
-		// Store this message in EEPROM (just in case)
-		lastMessage.copy(message.Pointer());
+		// We might need to save the last message before a software reset is triggered
+		messageString.copy(message.Pointer());
 	}
 
 	switch(type)
@@ -1363,10 +1368,10 @@ void Platform::AppendMessage(char type, const char* message, ...)
 
 void Platform::AppendMessage(char type, const StringRef& message)
 {
-	if (WatchdogResetReason() == 0 && message.strlen() > 0)
+	if (message.Pointer() != messageString.Pointer())
 	{
-		// Store this message in EEPROM (just in case)
-		lastMessage.cat(message.Pointer());
+		// We might need to save the last message before a software reset is triggered
+		messageString.cat(message.Pointer());
 	}
 
 	switch(type)

@@ -192,7 +192,7 @@ void Move::Spin()
 			ReleaseDDARingLock();
 		}
 
-		platform->ClassReport("Move", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -219,7 +219,7 @@ void Move::Spin()
 			state = running;
 		}
 
-		platform->ClassReport("Move", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -228,7 +228,7 @@ void Move::Spin()
 	const bool splitNextMove = IsRunning() && doingSplitMove;
 	if ((!splitNextMove && addNoMoreMoves) || LookAheadRingFull() || isolatedMoveAvailable)
 	{
-		platform->ClassReport("Move", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -260,7 +260,7 @@ void Move::Spin()
 
 	else
 	{
-		platform->ClassReport("Move", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -300,7 +300,7 @@ void Move::Spin()
 
 	if (noMove)
 	{
-		platform->ClassReport("Move", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -310,7 +310,7 @@ void Move::Spin()
 	if (Normalise(normalisedDirectionVector, DRIVES) <= 0.0)
 	{
 		platform->Message(BOTH_ERROR_MESSAGE, "Attempt to normalise zero-length move.\n");  // Should never get here - noMove above
-		platform->ClassReport("Move", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -343,7 +343,7 @@ void Move::Spin()
 		}
 	}
 
-	platform->ClassReport("Move", longWait);
+	platform->ClassReport(longWait);
 }
 
 /* Check if we need to split up the next move to make 5-point bed compensation work well.
@@ -1374,7 +1374,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   
   if(totalSteps <= 0)
   {
-	if(reprap.Debug())
+	if(reprap.Debug(moduleMove))
 	{
 		platform->Message(BOTH_ERROR_MESSAGE, "DDA.Init(): Null movement.\n");
 	}
@@ -1414,7 +1414,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   if(velocity <= 0.0)
   {
     velocity = instantDv;
-    if(reprap.Debug())
+    if(reprap.Debug(moduleMove))
     {
     	platform->Message(BOTH_ERROR_MESSAGE, "DDA.Init(): Zero or negative initial velocity!\n");
     }

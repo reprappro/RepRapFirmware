@@ -163,7 +163,7 @@ RepRap reprap;
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap() : active(false), debug(false), stopped(false), spinState(0), ticksInSpinState(0),
+RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noModule), ticksInSpinState(0),
 		resetting(false), fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH),
 		currentLayer(0), firstLayerDuration(0.0), firstLayerHeight(0.0), firstLayerFilament(0.0), firstLayerProgress(0.0),
 		warmUpDuration(0.0), layerEstimatedTimeLeft(0.0), lastLayerTime(0.0), lastLayerFilament(0.0), numLayerSamples(0)
@@ -275,31 +275,31 @@ void RepRap::Spin()
 	if(!active)
 		return;
 
-	spinState = 1;
+	spinningModule = modulePlatform;
 	ticksInSpinState = 0;
 	platform->Spin();
 
-	++spinState;
+	spinningModule = moduleNetwork;
 	ticksInSpinState = 0;
 	network->Spin();
 
-	++spinState;
+	spinningModule = moduleWebserver;
 	ticksInSpinState = 0;
 	webserver->Spin();
 
-	++spinState;
+	spinningModule = moduleGcodes;
 	ticksInSpinState = 0;
 	gCodes->Spin();
 
-	++spinState;
+	spinningModule = moduleMove;
 	ticksInSpinState = 0;
 	move->Spin();
 
-	++spinState;
+	spinningModule = moduleHeat;
 	ticksInSpinState = 0;
 	heat->Spin();
 
-	spinState = 0;
+	spinningModule = noModule;
 	ticksInSpinState = 0;
 
 	// Update the print stats
@@ -307,8 +307,8 @@ void RepRap::Spin()
 
 	// Keep track of the loop time
 
-	double t = platform->Time();
-	double dt = t - lastTime;
+	float t = platform->Time();
+	float dt = t - lastTime;
 	if(dt < fastLoop)
 	{
 		fastLoop = dt;
@@ -373,6 +373,43 @@ void RepRap::EmergencyStop()
 			platform->SetMotorCurrent(drive, 0.0);
 			platform->Disable(drive);
 		}
+	}
+}
+
+void RepRap::SetDebug(Module m, bool enable)
+{
+	if (enable)
+	{
+		debug |= (1 << m);
+	}
+	else
+	{
+		debug &= ~(1 << m);
+	}
+	PrintDebug();
+}
+
+void RepRap::SetDebug(bool enable)
+{
+	debug = (enable) ? 0xFFFF : 0;
+}
+
+void RepRap::PrintDebug()
+{
+	if (debug != 0)
+	{
+		platform->Message(BOTH_MESSAGE, "Debugging enabled for modules:");
+		for(uint8_t i=0; i<16;i++)
+		{
+			if (debug & (1 << i))
+			{
+				platform->AppendMessage(BOTH_MESSAGE, " %s", moduleName[i]);
+			}
+		}
+	}
+	else
+	{
+		platform->Message(BOTH_MESSAGE, "Debugging disabled\n");
 	}
 }
 
@@ -526,7 +563,7 @@ void RepRap::Tick()
 					// We can't set motor currents to 0 here because that requires interrupts to be working, and we are in an ISR
 				}
 
-				platform->SoftwareReset(SoftwareResetReason::stuckInSpin + spinState);
+				platform->SoftwareReset(SoftwareResetReason::stuckInSpin);
 			}
 		}
 	}
@@ -1332,9 +1369,14 @@ unsigned int RepRap::GetReplySeq()
 	return seq;
 }
 
+bool RepRap::NoPasswordSet() const
+{
+	return (!password[0] || StringEquals(password, DEFAULT_PASSWORD));
+}
+
 bool RepRap::CheckPassword(const char *pw) const
 {
-	return (!password[0]) || (StringEquals(pw, password));
+	return StringEquals(pw, password);
 }
 
 void RepRap::SetPassword(const char* pw)
@@ -1530,16 +1572,16 @@ void RepRap::UpdatePrintProgress()
 float RepRap::EstimateTimeLeft(uint8_t method) const
 {
 	// We can't provide an estimation if we're not printing (yet)
-	if (!gCodes->PrintingAFile() || warmUpDuration == 0.0)
+	if (!gCodes->PrintingAFile() || (fileInfoDetected && currentFileInfo.numFilaments && warmUpDuration == 0.0))
 	{
 		return 0.0;
 	}
 
 	// Take into account the first layer time only if we haven't got any other samples
-	float realPrintDuration = (platform->Time() - printStartTime) - warmUpDuration - firstLayerDuration;
-	if (!numLayerSamples)
+	float realPrintDuration = (platform->Time() - printStartTime) - warmUpDuration;
+	if (numLayerSamples)
 	{
-		realPrintDuration += firstLayerDuration;
+		realPrintDuration -= firstLayerDuration;
 	}
 
 	// Actual estimations

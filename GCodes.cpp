@@ -143,10 +143,10 @@ void GCodes::Spin()
 	if (!active)
 		return;
 
-	// Check each of the sources of G Codes (web, serial, queued and file) to
+	// Check each of the sources of G Codes (web, aux, serial, queued and file) to
 	// see if they are finished in order to feed them new codes.
 	//
-	// Note the order establishes a priority: web, serial, queued, file.
+	// Note the order establishes a priority: web, aux, serial, queued, file.
 	// If file weren't last, then the others would never get a look in when
 	// a file was being printed.
 
@@ -171,7 +171,7 @@ void GCodes::Spin()
 			}
 			++i;
 		} while (i < 16 && webserver->GCodeAvailable());
-		platform->ClassReport("GCodes", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -192,7 +192,7 @@ void GCodes::Spin()
 			}
 			++i;
 		} while (i < 16 && (platform->GetAux()->Status() & byteAvailable));
-		platform->ClassReport("GCodes", longWait);
+		platform->ClassReport(longWait);
 		return;
 	}
 
@@ -205,7 +205,7 @@ void GCodes::Spin()
 			platform->GetLine()->Read(b);
 			WriteHTMLToFile(b, serialGCode);
 
-			platform->ClassReport("GCodes", longWait);
+			platform->ClassReport(longWait);
 			return;
 		}
 		// Otherwise just deal in general with incoming bytes from the serial interface
@@ -233,7 +233,7 @@ void GCodes::Spin()
 				++i;
 			} while (i < 16 && (platform->GetLine()->Status() & byteAvailable));
 
-			platform->ClassReport("GCodes", longWait);
+			platform->ClassReport(longWait);
 			return;
 		}
 	}
@@ -252,7 +252,7 @@ void GCodes::Spin()
 				temp->SetNext(releasedQueueItems);
 				releasedQueueItems = temp;
 
-				platform->ClassReport("GCodes", longWait);
+				platform->ClassReport(longWait);
 				return;
 			}
 
@@ -265,7 +265,7 @@ void GCodes::Spin()
 					queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
 				}
 
-				platform->ClassReport("GCodes", longWait);
+				platform->ClassReport(longWait);
 				return;
 			}
 		}
@@ -284,47 +284,33 @@ void GCodes::Spin()
 	{
 		// Note: Direct web-printing has been dropped, so it's safe to execute web codes immediately
 		webGCode->SetFinished(ActOnCode(webGCode, true));
-		platform->ClassReport("GCodes", longWait);
-		return;
 	}
-
-	if (auxGCode->Active())
+	else if (auxGCode->Active())
 	{
 		// Don't use code-queuing for codes received from AUX, because their responses are handled differently
 		auxGCode->SetFinished(ActOnCode(auxGCode, true));
-		platform->ClassReport("GCodes", longWait);
-		return;
 	}
-
-	if (serialGCode->Active())
+	else if (serialGCode->Active())
 	{
 		// We want codes from the serial interface to be queued unless the print has been paused
 		serialGCode->SetFinished(ActOnCode(serialGCode, reprap.GetMove()->IsPaused()));
-		platform->ClassReport("GCodes", longWait);
-		return;
 	}
-
-	if (queuedGCode->Active())
+	else if (queuedGCode->Active())
 	{
 		queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
-		platform->ClassReport("GCodes", longWait);
-		return;
 	}
-
-	if (fileGCode->Active())
+	else if (fileGCode->Active())
 	{
 		fileGCode->SetFinished(ActOnCode(fileGCode, doingFileMacro));
-		platform->ClassReport("GCodes", longWait);
-		return;
 	}
-	if (reprap.GetMove()->IsRunning())
+	else if (reprap.GetMove()->IsRunning())
 	{
-		// Running codes from files is different, because DoFilePrint() does both read and execute
-		// G-Codes. For that reason we must leave this call here.
+		// Running codes from files is different, because DoFilePrint() does both read
+		// and execute G-Codes. For that reason we must leave this call here.
 		DoFilePrint(fileGCode);
 	}
 
-	platform->ClassReport("GCodes", longWait);
+	platform->ClassReport(longWait);
 }
 
 void GCodes::Diagnostics()
@@ -2716,20 +2702,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 111: // Debug level
     	if(gb->Seen('S'))
     	{
-    		int dbv = gb->GetIValue();
-    		if(dbv == WEB_DEBUG_TRUE)
+    		bool dbv = (gb->GetIValue() != 0);
+    		if (gb->Seen('P'))
     		{
-    			reprap.GetWebserver()->WebDebug(true);
-    		}
-    		else if (dbv == WEB_DEBUG_FALSE)
-    		{
-    			reprap.GetWebserver()->WebDebug(false);
+    			reprap.SetDebug(static_cast<Module>(gb->GetIValue()), dbv);
     		}
     		else
     		{
     			reprap.SetDebug(dbv);
     		}
     	}
+      	else
+		{
+			reprap.PrintDebug();
+		}
 		break;
 
 	case 112: // Emergency stop - acted upon in Webserver, but also here in case it comes from USB etc.
@@ -3898,7 +3884,7 @@ bool GCodeBuffer::Put(char c)
 	{
 		gcodeBuffer[gcodePointer] = 0;
 		Init();
-		if (reprap.Debug() && gcodeBuffer[0] && !writingFileDirectory) // Don't bother with blank/comment lines
+		if (reprap.Debug(moduleGcodes) && gcodeBuffer[0] && !writingFileDirectory) // Don't bother with blank/comment lines
 		{
 			platform->Message(HOST_MESSAGE, "%s%s\n", identity, gcodeBuffer);
 		}
