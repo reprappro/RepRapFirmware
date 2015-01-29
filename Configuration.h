@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.96k-alpha-zpl"
-#define DATE "2015-01-17"
+#define VERSION "0.96k-zpl"
+#define DATE "2015-01-28"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
@@ -55,7 +55,7 @@ enum Compatibility
 #define TEMPERATURE_LOW_SO_DONT_CARE (40.0)		// Celsius
 #define HOT_ENOUGH_TO_EXTRUDE (160.0)       	// Celsius
 #define HOT_ENOUGH_TO_RETRACT (90.0)			// Celsius
-#define TIME_TO_HOT (120.0)						// Seconds
+#define TIME_TO_HOT (150.0)						// Seconds
 
 // If temperatures fall outside this range, something nasty has happened.
 
@@ -71,8 +71,12 @@ enum Compatibility
 
 #define SILLY_Z_VALUE -9999.0
 
-// Status response sizes
+// String lengths
 
+#define STRING_LENGTH 1024
+#define SHORT_STRING_LENGTH 40
+
+#define FILENAME_LENGTH 100
 #define GCODE_REPLY_LENGTH 2048
 
 // Print estimation defaults

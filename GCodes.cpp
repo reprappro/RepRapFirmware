@@ -26,7 +26,7 @@
 #include "RepRapFirmware.h"
 
 const float minutesToSeconds = 60.0;
-const float secondsToMinutes = 1.0/minutesToSeconds;
+const float secondsToMinutes = 1.0 / minutesToSeconds;
 
 GCodes::GCodes(Platform* p, Webserver* w)
 {
@@ -748,14 +748,19 @@ bool GCodes::SetPositions(GCodeBuffer *gb)
 
 	if(LoadMoveBufferFromGCode(gb, true, false))
 	{
-		// Transform the position so that e.g. if the user does G92 Z0,
-		// the position we report (which gets inverse-transformed) really is Z=0 afterwards
-		reprap.GetMove()->Transform(moveBuffer);
-		reprap.GetMove()->SetLiveCoordinates(moveBuffer);
-		reprap.GetMove()->SetPositions(moveBuffer);
+		SetPositions(moveBuffer);
 	}
 
 	return true;
+}
+
+void GCodes::SetPositions(float positionNow[DRIVES])
+{
+	// Transform the position so that e.g. if the user does G92 Z0,
+	// the position we report (which gets inverse-transformed) really is Z=0 afterwards
+	reprap.GetMove()->Transform(moveBuffer);
+	reprap.GetMove()->SetLiveCoordinates(moveBuffer);
+	reprap.GetMove()->SetPositions(moveBuffer);
 }
 
 // Offset the axes by the X, Y, and Z amounts in the M code in gb.  Say the machine is at [10, 20, 30] and
@@ -809,7 +814,7 @@ bool GCodes::OffsetAxes(GCodeBuffer* gb)
 			moveBuffer[drive] = record[drive];
 		}
 		reprap.GetMove()->SetLiveCoordinates(record); // This doesn't transform record
-		reprap.GetMove()->SetPositions(record);        // This does
+		reprap.GetMove()->SetPositions(record);       // This does
 		offSetSet = false;
 		return true;
 	}
@@ -3337,32 +3342,38 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
     case 558: // Set or report Z probe type and for which axes it is used
 		{
-			bool seen = false;
-			if(gb->Seen('P'))
+			bool seenP = false, seenR = false;
+			if (gb->Seen('P'))
 			{
 				platform->SetZProbeType(gb->GetIValue());
-				seen = true;
+				seenP = true;
 			}
 
 			bool zProbeAxes[AXES];
 			platform->GetZProbeAxes(zProbeAxes);
-			for(int axis=0; axis<AXES; axis++)
+			for (size_t axis=0; axis<AXES; axis++)
 			{
 				if (gb->Seen(axisLetters[axis]))
 				{
 					zProbeAxes[axis] = (gb->GetIValue() > 0);
-					seen = true;
+					seenP = true;
 				}
 			}
 
-			if (seen)
+			if (gb->Seen('R'))
+			{
+				platform->SetZProbeChannel(gb->GetIValue());
+				seenR = true;
+			}
+
+			if (seenP)
 			{
 				platform->SetZProbeAxes(zProbeAxes);
 			}
-			else
+			else if (!seenR)
 			{
-				reply.printf("Z Probe type is %d and it is used for these axes:", platform->GetZProbeType());
-				for(int axis=0; axis<AXES; axis++)
+				reply.printf("Z Probe type is %d on channel %d and it is used for these axes:", platform->GetZProbeType(), platform->GetZProbeChannel());
+				for(size_t axis=0; axis<AXES; axis++)
 				{
 					if (zProbeAxes[axis])
 					{
@@ -3559,7 +3570,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	//****************************
-	// These last are M codes only for the cognoscenti - TODO: maybe password protect one day?
+	// These last are M codes only for the cognoscenti
 
 	case 562: // Reset temperature fault - use with great caution
 		if (gb->Seen('P'))

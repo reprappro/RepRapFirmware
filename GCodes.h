@@ -25,12 +25,13 @@ Licence: GPL
 #define STACK 5
 #define GCODE_LENGTH 100 // Maximum length of internally-generated G Code string
 
-#define AXIS_LETTERS { 'X', 'Y', 'Z' } // The axes in a GCode
-#define FEEDRATE_LETTER 'F'// GCode feedrate
-#define EXTRUDE_LETTER 'E' // GCode extrude
+#define AXIS_LETTERS { 'X', 'Y', 'Z' }			// The axes in a GCode
+#define FEEDRATE_LETTER 'F'						// GCode feedrate
+#define EXTRUDE_LETTER 'E'						// GCode extrude
 
-// Type for specifying which endstops we want to check
-typedef uint8_t EndstopChecks;
+typedef uint16_t EndstopChecks;					// must be large enough to hold a bitmap of drive numbers or ZProbeActive
+//const EndstopChecks ZProbeActive = 1 << 15;		// must be distinct from 1 << (any drive number)
+
 
 // Small class to hold an individual GCode and provide functions to allow it to be parsed
 
@@ -169,6 +170,7 @@ class GCodes
     bool SetPrintZProbe(GCodeBuffer *gb, StringRef& reply);				// Either return the probe value, or set its threshold
     void SetOrReportOffsets(StringRef& reply, GCodeBuffer *gb);			// Deal with a G10
     bool SetPositions(GCodeBuffer *gb);									// Deal with a G92
+    void SetPositions(float positionNow[DRIVES]);						// Set the current position to be this
     bool LoadMoveBufferFromGCode(GCodeBuffer *gb,  						// Set up a move for the Move class
     		bool doingG92, bool applyLimits);
     bool NoHome() const;												// Are we homing and not finished?

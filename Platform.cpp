@@ -307,12 +307,12 @@ void Platform::InitZProbe()
 	zProbeOnFilter.Init(0);
 	zProbeOffFilter.Init(0);
 
-	// zpl-2014-10-12: The Z-probe index of dc42's ultrasonic sensor has moved from 3 to 4/5 to stay compatible with RRP's FW
+	// zpl-2015-01-15: Don't introduce new Z-probe types for different modulation pin configurations; use 'G31 R' instead
 	if (nvData.zProbeType >= 1)
 	{
-		zProbeModulationPin = (nvData.zProbeType == 3 || nvData.zProbeType == 5) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
+		zProbeModulationPin = (nvData.zProbeChannel == 1) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
 		pinModeNonDue(zProbeModulationPin, OUTPUT);
-		digitalWriteNonDue(zProbeModulationPin, (nvData.zProbeType <= 3) ? HIGH : LOW);	// enable the IR LED or alternate sensor
+		digitalWriteNonDue(zProbeModulationPin, (nvData.zProbeType <= 2) ? HIGH : LOW);	// enable the IR LED or alternate sensor
 	}
 }
 
@@ -330,13 +330,11 @@ int Platform::ZProbe() const
 		switch (nvData.zProbeType)
 		{
 		case 1:
-		case 4:
-		case 5:
+		case 3:
 			// Simple IR sensor, or direct-mode ultrasonic sensor
 			return (int) ((zProbeOnFilter.GetSum() + zProbeOffFilter.GetSum()) / (8 * numZProbeReadingsAveraged));
 
 		case 2:
-		case 3:
 			// Modulated IR sensor. We assume that zProbeOnFilter and zprobeOffFilter average the same number of readings.
 			// Because of noise, it is possible to get a negative reading, so allow for this.
 			return (int) (((int32_t) zProbeOnFilter.GetSum() - (int32_t) zProbeOffFilter.GetSum())
@@ -357,7 +355,6 @@ int Platform::GetZProbeSecondaryValues(int& v1, int& v2)
 		switch (nvData.zProbeType)
 		{
 		case 2:		// modulated IR sensor
-		case 3:		// modulated IR sensor (Duet 0.7)
 			v1 = (int) (zProbeOnFilter.GetSum() / (4 * numZProbeReadingsAveraged));	// pass back the reading with IR turned on
 			return 1;
 		default:
@@ -370,6 +367,11 @@ int Platform::GetZProbeSecondaryValues(int& v1, int& v2)
 int Platform::GetZProbeType() const
 {
 	return nvData.zProbeType;
+}
+
+int Platform::GetZProbeChannel() const
+{
+	return nvData.zProbeChannel;
 }
 
 void Platform::SetZProbeAxes(const bool axes[AXES])
@@ -401,10 +403,8 @@ float Platform::ZProbeStopHeight() const
 		return nvData.switchZProbeParameters.GetStopHeight(GetTemperature(0));
 	case 1:
 	case 2:
-	case 3:
 		return nvData.irZProbeParameters.GetStopHeight(GetTemperature(0));
-	case 4:
-	case 5:
+	case 3:
 		return nvData.alternateZProbeParameters.GetStopHeight(GetTemperature(0));
 	default:
 		return 0;
@@ -413,7 +413,7 @@ float Platform::ZProbeStopHeight() const
 
 void Platform::SetZProbeType(int pt)
 {
-	int newZProbeType = (pt >= 0 && pt <= 5) ? pt : 0;
+	int newZProbeType = (pt >= 0 && pt <= 3) ? pt : 0;
 	if (newZProbeType != nvData.zProbeType)
 	{
 		nvData.zProbeType = newZProbeType;
@@ -425,6 +425,29 @@ void Platform::SetZProbeType(int pt)
 	InitZProbe();
 }
 
+void Platform::SetZProbeChannel(int channel)
+{
+	switch (channel)
+	{
+		case 1:
+			zProbeModulationPin = Z_PROBE_MOD_PIN07;
+			break;
+
+		default:
+			zProbeModulationPin = Z_PROBE_MOD_PIN;
+			channel = 0;
+	}
+
+	if (channel != nvData.zProbeChannel)
+	{
+		nvData.zProbeChannel = channel;
+		if (autoSaveEnabled)
+		{
+			WriteNvData();
+		}
+	}
+}
+
 bool Platform::GetZProbeParameters(struct ZProbeParameters& params) const
 {
 	switch (nvData.zProbeType)
@@ -434,11 +457,9 @@ bool Platform::GetZProbeParameters(struct ZProbeParameters& params) const
 		return true;
 	case 1:
 	case 2:
-	case 3:
 		params = nvData.irZProbeParameters;
 		return true;
-	case 4:
-	case 5:
+	case 3:
 		params = nvData.alternateZProbeParameters;
 		return true;
 	default:
@@ -462,7 +483,6 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 		return true;
 	case 1:
 	case 2:
-	case 3:
 		if (nvData.irZProbeParameters != params)
 		{
 			nvData.irZProbeParameters = params;
@@ -472,8 +492,7 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 			}
 		}
 		return true;
-	case 4:
-	case 5:
+	case 3:
 		if (nvData.alternateZProbeParameters != params)
 		{
 			nvData.alternateZProbeParameters = params;
@@ -503,7 +522,8 @@ void Platform::ResetNvData()
 	ARRAY_INIT(nvData.gateWay, GATE_WAY);
 	ARRAY_INIT(nvData.macAddress, MAC_ADDRESS);
 
-	nvData.zProbeType = 0;	// Default is to use the switch
+	nvData.zProbeType = 0;			// Default is to use the switch
+	nvData.zProbeChannel = 0;		// Ormerods are usually shipped with a Duet v0.6
 	ARRAY_INIT(nvData.zProbeAxes, Z_PROBE_AXES);
 	nvData.switchZProbeParameters.Init(0.0);
 	nvData.irZProbeParameters.Init(Z_PROBE_STOP_HEIGHT);
@@ -839,7 +859,7 @@ void Platform::Tick()
 	case 2:			// last conversion started was the Z probe, with IR LED on
 		const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
-		if (nvData.zProbeType == 2 || nvData.zProbeType == 4)	// if using a modulated IR sensor
+		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
 		{
 			digitalWriteNonDue(zProbeModulationPin, LOW);		// turn off the IR emitter
 		}
@@ -853,7 +873,7 @@ void Platform::Tick()
 	default:
 	{
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
-		if (nvData.zProbeType == 2 || nvData.zProbeType == 4)	// if using a modulated IR sensor
+		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
 		{
 			digitalWriteNonDue(zProbeModulationPin, HIGH);		// turn on the IR emitter
 		}
@@ -1076,7 +1096,7 @@ void Platform::SetPidParameters(size_t heater, const PidParameters& params)
 		}
 	}
 }
-const PidParameters& Platform::GetPidParameters(size_t heater)
+const PidParameters& Platform::GetPidParameters(size_t heater) const
 {
 	return nvData.pidParams[heater];
 }
@@ -1097,9 +1117,10 @@ EndStopHit Platform::Stopped(int8_t drive)
 	if (nvData.zProbeType > 0 && drive < AXES && nvData.zProbeAxes[drive])
 	{
 		int zProbeVal = ZProbe();
-		int zProbeADValue =
-				(nvData.zProbeType == 3) ?
-						nvData.alternateZProbeParameters.adcValue : nvData.irZProbeParameters.adcValue;
+		int zProbeADValue = (nvData.zProbeType == 3) ?
+								nvData.alternateZProbeParameters.adcValue :
+								nvData.irZProbeParameters.adcValue;
+
 		if (zProbeVal >= zProbeADValue)
 			return lowHit;
 		else if (zProbeVal * 10 >= zProbeADValue * 9)	// if we are at/above 90% of the target value
@@ -1500,7 +1521,7 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 			scratchString[out] = directory[in];
 			in++;
 			out++;
-			if (out >= STRING_LENGTH)
+			if (out >= scratchString.Length())
 			{
 				platform->Message(BOTH_ERROR_MESSAGE, "CombineName() buffer overflow.");
 				out = 0;
@@ -1520,7 +1541,7 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 		scratchString[out] = fileName[in];
 		in++;
 		out++;
-		if (out >= STRING_LENGTH)
+		if (out >= scratchString.Length())
 		{
 			platform->Message(BOTH_ERROR_MESSAGE, "CombineName() buffer overflow.");
 			out = 0;
@@ -1528,7 +1549,7 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 	}
 	scratchString[out] = 0;
 
-	return scratchString;
+	return scratchString.Pointer();
 }
 // Open a directory to read a file list. Returns true if it contains any files, false otherwise.
 bool MassStorage::FindFirst(const char *directory, FileInfo &file_info)

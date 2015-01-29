@@ -11,7 +11,6 @@ Separated out from Platform.h by dc42 and extended by zpl
 
 #include <cctype>
 #include <cstring>
-#include <malloc.h>
 #include <cstdlib>
 #include <climits>
 

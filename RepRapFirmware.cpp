@@ -406,6 +406,7 @@ void RepRap::PrintDebug()
 				platform->AppendMessage(BOTH_MESSAGE, " %s", moduleName[i]);
 			}
 		}
+		platform->AppendMessage(BOTH_MESSAGE, "\n");
 	}
 	else
 	{
@@ -464,7 +465,7 @@ void RepRap::PrintTool(int toolNumber, StringRef& reply)
 			return;
 		}
 	}
-	reply.copy("Attempt to print details of non-existent tool.");
+	reply.copy("Attempt to print details of non-existent tool.\n");
 }
 
 void RepRap::StandbyTool(int toolNumber)
@@ -811,7 +812,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		response.catf(",\"coldRetractTemp\":%1.f", ColdExtrude() ? 0 : HOT_ENOUGH_TO_RETRACT);
 
 		// Delta configuration
-		response.catf(",\"isDelta\":%d", 0);	// TODO: implement this
+		response.cat(",\"geometry\":\"cartesian\"");	// TODO: Implement this with delta being an alternative
 
 		// Machine name
 		response.cat(",\"name\":");
@@ -990,6 +991,11 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
 		// New-style status request
 		// Send the printing/idle status
 		char ch = (reprap.IsStopped()) ? 'S' : (gc->PrintingAFile()) ? 'P' : 'I';
+		if (processingConfig)
+		{
+			// Only required by AUX device
+			ch = 'C';
+		}
 		response.printf("{\"status\":\"%c\",\"heaters\":", ch);
 
 		// Send the heater actual temperatures

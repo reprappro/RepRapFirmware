@@ -93,9 +93,10 @@ class RepRap
 
     const StringRef& GetGcodeReply() const;
 
+    static void CopyParameterText(const char* src, char *dst, size_t length);
+
   private:
 
-    static void CopyParameterText(const char* src, char *dst, size_t length);
     static void EncodeString(StringRef& response, const char* src, size_t spaceToLeave, bool allowControlChars);
   
     unsigned int GetReplySeq();

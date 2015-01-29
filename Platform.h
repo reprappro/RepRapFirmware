@@ -57,8 +57,6 @@ Licence: GPL
 
 // Some numbers...
 
-#define STRING_LENGTH 1029
-#define SHORT_STRING_LENGTH 40
 #define TIME_TO_REPRAP 1.0e6 	// Convert seconds to the units used by the machine (usually microseconds)
 #define TIME_FROM_REPRAP 1.0e-6 // Convert the units used by the machine (usually microseconds) to seconds
 
@@ -350,7 +348,6 @@ protected:
 
 private:
 
-  char scratchString[STRING_LENGTH];
   Platform* platform;
   FATFS fileSystem;
   DIR findDir;
@@ -639,8 +636,10 @@ public:
   float ZProbeStopHeight() const;
   int ZProbe() const;
   int GetZProbeSecondaryValues(int& v1, int& v2);
-  void SetZProbeType(int iZ);
+  void SetZProbeType(int pt);
   int GetZProbeType() const;
+  void SetZProbeChannel(int channel);
+  int GetZProbeChannel() const;
   void SetZProbeAxes(const bool axes[AXES]);
   void GetZProbeAxes(bool (&axes)[AXES]);
   bool GetZProbeParameters(struct ZProbeParameters& params) const;
@@ -664,7 +663,7 @@ public:
   void SetFanValue(float speed);					// Accepts values between 0..1 and 1..255
   float GetFanRPM();
   void SetPidParameters(size_t heater, const PidParameters& params);
-  const PidParameters& GetPidParameters(size_t heater);
+  const PidParameters& GetPidParameters(size_t heater) const;
   float TimeToHot() const;
   void SetTimeToHot(float t);
   void SetThermistorNumber(size_t heater, size_t thermistor);
@@ -714,6 +713,7 @@ private:
 	  ZProbeParameters irZProbeParameters;			// Z probe values for the IR sensor
 	  ZProbeParameters alternateZProbeParameters;	// Z probe values for the alternate sensor
 	  int zProbeType;								// the type of Z probe we are currently using
+	  int zProbeChannel;							// needed to determine the Z probe modulation pin
 	  bool zProbeAxes[AXES];						// Z probe is used for these axes
 	  PidParameters pidParams[HEATERS];
 	  byte ipAddress[4];

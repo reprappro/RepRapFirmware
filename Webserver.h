@@ -39,7 +39,6 @@ const unsigned int gcodeBufferLength = 512;			// size of our gcode ring buffer, 
 
 const unsigned int webUploadBufferSize = 2300;	// maximum size of HTTP upload packets (webMessageLength - 700)
 const unsigned int webMessageLength = 3000;		// maximum length of the web message we accept after decoding
-const unsigned int maxFilenameLength = 100;		// maximum length of a filename (inc. path from root) that we can upload
 
 const unsigned int maxCommandWords = 4;			// max number of space-separated words in the command
 const unsigned int maxQualKeys = 5;				// max number of key/value pairs in the qualifier
@@ -109,7 +108,7 @@ class ProtocolInterpreter
 
 	    UploadState uploadState;
 	    FileData fileBeingUploaded;
-	    char filenameBeingUploaded[maxFilenameLength + 1];
+	    char filenameBeingUploaded[FILENAME_LENGTH];
 	    const char *uploadPointer;							// pointer to start of uploaded data not yet written to file
 	    unsigned int uploadLength;							// amount of data not yet written to file
 	    uint32_t numContinuationBytes;						// number of UTF-8 continuation bytes we have received
@@ -245,8 +244,8 @@ class Webserver
 			unsigned int clientPointer;
 			char ftpResponse[ftpResponseLength]; // TODO: remove this
 
-			char currentDir[maxFilenameLength];
-			char filename[maxFilenameLength];
+			char filename[FILENAME_LENGTH];
+			char currentDir[FILENAME_LENGTH];
 
 			float portOpenTime;
 

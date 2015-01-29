@@ -877,7 +877,11 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		else if (StringEquals(request, "upload_begin") && StringEquals(key, "name"))
 		{
 			FileStore *file = platform->GetFileStore("0:/", value, true);
-			StartUpload(file);
+			if (StartUpload(file))
+			{
+				strncpy(filenameBeingUploaded, value, FILENAME_LENGTH);
+				filenameBeingUploaded[FILENAME_LENGTH - 1] = 0;
+			}
 
 			GetJsonUploadResponse(response);
 		}
@@ -1751,16 +1755,16 @@ void Webserver::FtpInterpreter::ProcessLine()
 			}
 			else if (StringStartsWith(clientMessage, "RNTO"))
 			{
-				char buffer[maxFilenameLength];
-				strncpy(buffer, filename, maxFilenameLength);
+				char buffer[FILENAME_LENGTH];
+				strncpy(buffer, filename, FILENAME_LENGTH);
 				ReadFilename(4);
 
 				if (buffer[0] != '/' && filename[0] != '/')
 				{
-					char old_filename[maxFilenameLength];
+					char old_filename[FILENAME_LENGTH];
 					const char *new_filename;
 
-					strncpy(old_filename, platform->GetMassStorage()->CombineName(currentDir, buffer), maxFilenameLength);
+					strncpy(old_filename, platform->GetMassStorage()->CombineName(currentDir, buffer), FILENAME_LENGTH);
 					new_filename = platform->GetMassStorage()->CombineName(currentDir, filename);
 
 					if (platform->GetMassStorage()->Rename(old_filename, new_filename))
@@ -1884,6 +1888,9 @@ void Webserver::FtpInterpreter::ProcessLine()
 
 				if (StartUpload(file))
 				{
+					strncpy(filenameBeingUploaded, filename, FILENAME_LENGTH);
+					filenameBeingUploaded[FILENAME_LENGTH - 1] = 0;
+
 					SendReply(150, "OK to send data.");
 					state = doingPasvIO;
 				}
@@ -1989,7 +1996,7 @@ void Webserver::FtpInterpreter::ReadFilename(int start)
 {
 	int filenameLength = 0;
 	bool readingPath = false;
-	for(int i=start; i<clientPointer && i<maxFilenameLength + start -1; i++)
+	for(int i=start; i<clientPointer && filenameLength<FILENAME_LENGTH; i++)
 	{
 		switch (clientMessage[i])
 		{
@@ -2019,14 +2026,14 @@ void Webserver::FtpInterpreter::ReadFilename(int start)
 
 void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 {
-	char combinedPath[maxFilenameLength];
+	char combinedPath[FILENAME_LENGTH];
 
 	if (newDirectory[0] != 0)
 	{
 		/* Prepare the new directory path */
 		if (newDirectory[0] == '/') // absolute path
 		{
-			strncpy(combinedPath, newDirectory, maxFilenameLength);
+			strncpy(combinedPath, newDirectory, FILENAME_LENGTH);
 		}
 		else // relative path
 		{
@@ -2040,7 +2047,7 @@ void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 				}
 				else
 				{
-					strncpy(combinedPath, currentDir, maxFilenameLength);
+					strncpy(combinedPath, currentDir, FILENAME_LENGTH);
 					for(int i=strlen(combinedPath) -2; i>=0; i--)
 					{
 						if (combinedPath[i] == '/')
@@ -2053,12 +2060,12 @@ void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 			}
 			else // go to child directory
 			{
-				strncpy(combinedPath, currentDir, maxFilenameLength);
+				strncpy(combinedPath, currentDir, FILENAME_LENGTH);
 				if (strlen(currentDir) > 1)
 				{
-					strncat(combinedPath, "/", maxFilenameLength - strlen(combinedPath) - 1);
+					strncat(combinedPath, "/", FILENAME_LENGTH - strlen(combinedPath) - 1);
 				}
-				strncat(combinedPath, newDirectory, maxFilenameLength - strlen(combinedPath) - 1);
+				strncat(combinedPath, newDirectory, FILENAME_LENGTH - strlen(combinedPath) - 1);
 			}
 		}
 
@@ -2071,7 +2078,7 @@ void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 		/* Verify path and change it */
 		if (platform->GetMassStorage()->PathExists(combinedPath))
 		{
-			strncpy(currentDir, combinedPath, maxFilenameLength);
+			strncpy(currentDir, combinedPath, FILENAME_LENGTH);
 			SendReply(250, "Directory successfully changed.");
 		}
 		else
