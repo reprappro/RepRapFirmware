@@ -123,7 +123,7 @@ void Platform::Init()
 	pinModeNonDue(atxPowerPin, OUTPUT);
 
 	SerialUSB.begin(BAUD_RATE);
-	Serial.begin(BAUD_RATE);	// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
+	Serial.begin(BAUD_RATE_AUX);	// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
 
 #if __cplusplus >= 201103L
 	static_assert(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024, "NVData too large");

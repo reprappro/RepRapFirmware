@@ -215,6 +215,7 @@ const unsigned int adDisconnectedVirtual = adDisconnectedReal << adOversampleBit
 // Miscellaneous...
 
 #define BAUD_RATE 115200 						// Communication speed of the USB if needed.
+#define BAUD_RATE_AUX 57600						// Default communication speed for AUX devices
 
 const int atxPowerPin = 12;						// Arduino Due pin number that controls the ATX power on/off
 
