@@ -1733,8 +1733,25 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			result = false;
 		else
-			result = reprap.GetHeat()->AllHeatersAtSetTemperatures();
-		break;
+		{
+			bool heaters[HEATERS];
+			if(gb->Seen('P'))
+			{
+				for(int8_t heater = 0; heater < HEATERS; heater++)
+					heaters[heater] = false;
+				long heatersToWatch[HEATERS];
+				int hCount = HEATERS;
+				gb->GetLongArray(heatersToWatch, hCount);
+				for(int8_t heater = 0; heater < hCount; heater++)
+					heaters[heatersToWatch[heater]] = true;
+			} else  // No P field - check them all...
+			{
+				for(int8_t heater = 0; heater < HEATERS; heater++)
+					heaters[heater] = true;
+			}
+			result = reprap.GetHeat()->AllHeatersAtSetTemperatures(heaters);
+		}
+	break;
 
 	case 119:
 	{

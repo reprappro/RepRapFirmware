@@ -195,7 +195,7 @@ void RepRap::Init()
 	  platform->GetLine()->InjectString(scratchString);
   } else
   {
-	  platform->Message(HOST_MESSAGE, "config.g not found in the sys folder.  Did you copy ormerod1/2.g?\n");
+	  platform->Message(HOST_MESSAGE, "config.g not found in the sys folder.\n");
 //	  platform->Message(HOST_MESSAGE, platform->GetDefaultFile());
 //	  platform->Message(HOST_MESSAGE, " (no configuration file found)...\n\n");
 //	  snprintf(scratchString, STRING_LENGTH, "M98 P%s\n", platform->GetDefaultFile());

@@ -66,11 +66,11 @@ void Heat::Diagnostics()
   // TODO - Put something useful in here
 }
 
-bool Heat::AllHeatersAtSetTemperatures()
+bool Heat::AllHeatersAtSetTemperatures(bool heaters[])
 {
 	for(int8_t heater = 0; heater < HEATERS; heater++)
 	{
-		if(!HeaterAtSetTemperature(heater))
+		if(heaters[heater] && (!HeaterAtSetTemperature(heater)))
 			return false;
 	}
 	return true;

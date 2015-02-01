@@ -89,7 +89,7 @@ class Heat
     float GetTemperature(int8_t heater);						// Get the temperature of a heater
     bool SwitchedOff(int8_t heater);						    // Is this heater in use?
     void ResetFault(int8_t heater);								// Reset a heater fault - only call this if you know what you are doing
-    bool AllHeatersAtSetTemperatures();							// Is everything at temperature within tolerance?
+    bool AllHeatersAtSetTemperatures(bool heaters[]);			// Is everything in the list at temperature within tolerance?
     bool HeaterAtSetTemperature(int8_t heater);					// Is a specific heater at temperature within tolerance?
     void Diagnostics();											// Output useful information
     float GetAveragePWM(int8_t heater);							// Return the running average PWM to the heater.    Answer is a fraction in [0, 1].
