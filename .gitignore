@@ -1,5 +1,7 @@
 *.d
 *.o
+*.bak
+Libraries/*
 Release/*
 !Release/RepRapFirmware*.bin
 *~
