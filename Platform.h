@@ -34,10 +34,10 @@ Licence: GPL
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
-// What are we supposed to be running on
+// What are we supposed to be running on? Select one definition
 
-#define DUET
-//#define DUET_EXT
+#define DUET					// for Duet without Extension
+//#define DUET_EXT				// for Duet with Extension
 
 // Language-specific includes
 
