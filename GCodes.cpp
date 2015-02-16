@@ -1674,7 +1674,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 				strncat(reply, scratchString, STRING_LENGTH);
 			}
 		}
-		snprintf(scratchString, STRING_LENGTH, "B: %.1f ", reprap.GetHeat()->GetTemperature(HOT_BED));
+		snprintf(scratchString, STRING_LENGTH, "B:%.1f ", reprap.GetHeat()->GetTemperature(HOT_BED));
 		strncat(reply, scratchString, STRING_LENGTH);
 		break;
 

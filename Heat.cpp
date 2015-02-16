@@ -167,7 +167,7 @@ void PID::Spin()
 	  {
 		  platform->SetHeater(heater, 0.0);
 		  temperatureFault = true;
-		  switchedOff = true;
+		  //switchedOff = true;
 		  snprintf(scratchString, STRING_LENGTH, "Temperature fault on heater %d, T = %.1f C\n", heater, temperature);
 		  platform->Message(HOST_MESSAGE, scratchString);
 		  reprap.FlagTemperatureFault(heater);
@@ -192,7 +192,7 @@ void PID::Spin()
 		  {
 			  platform->SetHeater(heater, 0.0);
 			  temperatureFault = true;
-			  switchedOff = true;
+			  //switchedOff = true;
 			  snprintf(scratchString, STRING_LENGTH, "Heating fault on heater %d, T = %.1f C; still not at temperature after %f seconds.\n",
 					  heater, temperature, tim);
 			  platform->Message(HOST_MESSAGE, scratchString);
