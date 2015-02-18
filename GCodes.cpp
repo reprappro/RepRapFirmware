@@ -1492,6 +1492,8 @@ bool GCodes::ActOnCode(GCodeBuffer *gb)
 
 bool GCodes::HandleTcode(int code, GCodeBuffer *gb)
 {
+	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
+		return false;
 	bool result = ChangeTool(code);
 	if(result)
 		HandleReply(false, gb == serialGCode, "", 'T', code, false);
@@ -1506,8 +1508,90 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 	bool seen;
 	char reply[STRING_LENGTH];
 	char comma;
+	bool codeDealtWith = true;
 
 	reply[0] = 0;
+
+	// First we deal with all the M codes that don't need to wait till the move buffer
+	// is exhausted.
+
+	switch(code)
+	{
+
+	case 20:  // Deprecated...
+		if(platform->Emulating() == me || platform->Emulating() == reprapFirmware)
+			snprintf(reply, STRING_LENGTH, "GCode files:\n%s", platform->GetMassStorage()->FileList(platform->GetGCodeDir(), gb == serialGCode));
+		else
+			snprintf(reply, STRING_LENGTH, "%s", platform->GetMassStorage()->FileList(platform->GetGCodeDir(), gb == serialGCode));
+		break;
+
+	case 21: // Initialise SD - ignore
+		break;
+
+	case 29: // End of file being written; should be intercepted before getting here
+		platform->Message(HOST_MESSAGE, "GCode end-of-file being interpreted.\n");
+		break;
+
+	case 105: // Deprecated...
+		strncpy(reply, "T:", STRING_LENGTH);
+		for(int8_t heater = 1; heater < HEATERS; heater++)
+		{
+			if(!reprap.GetHeat()->SwitchedOff(heater))
+			{
+				snprintf(scratchString, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
+				strncat(reply, scratchString, STRING_LENGTH);
+			}
+		}
+		snprintf(scratchString, STRING_LENGTH, "B:%.1f ", reprap.GetHeat()->GetTemperature(HOT_BED));
+		strncat(reply, scratchString, STRING_LENGTH);
+		break;
+
+	case 111: // Debug level
+		if(gb->Seen('S'))
+		{
+			int dbv = gb->GetIValue();
+			if(dbv == WEB_DEBUG_TRUE)
+				reprap.GetWebserver()->WebDebug(true);
+			else if (dbv == WEB_DEBUG_FALSE)
+				reprap.GetWebserver()->WebDebug(false);
+			else
+				reprap.SetDebug(dbv);
+		}
+		break;
+
+	case 112: // Emergency stop - acted upon in Webserver, but also here in case it comes from USB etc.
+		reprap.EmergencyStop();
+		break;
+
+	case 115: // Print firmware version
+		snprintf(reply, STRING_LENGTH, "FIRMWARE_NAME:%s FIRMWARE_VERSION:%s ELECTRONICS:%s DATE:%s", NAME, VERSION, ELECTRONICS, DATE);
+		break;
+
+	case 122:
+		reprap.Diagnostics();
+		break;
+
+	case 503: // list variable settings
+		result = SendConfigToLine();
+		break;
+
+	default:
+		codeDealtWith = false;
+	}
+
+	if(codeDealtWith)
+	{
+		if(result)
+			HandleReply(error, gb == serialGCode, reply, 'M', code, resend);
+		return result;
+	}
+
+	// Now wait till the move buffer is exhausted
+
+	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
+		return false;
+
+	// Now deal with M codes that can only be acted on when the move buffer is at its end.
 
 	switch(code)
 	{
@@ -1528,16 +1612,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 	case 18: // Motors off
 		result = DisableDrives();
-		break;
-
-	case 20:  // Deprecated...
-		if(platform->Emulating() == me || platform->Emulating() == reprapFirmware)
-			snprintf(reply, STRING_LENGTH, "GCode files:\n%s", platform->GetMassStorage()->FileList(platform->GetGCodeDir(), gb == serialGCode));
-		else
-			snprintf(reply, STRING_LENGTH, "%s", platform->GetMassStorage()->FileList(platform->GetGCodeDir(), gb == serialGCode));
-		break;
-
-	case 21: // Initialise SD - ignore
 		break;
 
 	case 23: // Set file to print
@@ -1572,10 +1646,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		snprintf(reply, STRING_LENGTH, "Writing to file: %s", str);
 	}
 	break;
-
-	case 29: // End of file being written; should be intercepted before getting here
-		platform->Message(HOST_MESSAGE, "GCode end-of-file being interpreted.\n");
-		break;
 
 	case 30:	// Delete file
 		DeleteFile(gb->GetUnprecedentedString());
@@ -1652,7 +1722,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 			result = DoFileMacro(gb->GetString());
 		break;
 
-	case 99:
+	case 99:  // Could be in the first case statement above, but makes more sense here
 		result = FileCannedCyclesReturn();
 		break;
 
@@ -1662,20 +1732,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 			float temperature = gb->GetFValue();
 			SetToolHeaters(temperature);
 		}
-		break;
-
-	case 105: // Deprecated...
-		strncpy(reply, "T:", STRING_LENGTH);
-		for(int8_t heater = 1; heater < HEATERS; heater++)
-		{
-			if(!reprap.GetHeat()->SwitchedOff(heater))
-			{
-				snprintf(scratchString, STRING_LENGTH, "%.1f ", reprap.GetHeat()->GetTemperature(heater));
-				strncat(reply, scratchString, STRING_LENGTH);
-			}
-		}
-		snprintf(scratchString, STRING_LENGTH, "B:%.1f ", reprap.GetHeat()->GetTemperature(HOT_BED));
-		strncat(reply, scratchString, STRING_LENGTH);
 		break;
 
 	case 106: // Fan on or off
@@ -1690,23 +1746,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 	case 110: // Set line numbers - line numbers are dealt with in the GCodeBuffer class
 		break;
 
-	case 111: // Debug level
-		if(gb->Seen('S'))
-		{
-			int dbv = gb->GetIValue();
-			if(dbv == WEB_DEBUG_TRUE)
-				reprap.GetWebserver()->WebDebug(true);
-			else if (dbv == WEB_DEBUG_FALSE)
-				reprap.GetWebserver()->WebDebug(false);
-			else
-				reprap.SetDebug(dbv);
-		}
-		break;
-
-	case 112: // Emergency stop - acted upon in Webserver, but also here in case it comes from USB etc.
-		reprap.EmergencyStop();
-		break;
-
 	case 114: // Deprecated
 	{
 		const char* str = GetCurrentCoordinates();
@@ -1718,10 +1757,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 	}
 	break;
 
-	case 115: // Print firmware version
-		snprintf(reply, STRING_LENGTH, "FIRMWARE_NAME:%s FIRMWARE_VERSION:%s ELECTRONICS:%s DATE:%s", NAME, VERSION, ELECTRONICS, DATE);
-		break;
-
 	case 109: // Deprecated
 		if(gb->Seen('S'))
 		{
@@ -1730,9 +1765,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		}
 		// Fall through to the general check...
 	case 116: // Wait for everything, especially set temperatures
-		if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
-			result = false;
-		else
 		{
 			bool heaters[HEATERS];
 			if(gb->Seen('P'))
@@ -1788,10 +1820,6 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 	case 121:
 		result = Pop();
-		break;
-
-	case 122:
-		reprap.Diagnostics();
 		break;
 
 	case 126: // Valve open
@@ -2081,9 +2109,8 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 	break;
 
-	case 503: // list variable settings
-		result = SendConfigToLine();
-		break;
+	// It would be eccentric to alter the ethernet variables in the middle of a print.
+	// But we should probably wait till the move buffer is exhausted before doing so...
 
 	case 540:
 		if(gb->Seen('P'))
@@ -2437,7 +2464,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 			limitAxes = (gb->GetIValue() != 0);
 		break;
 
-	case 569:
+	case 569: // Change an axis's direction
 		if(gb->Seen('P'))
 		{
 			int8_t drive = gb->GetIValue();
@@ -2480,8 +2507,12 @@ bool GCodes::HandleGcode(int code, GCodeBuffer *gb)
 	bool result = true;
 	bool error = false;
 	char reply[STRING_LENGTH];
+	bool codeDealtWith = true;
 
 	reply[0] = 0;
+
+	// First we deal with all the G codes that don't need to wait till the move buffer
+	// is exhausted.
 
 	switch(code)
 	{
@@ -2490,6 +2521,26 @@ bool GCodes::HandleGcode(int code, GCodeBuffer *gb)
 		result = SetUpMove(gb);
 		break;
 
+	default:
+		codeDealtWith = false;
+	}
+
+	if(codeDealtWith)
+	{
+		if(result)
+			HandleReply(error, gb == serialGCode, reply, 'M', code, false);
+		return result;
+	}
+
+	// Now wait till the move buffer is exhausted
+
+	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
+		return false;
+
+	// Now deal with G codes that can only be acted on when the move buffer is at its end.
+
+	switch(code)
+	{
 	case 4: // Dwell
 		result = DoDwell(gb);
 		break;
