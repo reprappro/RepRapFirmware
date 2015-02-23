@@ -2033,34 +2033,28 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		float pValue, iValue, dValue, mPWM;
 		seen = false;
 		mPWM = reprap.GetHeat()->GetMaxPWM(heater);
+		pValue = platform->PidKp(heater);
+		iValue = platform->PidKi(heater);
+		dValue = platform->PidKd(heater);
+
 		if (gb->Seen('P'))
 		{
 			pValue = gb->GetFValue();
 			seen = true;
 		}
-		else
-		{
-			pValue = platform->PidKp(1);
-		}
+
 
 		if (gb->Seen('I'))
 		{
 			iValue = gb->GetFValue();
 			seen = true;
 		}
-		else
-		{
-			iValue = platform->PidKi(1);
-		}
+
 
 		if (gb->Seen('D'))
 		{
 			dValue = gb->GetFValue();
 			seen = true;
-		}
-		else
-		{
-			dValue = platform->PidKd(1);
 		}
 
 		if (gb->Seen('S'))
