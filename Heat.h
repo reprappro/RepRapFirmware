@@ -45,6 +45,8 @@ class PID
     void ResetFault();								// Reset a fault condition - only call this if you know what you are doing
     float GetTemperature();							// Get the current temperature
     float GetAveragePWM();							// Return the running average PWM to the heater.  Answer is a fraction in [0, 1].
+    void SetMaxPWM(float mPWM);						// Set the maximum PWM
+    float GetMaxPWM(); 								// Return the maximum PWM
 
   private:
 
@@ -64,6 +66,7 @@ class PID
     bool temperatureFault;							// Has our heater developed a fault?
     float timeSetHeating;							// When we were switched on
     bool heatingUp;									// Are we heating up?
+    float maxPWM;									// The maximum PWM this heater is allowed in [0, 1]
     float averagePWM;								// The running average of the PWM.
 };
 
@@ -93,6 +96,8 @@ class Heat
     bool HeaterAtSetTemperature(int8_t heater);					// Is a specific heater at temperature within tolerance?
     void Diagnostics();											// Output useful information
     float GetAveragePWM(int8_t heater);							// Return the running average PWM to the heater.    Answer is a fraction in [0, 1].
+    void SetMaxPWM(int8_t heater, float mPWM);					// Set the maximum PWM
+    float GetMaxPWM(int8_t heater); 						    // Return the maximum PWM
     
   private:
   
@@ -184,6 +189,16 @@ inline float PID::GetAveragePWM()
 	return averagePWM*INV_HEAT_PWM_AVERAGE_COUNT;
 }
 
+inline void PID::SetMaxPWM(float mPWM)
+{
+	maxPWM = mPWM;
+}
+
+inline float PID::GetMaxPWM()
+{
+	return maxPWM;
+}
+
 //**********************************************************************************
 
 // Heat
@@ -253,6 +268,14 @@ inline float Heat::GetAveragePWM(int8_t heater)
 	return pids[heater]->GetAveragePWM();
 }
 
+inline void Heat::SetMaxPWM(int8_t heater, float mPWM)
+{
+	pids[heater]->SetMaxPWM(mPWM);
+}
 
+inline float Heat::GetMaxPWM(int8_t heater)
+{
+	return pids[heater]->GetMaxPWM();
+}
 
 #endif

@@ -556,7 +556,7 @@ class Platform
   float HeatSampleTime() const;
   void SetHeatSampleTime(float st);
   void CoolingFan(float speed);
-  void SetPidValues(size_t heater, float pVal, float iVal, float dVal);
+  void SetPidValues(size_t heater, float pVal, float iVal, float dVal, float mPWM);
   float TimeToHot() const;
   void SetTimeToHot(float t);
 

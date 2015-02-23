@@ -125,6 +125,7 @@ void PID::Init()
   switchedOff = true;
   heatingUp = false;
   averagePWM = 0.0;
+  maxPWM = 1.0;
 }
 
 void PID::SwitchOn()
@@ -208,8 +209,8 @@ void PID::Spin()
   {
 	if(error > 0.0)
 	{
-		platform->SetHeater(heater, 1.0);
-		averagePWM = averagePWM*(1.0 - INV_HEAT_PWM_AVERAGE_COUNT) + 1.0;
+		platform->SetHeater(heater, maxPWM);
+		averagePWM = averagePWM*(1.0 - INV_HEAT_PWM_AVERAGE_COUNT) + maxPWM;
 	} else
 	{
 		platform->SetHeater(heater, 0.0);
@@ -229,8 +230,8 @@ void PID::Spin()
   if(error > platform->FullPidBand(heater))
   {
      temp_iState = 0.0;
-     platform->SetHeater(heater, 1.0);
-     averagePWM = averagePWM*(1.0 - INV_HEAT_PWM_AVERAGE_COUNT) + 1.0;
+     platform->SetHeater(heater, maxPWM);
+     averagePWM = averagePWM*(1.0 - INV_HEAT_PWM_AVERAGE_COUNT) + maxPWM;
      lastTemperature = temperature;
      return;
   }  
@@ -251,7 +252,7 @@ void PID::Spin()
 
   if (result < 0.0) result = 0.0;
   else if (result > 255.0) result = 255.0;
-  result = result/255.0;
+  result = maxPWM*result/255.0;
 
   if(!temperatureFault)
 	  platform->SetHeater(heater, result);

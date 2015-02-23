@@ -1064,10 +1064,16 @@ void Platform::AppendMessage(char type, const char* message)
 }
 
 
-void Platform::SetPidValues(size_t heater, float pVal, float iVal, float dVal)
+void Platform::SetPidValues(size_t heater, float pVal, float iVal, float dVal, float mPWM)
 {
 	if (heater < HEATERS)
 	{
+		if(pVal < 0)
+		{
+			pVal = -pVal;
+			this->usePIDs[heater] = false;
+		} else
+			this->usePIDs[heater] = true;
 		pidKps[heater] = pVal;
 		pidKis[heater] = iVal / heatSampleTime;
 		pidKds[heater] = dVal * heatSampleTime;

@@ -2030,8 +2030,9 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 		int8_t heater = gb->GetIValue();
 
-		float pValue, iValue, dValue;
+		float pValue, iValue, dValue, mPWM;
 		seen = false;
+		mPWM = 1.0;
 		if (gb->Seen('P'))
 		{
 			pValue = gb->GetFValue();
@@ -2041,6 +2042,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		{
 			pValue = platform->PidKp(1);
 		}
+
 		if (gb->Seen('I'))
 		{
 			iValue = gb->GetFValue();
@@ -2050,6 +2052,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		{
 			iValue = platform->PidKi(1);
 		}
+
 		if (gb->Seen('D'))
 		{
 			dValue = gb->GetFValue();
@@ -2060,12 +2063,18 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 			dValue = platform->PidKd(1);
 		}
 
+		if (gb->Seen('S'))
+		{
+			mPWM = gb->GetFValue();
+			seen = true;
+		}
+
 		if (seen)
 		{
-			platform->SetPidValues(heater, pValue, iValue, dValue);
+			platform->SetPidValues(heater, pValue, iValue, dValue, mPWM);
 		} else
 		{
-			snprintf(reply, STRING_LENGTH, "Heater %d - P:%f I:%f D: %f\n", heater, pValue, iValue, dValue);
+			snprintf(reply, STRING_LENGTH, "Heater %d - P:%f I:%f D:%f, max PWM:%f\n", heater, pValue, iValue, dValue, reprap.GetHeat()->GetMaxPWM(heater));
 		}
 	}
 	break;
@@ -2108,6 +2117,9 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 	}
 
 	break;
+
+	case 400: // Means wait for buffer empty.  It is already...
+		break;
 
 	// It would be eccentric to alter the ethernet variables in the middle of a print.
 	// But we should probably wait till the move buffer is exhausted before doing so...
