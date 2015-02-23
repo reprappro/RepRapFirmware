@@ -1077,6 +1077,7 @@ void Platform::SetPidValues(size_t heater, float pVal, float iVal, float dVal, f
 		pidKps[heater] = pVal;
 		pidKis[heater] = iVal / heatSampleTime;
 		pidKds[heater] = dVal * heatSampleTime;
+		reprap.GetHeat()->SetMaxPWM(heater, mPWM);
 	}
 }
 

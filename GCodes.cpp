@@ -2043,13 +2043,11 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 			seen = true;
 		}
 
-
 		if (gb->Seen('I'))
 		{
 			iValue = gb->GetFValue();
 			seen = true;
 		}
-
 
 		if (gb->Seen('D'))
 		{
