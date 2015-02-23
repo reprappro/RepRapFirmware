@@ -2032,7 +2032,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 		float pValue, iValue, dValue, mPWM;
 		seen = false;
-		mPWM = 1.0;
+		mPWM = reprap.GetHeat()->GetMaxPWM(heater);
 		if (gb->Seen('P'))
 		{
 			pValue = gb->GetFValue();
@@ -2074,7 +2074,7 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 			platform->SetPidValues(heater, pValue, iValue, dValue, mPWM);
 		} else
 		{
-			snprintf(reply, STRING_LENGTH, "Heater %d - P:%f I:%f D:%f, max PWM:%f\n", heater, pValue, iValue, dValue, reprap.GetHeat()->GetMaxPWM(heater));
+			snprintf(reply, STRING_LENGTH, "Heater %d - P:%f I:%f D:%f, max PWM:%f\n", heater, pValue, iValue, dValue, mPWM);
 		}
 	}
 	break;
