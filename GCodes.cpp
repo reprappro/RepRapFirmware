@@ -579,10 +579,20 @@ int GCodes::SetUpMove(GCodeBuffer *gb)
 		moveAvailable = reprap.GetMove()->GetPauseCoordinates(moveBuffer);
 		if (moveAvailable)
 		{
+			// Allow specification of axis offsets as seen in dc42's firmware fork
+			for(uint8_t axis=0; axis<AXES; axis++)
+			{
+				if (gb->Seen(axisLetters[axis]))
+				{
+					moveBuffer[axis] += gb->GetFValue();
+				}
+			}
+
 			for(uint8_t drive=AXES; drive<DRIVES; drive++)
 			{
 				moveBuffer[drive] = 0.0;
 			}
+
 			if (gb->Seen(FEEDRATE_LETTER))
 			{
 				moveBuffer[DRIVES] = gb->GetFValue();
@@ -1956,8 +1966,8 @@ bool GCodes::CanQueueCode(GCodeBuffer *gb) const
 			return true;
 
 		// Display Message (LCD), Beep, RGB colour, Set servo position
-		//if (code == 117 || code == 280 || code == 300 || code == 420)
-		//	return true;
+		if (code == 117 || code == 300) // code == 280 || code == 420
+			return true;
 	}
 
 	return false;
@@ -2313,11 +2323,19 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		else
 		{
 			const char* filename = gb->GetUnprecedentedString();
-			reprap.StartingFilePrint(filename);
+			reprap.GetPrintMonitor()->StartingFilePrint(filename);
 			QueueFileToPrint(filename);
-			if (fileToPrint.IsLive() && platform->Emulating() == marlin)
+			if (fileToPrint.IsLive())
 			{
-				reply.copy("File opened\nFile selected\n");
+				if (platform->Emulating() == marlin)
+				{
+					reply.copy("File opened\nFile selected\n");
+				}
+			}
+			else
+			{
+				// don't proceed with case 24 if the file couldn't be opened
+				break;
 			}
 		}
 
@@ -2348,7 +2366,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		result = reprap.GetMove()->Resume();
 		if (result)
 		{
+			if (!isResuming)
+			{
+				reprap.GetPrintMonitor()->StartedFilePrint();
+			}
 			isResuming = false;
+
 			fileBeingPrinted.MoveFrom(fileToPrint);
 			fractionOfFilePrinted = -1.0;
 			fileGCode->Resume();
@@ -2471,7 +2494,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 36: // Return file information
 		{
 			const char* filename = gb->GetUnprecedentedString(true);	// get filename, or NULL if none provided
-			reprap.GetFileInfoResponse(reply, filename);
+			reprap.GetPrintMonitor()->GetFileInfoResponse(reply, filename);
 		}
 		break;
 

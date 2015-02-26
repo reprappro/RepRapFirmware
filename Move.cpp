@@ -62,6 +62,8 @@ Move::Move(Platform* p, GCodes* g)
   
   lookAheadDDA = new DDA(this, platform, NULL);
 
+  // We need an isolated DDA entry to perform moves in case the look-ahead queue is paused
+
   isolatedMove = new LookAhead(this, platform, NULL);
   isolatedMove->previous = NULL;
   ddaIsolatedMove = new DDA(this, platform, NULL);
@@ -133,8 +135,6 @@ void Move::Init()
 
   xRectangle = 1.0/(0.8*platform->AxisMaximum(X_AXIS));
   yRectangle = xRectangle;
-
-  identityBedTransform = true;
 
   lastTime = platform->Time();
   longWait = lastTime;
@@ -1652,12 +1652,21 @@ float LookAhead::Cosine()
   float m2;
   for(int8_t drive = 0; drive < DRIVES; drive++)
   {
-	m1 = MachineToEndPoint(drive);
-    m2 = Next()->MachineToEndPoint(drive) - m1;
-    m1 = m1 - Previous()->MachineToEndPoint(drive);
-    a2 += m1*m1;
-    b2 += m2*m2;
-    cosine += m1*m2;
+	  m1 = MachineToEndPoint(drive);
+
+	  // Absolute moves for axes; relative for extruders
+
+	  if(drive < AXES)
+	  {
+		  m2 = Next()->MachineToEndPoint(drive) - m1;
+		  m1 = m1 - Previous()->MachineToEndPoint(drive);
+	  } else
+	  {
+		  m2 = Next()->MachineToEndPoint(drive);
+	  }
+	  a2 += m1*m1;
+	  b2 += m2*m2;
+	  cosine += m1*m2;
   }
   
   if(a2 <= 0.0 || b2 <= 0.0) // Avoid division by 0.0
@@ -1666,7 +1675,7 @@ float LookAhead::Cosine()
     return cosine;
   }
  
-  cosine = cosine/( (float)sqrt(a2) * (float)sqrt(b2) );
+  cosine = cosine/( (float)sqrt(a2*b2) );
   return cosine;
 }
 

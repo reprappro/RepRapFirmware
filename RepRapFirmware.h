@@ -36,6 +36,7 @@ enum Module
 	moduleMove = 4,
 	moduleHeat = 5,
 	moduleDda = 6,			// not yet implemented in zpl fork
+	modulePrintMonitor = 7,
 	noModule = 15
 };
 
@@ -48,7 +49,8 @@ static const char *moduleName[] =
 	"Move",
 	"Heat",
 	"DDA",
-	"?","?","?","?","?","?","?","?",
+	"PrintMonitor",
+	"?","?","?","?","?","?","?",
 	"none"
 };
 
@@ -61,6 +63,7 @@ class GCodes;
 class Move;
 class Heat;
 class Tool;
+class PrintMonitor;
 class RepRap;
 class FileStore;
 
@@ -129,6 +132,7 @@ extern StringRef scratchString;
 #include "Move.h"
 #include "Heat.h"
 #include "Tool.h"
+#include "PrintMonitor.h"
 #include "Reprap.h"
 
 // std::min and std::max don't seem to work with this variant of gcc, so define our own ones here

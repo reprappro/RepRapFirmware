@@ -148,7 +148,7 @@ a lot of data that needs to be copied, this should be set high. */
 /* TCP sender buffer space (bytes). */
 #define TCP_SND_BUF             (2 * 1432)  //changed from 2150 to pass LWIP sanity checks
 /* TCP sender buffer space (pbufs). This must be at least = 2 * TCP_SND_BUF/TCP_MSS for things to work. */
-#define TCP_SND_QUEUELEN        (2 * TCP_SND_BUF / TCP_MSS)
+#define TCP_SND_QUEUELEN        (3 * TCP_SND_BUF / TCP_MSS)
 /* Maximum number of retransmissions of data segments. */
 // #define TCP_MAXRTX              12
 /* Maximum number of retransmissions of SYN segments. */

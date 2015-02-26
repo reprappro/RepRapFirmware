@@ -49,15 +49,16 @@ Naming conventions:
 
 Structure:
 
-There are seven main classes:
+There are eight main classes:
 
   * RepRap
   * GCodes
   * Heat
   * Move
   * Platform
-  * Network, and
-  * Webserver
+  * Network
+  * Webserver, and
+  * PrintMonitor
 
 RepRap:
 
@@ -93,6 +94,10 @@ This class talks to the network (via Platform) and implements a simple webserver
 interface to the RepRap machine. It uses the Knockout and Jquery Javascript libraries to achieve this.
 In addition, FTP and Telnet servers are provided for easier SD card file management and G-Code handling.
 
+PrintMonitor:
+
+This class provides methods to obtain statistics (height, filament usage etc.) from generated G-Code
+files and to calculate estimated print end-times for a live print.
 
 
 When the software is running there is one single instance of each main class, and all the memory allocation is

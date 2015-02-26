@@ -3,6 +3,11 @@
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
 		<cconfiguration id="it.baeyens.arduino.core.toolChain.release.1371890514">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="it.baeyens.arduino.core.toolChain.release.1371890514" moduleId="org.eclipse.cdt.core.settings" name="Release">
+				<macros>
+					<stringMacro name="A.COMPILER.CPP.FLAGS" type="VALUE_TEXT" value="-c -g -O3 -w -ffunction-sections -fdata-sections -std=gnu++11 -fno-threadsafe-statics --param max-inline-insns-single=500 -fno-rtti -fno-exceptions -Dprintf=iprintf"/>
+					<stringMacro name="A.COMPILER.C.ELF.FLAGS" type="VALUE_TEXT" value="-O3 -Wl,--gc-sections"/>
+					<stringMacro name="A.COMPILER.C.FLAGS" type="VALUE_TEXT" value="-c -g -O3 -w -ffunction-sections -fdata-sections -std=gnu++11 --param max-inline-insns-single=500 -Dprintf=iprintf"/>
+				</macros>
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.MakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
@@ -49,7 +54,6 @@
 								</option>
 								<inputType id="it.baeyens.arduino.compiler.c.sketch.input.165767125" name="C Source Files" superClass="it.baeyens.arduino.compiler.c.sketch.input"/>
 							</tool>
-							<tool id="it.baeyens.arduino.tool.sketch.compiler.s.1601888095" name="Arduino Assembler" superClass="it.baeyens.arduino.tool.sketch.compiler.s"/>
 							<tool id="it.baeyens.arduino.tool.ar.1775220307" name="Arduino archiver" superClass="it.baeyens.arduino.tool.ar"/>
 							<tool id="it.baeyens.arduino.tool.combine.638440606" name="Arduino combiner" superClass="it.baeyens.arduino.tool.combine"/>
 							<tool id="it.baeyens.arduino.tool.objcopy.eep.2116255148" name="Arduino tool Create eeprom" superClass="it.baeyens.arduino.tool.objcopy.eep"/>

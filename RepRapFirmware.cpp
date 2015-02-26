@@ -17,11 +17,11 @@ General design principles:
   * Make everything except the Platform class (see below) as stateless as possible,
   * No use of conditional compilation except for #include guards - if you need that, you should be
        forking the repository to make a new branch - let the repository take the strain,
-  * Concentration of all machine-dependent defintions and code in Platform.h and Platform.cpp,
+  * Concentration of all machine-dependent definitions and code in Platform.h and Platform.cpp,
   * No specials for (X,Y) or (Z) - all movement is 3-dimensional,
   * Except in Platform.h, use real units (mm, seconds etc) throughout the rest of the code wherever possible,
   * Try to be efficient in memory use, but this is not critical,
-  * Labour hard to be efficient in time use, and this is  critical,
+  * Labour hard to be efficient in time use, and this is critical,
   * Don't abhor floats - they work fast enough if you're clever,
   * Don't avoid arrays and structs/classes,
   * Don't avoid pointers,
@@ -39,15 +39,16 @@ Naming conventions:
 
 Structure:
 
-There are seven main classes:
+There are eight main classes:
 
   * RepRap
   * GCodes
   * Heat
   * Move
   * Platform
-  * Network, and
-  * Webserver
+  * Network
+  * Webserver, and
+  * PrintMonitor
 
 RepRap:
 
@@ -83,6 +84,10 @@ This class talks to the network (via Platform) and implements a simple webserver
 interface to the RepRap machine.  It uses the Knockout and Jquery Javascript libraries to achieve this.
 In addition, FTP and Telnet servers are provided for easier SD card file management and G-Code handling.
 
+PrintMonitor:
+
+This class provides methods to obtain statistics (height, filament usage etc.) from generated G-Code
+files and to calculate estimated print end-times for a live print.
 
 
 When the software is running there is one single instance of each main class, and all the memory allocation is
@@ -145,12 +150,6 @@ Licence: GPL
 
 ****************************************************************************************************/
 
-// If this goes in the right place (Platform.h) the compile fails. Why? - AB
-
-//#include <SPI.h>
-//#include <Ethernet.h>
-//#include <SD.h>
-
 #include "RepRapFirmware.h"
 
 // We just need one instance of RepRap; everything else is contained within it and hidden
@@ -164,9 +163,7 @@ RepRap reprap;
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
 RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noModule), ticksInSpinState(0),
-		resetting(false), fileInfoDetected(false), printStartTime(0.0), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH),
-		currentLayer(0), firstLayerDuration(0.0), firstLayerHeight(0.0), firstLayerFilament(0.0), firstLayerProgress(0.0),
-		warmUpDuration(0.0), layerEstimatedTimeLeft(0.0), lastLayerTime(0.0), lastLayerFilament(0.0), numLayerSamples(0)
+		resetting(false), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH)
 {
   platform = new Platform();
   network = new Network(platform);
@@ -174,6 +171,7 @@ RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noMod
   gCodes = new GCodes(platform, webserver);
   move = new Move(platform, gCodes);
   heat = new Heat(platform, gCodes);
+  printMonitor = new PrintMonitor(platform, gCodes);
   toolList = NULL;
 }
 
@@ -191,7 +189,7 @@ void RepRap::Init()
 
   gcodeReply[0] = 0;
   increaseSeq = false;
-  seq = 0;
+  seq = replySeq = 0;
   processingConfig = true;
 
   // All of the following init functions must execute reasonably quickly before the watchdog times us out
@@ -200,6 +198,7 @@ void RepRap::Init()
   webserver->Init();
   move->Init();
   heat->Init();
+  printMonitor->Init();
   currentTool = NULL;
 
   const uint32_t wdtTicks = 256;	// number of watchdog ticks @ 32768Hz/128 before the watchdog times out (max 4095)
@@ -299,11 +298,12 @@ void RepRap::Spin()
 	ticksInSpinState = 0;
 	heat->Spin();
 
+	spinningModule = modulePrintMonitor;
+	ticksInSpinState = 0;
+	printMonitor->Spin();
+
 	spinningModule = noModule;
 	ticksInSpinState = 0;
-
-	// Update the print stats
-	UpdatePrintProgress();
 
 	// Keep track of the loop time
 
@@ -576,49 +576,8 @@ void RepRap::Tick()
 // Type 3 is the same but instead of static parameters we report print estimation values.
 void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver)
 {
-	char ch;
-
 	// Machine status
-	if (processingConfig)
-	{
-		// Reading the configuration file
-		ch = 'C';
-	}
-	else if (IsStopped())
-	{
-		// Halted
-		ch = 'H';
-	}
-	else if (gCodes->IsPausing())
-	{
-		// Pausing / Decelerating
-		ch = 'D';
-	}
-	else if (gCodes->IsResuming())
-	{
-		// Resuming
-		ch = 'R';
-	}
-	else if (move->IsPaused())
-	{
-		// Paused / Stopped
-		ch = 'S';
-	}
-	else if (gCodes->PrintingAFile())
-	{
-		// Printing
-		ch = 'P';
-	}
-	else if (gCodes->DoingFileMacro() || !move->NoLiveMovement())
-	{
-		// Busy
-		ch = 'B';
-	}
-	else
-	{
-		// Idle
-		ch = 'I';
-	}
+	char ch = GetStatusCharacter();
 	response.printf("{\"status\":\"%c\",\"coords\":{", ch);
 
 	/* Coordinates */
@@ -876,10 +835,10 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	else if (type == 3)
 	{
 		// Current Layer
-		response.catf(",\"currentLayer\":%d", currentLayer);
+		response.catf(",\"currentLayer\":%d", printMonitor->GetCurrentLayer());
 
 		// Current Layer Time
-		response.catf(",\"currentLayerTime\":%.1f", (lastLayerTime > 0.0) ? (platform->Time() - lastLayerTime) : 0.0);
+		response.catf(",\"currentLayerTime\":%.1f", printMonitor->GetCurrentLayerTime());
 
 		// Raw Extruder Positions
 		float rawExtruderPos[DRIVES - AXES];
@@ -896,27 +855,27 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		response.catf("],\"fractionPrinted\":%.1f", (gCodes->PrintingAFile()) ? (gCodes->FractionOfFilePrinted() * 100.0) : 0.0);
 
 		// First Layer Duration
-		response.catf(",\"firstLayerDuration\":%.1f", firstLayerDuration);
+		response.catf(",\"firstLayerDuration\":%.1f", printMonitor->GetFirstLayerDuration());
 
 		// First Layer Height
-		response.catf(",\"firstLayerHeight\":%.2f", firstLayerHeight);
+		response.catf(",\"firstLayerHeight\":%.2f", printMonitor->GetFirstLayerHeight());
 
 		// Print Duration
-		response.catf(",\"printDuration\":%.1f", (printStartTime > 0.0) ? (platform->Time() - printStartTime) : 0.0);
+		response.catf(",\"printDuration\":%.1f", printMonitor->GetPrintDuration());
 
 		// Warm-Up Time
-		response.catf(",\"warmUpDuration\":%.1f", warmUpDuration);
+		response.catf(",\"warmUpDuration\":%.1f", printMonitor->GetWarmUpDuration());
 
 		/* Print Time Estimations */
 		{
 			// Based on file progress
-			response.catf(",\"timesLeft\":{\"file\":%.1f", EstimateTimeLeft(0));
+			response.catf(",\"timesLeft\":{\"file\":%.1f", printMonitor->EstimateTimeLeft(fileBased));
 
 			// Based on filament usage
-			response.catf(",\"filament\":%.1f", EstimateTimeLeft(1));
+			response.catf(",\"filament\":%.1f", printMonitor->EstimateTimeLeft(filamentBased));
 
 			// Based on layers
-			response.catf(",\"layer\":%.1f}", EstimateTimeLeft(2));
+			response.catf(",\"layer\":%.1f}", printMonitor->EstimateTimeLeft(layerBased));
 		}
 	}
 
@@ -982,19 +941,21 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 // Type 1 is the new-style webserver status response.
 // Type 2 is the M105 S2 response, which is like the new-style status response but some fields are omitted.
 // Type 3 is the M105 S3 response, which is like the M105 S2 response except that static values are also included.
-// 'seq' is the response sequence number, not needed for the type 2 response because that field is omitted.
+// 'seq' is the response sequence number, if it is not -1 and we have a different sequence number then we send the gcode response
 void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
 {
 	const GCodes *gc = reprap.GetGCodes();
 	if (type != 0)
 	{
-		// New-style status request
-		// Send the printing/idle status
-		char ch = (reprap.IsStopped()) ? 'S' : (gc->PrintingAFile()) ? 'P' : 'I';
-		if (processingConfig)
+		// Send the status. Note that 'S' has always meant that the machine is halted in this version of the status response, so we use A for pAused.
+		char ch = GetStatusCharacter();
+		if (ch == 'S')			// if paused then send 'A'
 		{
-			// Only required by AUX device
-			ch = 'C';
+			ch = 'A';
+		}
+		else if (ch == 'H')		// if halted then send 'S'
+		{
+			ch = 'S';
 		}
 		response.printf("{\"status\":\"%c\",\"heaters\":", ch);
 
@@ -1055,7 +1016,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
 		}
 
 		// Send extruder total extrusion since power up, last G92 or last M23
-		response.catf("],\"extr\":");		// announce the extruder positions
+		response.cat("],\"extr\":");		// announce the extruder positions
 		ch = '[';
 		for (int8_t drive = 0; drive < reprap.GetExtrudersInUse(); drive++)		// loop through extruders
 		{
@@ -1142,10 +1103,24 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
 	response.cat(",\"message\":");
 	EncodeString(response, message, 2, false);
 
+	if (type == 2 && gCodes->PrintingAFile())
+	{
+		// Send estimated times left based on file progress, filament usage, and layers
+		response.catf(",\"timesLeft\":[%.1f,%.1f,%.1f]",
+				printMonitor->EstimateTimeLeft(fileBased),
+				printMonitor->EstimateTimeLeft(filamentBased),
+				printMonitor->EstimateTimeLeft(layerBased));
+	}
+
 	if (type < 2)
 	{
-		response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());	// send the amount of buffer space available for gcodes
-		response.catf(",\"seq\":%u", GetReplySeq());						// send the response sequence number
+		const unsigned int newSeq = GetReplySeq();
+		if (newSeq != replySeq)
+		{
+			response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());	// send the amount of buffer space available for gcodes
+			response.catf(",\"seq\":%u", newSeq);								// send the response sequence number
+			replySeq = newSeq;
+		}
 
 		// Send the response to the last command. Do this last because it is long and may need to be truncated.
 		response.cat(",\"resp\":");
@@ -1258,73 +1233,6 @@ void RepRap::GetFilesResponse(StringRef& response, const char* dir) const
 	response.cat("]}");
 }
 
-// Get information for the specified file, or the currently printing file, in JSON format
-void RepRap::GetFileInfoResponse(StringRef& response, const char* filename) const
-{
-	// Poll file info for a specific file
-	if (filename != NULL)
-	{
-		GcodeFileInfo info;
-		bool found = webserver->GetFileInfo("0:/", filename, info);
-		if (found)
-		{
-			response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
-							info.fileSize, info.objectHeight, info.layerHeight);
-			char ch = '[';
-			if (info.numFilaments == 0)
-			{
-				response.catf("%c", ch);
-			}
-			else
-			{
-				for (unsigned int i = 0; i < info.numFilaments; ++i)
-				{
-					response.catf("%c%.1f", ch, info.filamentNeeded[i]);
-					ch = ',';
-				}
-			}
-			response.catf("],\"generatedBy\":\"%s\"}", info.generatedBy);
-		}
-		else
-		{
-			response.copy("{\"err\":1}");
-		}
-	}
-	else if (GetGCodes()->PrintingAFile() && fileInfoDetected)
-	{
-		// Poll file info about a file currently being printed
-		response.printf("{\"err\":0,\"size\":%lu,\"height\":%.2f,\"layerHeight\":%.2f,\"filament\":",
-						currentFileInfo.fileSize, currentFileInfo.objectHeight, currentFileInfo.layerHeight);
-		char ch = '[';
-		if (currentFileInfo.numFilaments == 0)
-		{
-			response.catf("%c", ch);
-		}
-		else
-		{
-			for (unsigned int i = 0; i < currentFileInfo.numFilaments; ++i)
-			{
-				response.catf("%c%.1f", ch, currentFileInfo.filamentNeeded[i]);
-				ch = ',';
-			}
-		}
-		response.catf("],\"generatedBy\":\"%s\",\"printDuration\":%d,\"fileName\":\"%s\"}",
-				currentFileInfo.generatedBy, (int)((platform->Time() - printStartTime) * 1000.0), fileBeingPrinted);
-	}
-	else
-	{
-		response.copy("{\"err\":1}");
-	}
-}
-
-void RepRap::StartingFilePrint(const char *filename)
-{
-	fileInfoDetected = Webserver::GetFileInfo(platform->GetGCodeDir(), filename, currentFileInfo);
-	printStartTime = platform->Time();
-	strncpy(fileBeingPrinted, filename, ARRAY_SIZE(fileBeingPrinted));
-	fileBeingPrinted[ARRAY_UPB(fileBeingPrinted)] = 0;
-}
-
 void RepRap::Beep(int freq, int ms)
 {
 	if (gCodes->HaveAux())
@@ -1364,6 +1272,47 @@ void RepRap::AppendCharToStatusResponse(const char c)
 	increaseSeq = true;
 }
 
+char RepRap::GetStatusCharacter() const
+{
+	if (processingConfig)
+	{
+		// Reading the configuration file
+		return 'C';
+	}
+	if (IsStopped())
+	{
+		// Halted
+		return 'H';
+	}
+	if (gCodes->IsPausing())
+	{
+		// Pausing / Decelerating
+		return 'D';
+	}
+	if (gCodes->IsResuming())
+	{
+		// Resuming
+		return 'R';
+	}
+	if (move->IsPaused())
+	{
+		// Paused / Stopped
+		return 'S';
+	}
+	if (gCodes->PrintingAFile())
+	{
+		// Printing
+		return 'P';
+	}
+	if (gCodes->DoingFileMacro() || !move->NoLiveMovement())
+	{
+		// Busy
+		return 'B';
+	}
+	// Idle
+	return 'I';
+}
+
 unsigned int RepRap::GetReplySeq()
 {
 	if (increaseSeq)
@@ -1400,280 +1349,6 @@ void RepRap::SetName(const char* nm)
 {
 	// Users sometimes put a tab character between the machine name and the comment, so allow for this
 	CopyParameterText(nm, myName, ARRAY_SIZE(myName));
-}
-
-// The following methods keep track of the current print
-
-void RepRap::UpdatePrintProgress()
-{
-	if (gCodes->IsPausing() || move->IsPaused() || gCodes->IsResuming())
-	{
-		return;
-	}
-
-	if (gCodes->PrintingAFile())
-	{
-		// May have just started a print, see if we're heating up
-		if (warmUpDuration == 0.0)
-		{
-			// When a new print starts, the total (raw) extruder positions are zeroed
-			float extrRaw[DRIVES - AXES], totalRawFilament = 0.0;
-			move->GetRawExtruderPositions(extrRaw);
-			for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
-			{
-				totalRawFilament += extrRaw[extruder];
-			}
-
-			// See if at least one heater is active and set
-			bool heatersAtHighTemperature = false;
-			for(uint8_t heater=E0_HEATER; heater<HEATERS; heater++)
-			{
-				if (heat->GetStatus(heater) == Heat::HS_active &&
-					heat->GetActiveTemperature(heater) > TEMPERATURE_LOW_SO_DONT_CARE &&
-					heat->HeaterAtSetTemperature(heater))
-				{
-					heatersAtHighTemperature = true;
-					break;
-				}
-			}
-
-			if (heatersAtHighTemperature && totalRawFilament != 0.0)
-			{
-				lastLayerTime = platform->Time();
-				warmUpDuration = lastLayerTime - printStartTime;
-
-				if (fileInfoDetected && currentFileInfo.layerHeight > 0.0) {
-					currentLayer = 1;
-				}
-			}
-		}
-		// Looks like the print has started
-		else if (currentLayer > 0)
-		{
-			float liveCoords[DRIVES + 1];
-			move->LiveCoordinates(liveCoords);
-
-			// See if we can determine the first layer height (must be smaller than the nozzle diameter)
-			if (firstLayerHeight == 0.0)
-			{
-				if (liveCoords[Z_AXIS] < NOZZLE_DIAMETER && !gCodes->DoingFileMacro())
-				{
-					firstLayerHeight = liveCoords[Z_AXIS];
-				}
-			}
-			// Then check if we've finished the first layer
-			else if (firstLayerDuration == 0.0)
-			{
-				if (liveCoords[Z_AXIS] > firstLayerHeight * 1.05) // allow some tolerance for transform operations
-				{
-					firstLayerFilament = 0.0;
-					float extrRaw[DRIVES - AXES];
-					move->GetRawExtruderPositions(extrRaw);
-					for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
-					{
-						firstLayerFilament += extrRaw[extruder];
-					}
-					firstLayerDuration = platform->Time() - lastLayerTime;
-					firstLayerProgress = gCodes->FractionOfFilePrinted();
-				}
-			}
-			// We have enough values to estimate the following layer heights
-			else if (currentFileInfo.objectHeight > 0.0)
-			{
-				unsigned int estimatedLayer = round((liveCoords[Z_AXIS] - firstLayerHeight) / currentFileInfo.layerHeight) + 1;
-				if (estimatedLayer == currentLayer + 1) // on layer change
-				{
-					// Record untainted extruder positions for filament-based estimation
-					float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
-					move->GetRawExtruderPositions(extrRaw);
-					for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
-					{
-						extrRawTotal += extrRaw[extruder];
-					}
-
-					const float now = platform->Time();
-					unsigned int remainingLayers;
-					remainingLayers = round((currentFileInfo.objectHeight - firstLayerHeight) / currentFileInfo.layerHeight) + 1;
-					remainingLayers -= currentLayer;
-
-					if (currentLayer > 1)
-					{
-						// Record a new set
-						if (numLayerSamples < MAX_LAYER_SAMPLES)
-						{
-							layerDurations[numLayerSamples] = now - lastLayerTime;
-							if (!numLayerSamples)
-							{
-								filamentUsagePerLayer[numLayerSamples] = extrRawTotal - firstLayerFilament;
-							}
-							else
-							{
-								filamentUsagePerLayer[numLayerSamples] = extrRawTotal - lastLayerFilament;
-							}
-							fileProgressPerLayer[numLayerSamples] = gCodes->FractionOfFilePrinted();
-							numLayerSamples++;
-						}
-						else
-						{
-							for(unsigned int i=1; i<MAX_LAYER_SAMPLES; i++)
-							{
-								layerDurations[i - 1] = layerDurations[i];
-								filamentUsagePerLayer[i - 1] = filamentUsagePerLayer[i];
-								fileProgressPerLayer[i - 1] = fileProgressPerLayer[i];
-							}
-
-							layerDurations[MAX_LAYER_SAMPLES - 1] = now - lastLayerTime;
-							filamentUsagePerLayer[MAX_LAYER_SAMPLES - 1] = extrRawTotal - lastLayerFilament;
-							fileProgressPerLayer[MAX_LAYER_SAMPLES - 1] = gCodes->FractionOfFilePrinted();
-						}
-					}
-
-					// Update layer-based estimation times
-					float avgLayerTime, avgLayerDelta = 0.0;
-					if (numLayerSamples)
-					{
-						avgLayerTime = 0.0;
-						for(unsigned int layer=0; layer<numLayerSamples; layer++)
-						{
-							avgLayerTime += layerDurations[layer];
-							if (layer)
-							{
-								avgLayerDelta += layerDurations[layer] - layerDurations[layer - 1];
-							}
-						}
-						avgLayerTime /= numLayerSamples;
-						avgLayerDelta /= numLayerSamples;
-					}
-					else
-					{
-						avgLayerTime = firstLayerDuration * FIRST_LAYER_SPEED_FACTOR;
-					}
-
-					layerEstimatedTimeLeft = (avgLayerTime * remainingLayers) - (avgLayerDelta * remainingLayers);
-					if (layerEstimatedTimeLeft < 0.0)
-					{
-						layerEstimatedTimeLeft = avgLayerTime * remainingLayers;
-					}
-
-					// TODO: maybe move other estimation methods here too?
-					// And move whole estimation code to a separate class?
-
-					// Set new layer values
-					currentLayer = estimatedLayer;
-					lastLayerTime = now;
-					lastLayerFilament = extrRawTotal;
-				}
-			}
-		}
-	}
-	else if (printStartTime > 0.0 && move->NoLiveMovement())
-	{
-		currentLayer = numLayerSamples = 0;
-		firstLayerDuration = firstLayerHeight = firstLayerFilament = firstLayerProgress = 0.0;
-		layerEstimatedTimeLeft = printStartTime = warmUpDuration = 0.0;
-		lastLayerTime = lastLayerFilament = 0.0;
-	}
-}
-
-float RepRap::EstimateTimeLeft(uint8_t method) const
-{
-	// We can't provide an estimation if we're not printing (yet)
-	if (!gCodes->PrintingAFile() || (fileInfoDetected && currentFileInfo.numFilaments && warmUpDuration == 0.0))
-	{
-		return 0.0;
-	}
-
-	// Take into account the first layer time only if we haven't got any other samples
-	float realPrintDuration = (platform->Time() - printStartTime) - warmUpDuration;
-	if (numLayerSamples)
-	{
-		realPrintDuration -= firstLayerDuration;
-	}
-
-	// Actual estimations
-	switch (method)
-	{
-		case 0: // File-Based
-		{
-			// Provide rough estimation only if we haven't collected any layer samples
-			float fractionPrinted = gCodes->FractionOfFilePrinted();
-			if (!numLayerSamples || !fileInfoDetected || currentFileInfo.objectHeight == 0.0)
-			{
-				return realPrintDuration * (1.0 / fractionPrinted) - realPrintDuration;
-			}
-
-			// Each layer takes time to achieve more file progress, so take an average over our samples
-			float avgSecondsByProgress = 0.0, lastLayerProgress = 0.0;
-			for(unsigned int layer=0; layer<numLayerSamples; layer++)
-			{
-				avgSecondsByProgress += layerDurations[layer] / (fileProgressPerLayer[layer] - lastLayerProgress);
-				lastLayerProgress = fileProgressPerLayer[layer];
-			}
-			avgSecondsByProgress /= numLayerSamples;
-
-			// Then we know how many seconds it takes to finish 1% and we know how much file progress is left
-			return avgSecondsByProgress * (1.0 - fractionPrinted);
-		}
-
-		case 1: // Filament-Based
-		{
-			// Need some file information, otherwise this method won't work
-			if (!fileInfoDetected || !currentFileInfo.numFilaments)
-			{
-				return 0.0;
-			}
-
-			// Sum up the filament usage and the filament needed
-			float totalFilamentNeeded = 0.0;
-			float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
-			move->GetRawExtruderPositions(extrRaw);
-			for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
-			{
-				totalFilamentNeeded += currentFileInfo.filamentNeeded[extruder];
-				extrRawTotal += extrRaw[extruder];
-			}
-
-			// If we have a reasonable amount of filament extruded, calculate estimated times left
-			if (totalFilamentNeeded > 0.0 && extrRawTotal > totalFilamentNeeded * ESTIMATION_MIN_FILAMENT_USAGE)
-			{
-				if (firstLayerFilament == 0.0)
-				{
-					return realPrintDuration * (totalFilamentNeeded - extrRawTotal) / extrRawTotal;
-				}
-
-				float filamentRate;
-				if (numLayerSamples)
-				{
-					filamentRate = 0.0;
-					for(unsigned int i=0; i<numLayerSamples; i++)
-					{
-						filamentRate += filamentUsagePerLayer[i] / layerDurations[i];
-					}
-					filamentRate /= numLayerSamples;
-				}
-				else
-				{
-					filamentRate = firstLayerFilament / firstLayerDuration;
-				}
-
-				return (totalFilamentNeeded - extrRawTotal) / filamentRate;
-			}
-			break;
-		}
-
-		case 2: // Layer-Based
-			if (layerEstimatedTimeLeft > 0.0)
-			{
-				float timeLeft = layerEstimatedTimeLeft - (platform->Time() - lastLayerTime);
-				if (timeLeft > 0.0)
-				{
-					return timeLeft;
-				}
-			}
-			break;
-	}
-
-	return 0.0;
 }
 
 //*************************************************************************************************
