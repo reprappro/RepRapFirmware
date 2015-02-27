@@ -337,6 +337,7 @@ public:
   bool MakeDirectory(const char *parentDir, const char *dirName);
   bool MakeDirectory(const char *directory);
   bool Rename(const char *oldFilename, const char *newFilename);
+  bool FileExists(const char *file) const;
   bool PathExists(const char *path) const;
   bool PathExists(const char* directory, const char* fileName);
 
@@ -367,6 +368,7 @@ public:
 	bool Write(const char *s, unsigned int len);	// Write a block of len bytes
 	bool Write(const char* s);						// Write a string
 	bool Close();									// Shut the file and tidy up
+	unsigned long Position() const;					// Get the current file position
 	bool Seek(unsigned long pos);					// Jump to pos in the file
 	bool GoToEnd();									// Position the file at the end (so you can write on the end).
 	unsigned long Length() const;					// File size in bytes
@@ -886,6 +888,11 @@ public:
 	float FractionRead() const
 	{
 		return (f == NULL ? -1.0 : f->FractionRead());
+	}
+
+	unsigned long Position() const
+	{
+		return (f == NULL ? 0 : f->Position());
 	}
 
 	unsigned long Length() const

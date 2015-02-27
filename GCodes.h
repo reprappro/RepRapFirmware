@@ -30,7 +30,6 @@ Licence: GPL
 #define EXTRUDE_LETTER 'E'						// GCode extrude
 
 typedef uint16_t EndstopChecks;					// must be large enough to hold a bitmap of drive numbers or ZProbeActive
-//const EndstopChecks ZProbeActive = 1 << 15;		// must be distinct from 1 << (any drive number)
 
 
 // Small class to hold an individual GCode and provide functions to allow it to be parsed
@@ -44,6 +43,7 @@ class GCodeBuffer
     bool Put(char c);									// Add a character to the end
     bool Put(const char *str, size_t len);				// Add an entire string
     bool IsEmpty() const;								// Does this buffer contain any code?
+    unsigned int Length() const;						// How many bytes have been fed into this buffer?
     bool Seen(char c);									// Is a character present?
     float GetFValue();									// Get a float after a key letter
     int GetIValue();									// Get an integer after a key letter
@@ -216,6 +216,7 @@ class GCodes
     float feedrateStack[STACK];					// For dealing with Push and Pop
     float extruderPositionStack[STACK][DRIVES-AXES];	// For dealing with Push and Pop
     FileData fileStack[STACK];
+    bool doingFileMacroStack[STACK];			// For dealing with Push and Pop
     int8_t stackPointer;						// Push and Pop stack pointer
     char axisLetters[AXES]; 					// 'X', 'Y', 'Z'
     float lastExtruderPosition[DRIVES - AXES];	// Extruder position of the last move fed into the Move class
@@ -229,6 +230,7 @@ class GCodes
     FileStore* fileBeingWritten;				// A file to write G Codes (or sometimes HTML) in
     FileStore* configFile;						// A file containing a macro
     bool doingFileMacro;						// Are we executing a macro file?
+    bool returningFromMacro;					// Are we returning from a completed macro file?
     bool isPausing, isResuming;					// Are we executing a pause/resume macro file?
     float fractionOfFilePrinted;				// Only used to record the main file when a macro is being printed
     char* eofString;							// What's at the end of an HTML file?

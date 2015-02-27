@@ -100,7 +100,7 @@ void GCodes::Reset()
 	fileToPrint.Close();
 	fileBeingWritten = NULL;
 	endStopsToCheck = 0;
-	doingFileMacro = isPausing = isResuming = false;
+	doingFileMacro = returningFromMacro = isPausing = isResuming = false;
 	fractionOfFilePrinted = -1.0;
 	dwellWaiting = false;
 	stackPointer = 0;
@@ -111,37 +111,63 @@ void GCodes::Reset()
 	auxDetected = false;
 }
 
-void GCodes::DoFilePrint(GCodeBuffer* gb)
-{
-	char b;
-
-	if (fileBeingPrinted.IsLive())
-	{
-		if (fileBeingPrinted.Read(b))
-		{
-			if (gb->Put(b))
-			{
-				gb->SetFinished(ActOnCode(gb, doingFileMacro));
-			}
-		}
-		else
-		{
-			if (gb->Put('\n')) // In case there wasn't one ending the file
-			{
-				gb->SetFinished(ActOnCode(gb, doingFileMacro));
-			}
-
-			if (!gb->Active() && AllMovesAreFinishedAndMoveBufferIsLoaded()) {
-				fileBeingPrinted.Close();
-			}
-		}
-	}
-}
-
 void GCodes::Spin()
 {
 	if (!active)
 		return;
+
+	// Macro files are the most important. We must finish them in one go before we proceed
+	// with the other G-Codes, because at least one of them will call DoFileMacro() again.
+
+	if (doingFileMacro)
+	{
+		if (fileMacroGCode->Active())
+		{
+			// We must NOT enqueue macro G-Codes, because the code queue doesn't work for these
+			fileMacroGCode->SetFinished(ActOnCode(fileMacroGCode, true));
+		}
+		else
+		{
+			// Process more of the macro file
+			uint8_t i = 0;
+			do
+			{
+				char b;
+				if (fileBeingPrinted.Read(b))
+				{
+					if (fileMacroGCode->Put(b))
+					{
+						fileMacroGCode->SetFinished(ActOnCode(fileMacroGCode, true));
+						break;
+					}
+				}
+				else
+				{
+					if (!fileMacroGCode->IsEmpty())
+					{
+						if (fileMacroGCode->Put('\n')) // In case there wasn't one ending the file
+						{
+							fileMacroGCode->SetFinished(ActOnCode(fileMacroGCode, true));
+							break;
+						}
+					}
+
+					if (!fileMacroGCode->Active() && AllMovesAreFinishedAndMoveBufferIsLoaded())
+					{
+						fileBeingPrinted.Close();
+						returningFromMacro = true;
+						Pop();
+					}
+
+					break;
+				}
+				++i;
+			} while (i < 16);
+		}
+
+		platform->ClassReport(longWait);
+		return;
+	}
 
 	// Check each of the sources of G Codes (web, aux, serial, queued and file) to
 	// see if they are finished in order to feed them new codes.
@@ -152,7 +178,7 @@ void GCodes::Spin()
 
 	if (!webGCode->Active() && webserver->GCodeAvailable())
 	{
-		int8_t i = 0;
+		uint8_t i = 0;
 		do
 		{
 			char b = webserver->ReadGCode();
@@ -179,7 +205,7 @@ void GCodes::Spin()
 
 	if (!auxGCode->Active() && (platform->GetAux()->Status() & byteAvailable))
 	{
-		int8_t i = 0;
+		uint8_t i = 0;
 		do
 		{
 			char b;
@@ -212,7 +238,7 @@ void GCodes::Spin()
 		else if (!serialGCode->Active())
 		{
 			// Read several bytes instead of just one. This approximately doubles the speed of file uploading.
-			int8_t i = 0;
+			uint8_t i = 0;
 			do
 			{
 				char b;
@@ -277,6 +303,42 @@ void GCodes::Spin()
 		movesCompleted = 0;
 	}
 
+	// At last, see if we can read some more bytes from the the file being printed
+
+	if (!fileGCode->Active() && reprap.GetMove()->IsRunning() && fileBeingPrinted.IsLive())
+	{
+		uint8_t i = 0;
+		do
+		{
+			char b;
+			if (fileBeingPrinted.Read(b))
+			{
+				if (fileGCode->Put(b))
+				{
+					fileGCode->SetFinished(ActOnCode(fileGCode));
+					break;
+				}
+			}
+			else
+			{
+				if (fileGCode->Put('\n')) // In case there wasn't one ending the file
+				{
+					fileGCode->SetFinished(ActOnCode(fileGCode));
+				}
+				if (!fileGCode->Active() && AllMovesAreFinishedAndMoveBufferIsLoaded())
+				{
+					fileBeingPrinted.Close();
+				}
+				break;
+			}
+			++i;
+		} while (i < 16);
+
+		platform->ClassReport(longWait);
+		return;
+	}
+
+
 	// Now run the G-Code buffers. It's important to fill up the G-Code buffers before we do this,
 	// otherwise we wouldn't have a chance to pause/cancel running prints.
 
@@ -301,13 +363,7 @@ void GCodes::Spin()
 	}
 	else if (fileGCode->Active())
 	{
-		fileGCode->SetFinished(ActOnCode(fileGCode, doingFileMacro));
-	}
-	else if (reprap.GetMove()->IsRunning())
-	{
-		// Running codes from files is different, because DoFilePrint() does both read
-		// and execute G-Codes. For that reason we must leave this call here.
-		DoFilePrint(fileGCode);
+		fileGCode->SetFinished(ActOnCode(fileGCode));
 	}
 
 	platform->ClassReport(longWait);
@@ -375,6 +431,7 @@ bool GCodes::Push()
 	{
 		extruderPositionStack[stackPointer][extruder] = lastExtruderPosition[extruder];
 	}
+	doingFileMacroStack[stackPointer] = doingFileMacro;
 	fileStack[stackPointer].CopyFrom(fileBeingPrinted);
 	if (stackPointer == 0)
 	{
@@ -382,6 +439,7 @@ bool GCodes::Push()
 	}
 	stackPointer++;
 	platform->PushMessageIndent();
+
 	return true;
 }
 
@@ -406,6 +464,7 @@ bool GCodes::Pop()
 	drivesRelative = drivesRelativeStack[stackPointer];
 	axesRelative = axesRelativeStack[stackPointer];
 	moveBuffer[DRIVES] = feedrateStack[stackPointer];
+	doingFileMacro = doingFileMacroStack[stackPointer];
 	for(uint8_t extruder=0; extruder<DRIVES-AXES; extruder++)
 	{
 		lastExtruderPosition[extruder] = extruderPositionStack[stackPointer][extruder];
@@ -413,6 +472,7 @@ bool GCodes::Pop()
 	fileBeingPrinted.MoveFrom(fileStack[stackPointer]);
 	endStopsToCheck = 0;
 	platform->PopMessageIndent();
+
 	return true;
 }
 
@@ -630,69 +690,49 @@ bool GCodes::ReadMove(float m[], EndstopChecks& ce)
 
 bool GCodes::DoFileMacro(const char* fileName)
 {
-	// Have we started the file?
+	// Are we returning from a macro?
 
-	if (!doingFileMacro)
+	if (returningFromMacro)
 	{
-		// No
-
-		if (!Push())
-		{
-			return false;
-		}
-
-		FileStore *f;
-		if (fileName[0] == '/')
-		{
-			f = platform->GetFileStore("0:", fileName, false);
-		}
-		else
-		{
-			f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
-		}
-
-		if (f == NULL)
-		{
-			platform->Message(BOTH_ERROR_MESSAGE, "Macro file %s not found.\n", fileName);
-			if(!Pop())
-			{
-				platform->Message(BOTH_ERROR_MESSAGE, "Cannot pop the stack.\n");
-			}
-			return true;
-		}
-		fileBeingPrinted.Set(f);
-		doingFileMacro = true;
-		fileMacroGCode->Init();
-		return false;
-	}
-
-	// Complete the current move (must do this before checking whether we have finished the file in case it didn't end in newline)
-
-	if (fileMacroGCode->Active())
-	{
-		fileMacroGCode->SetFinished(ActOnCode(fileMacroGCode, true));
-		return false;
-	}
-
-	// Have we finished the file?
-
-	if (!fileBeingPrinted.IsLive())
-	{
-		// Yes
-
-		if (!Pop())
-		{
-			return false;
-		}
-
-		doingFileMacro = false;
-		fileMacroGCode->Init();
+		returningFromMacro = false;
 		return true;
 	}
 
-	// No - Do more of the file
+	// No, see if we can push some values on the stack
 
-	DoFilePrint(fileMacroGCode);
+	if (!Push())
+	{
+		return false;
+	}
+
+	// Then see if we can open the file
+
+	FileStore *f = platform->GetFileStore((fileName[0] == '/') ? "0:" : platform->GetSysDir(), fileName, false);
+	if (f == NULL)
+	{
+		platform->Message(BOTH_ERROR_MESSAGE, "Macro file %s not found.\n", fileName);
+		if(!Pop())
+		{
+			platform->Message(BOTH_ERROR_MESSAGE, "Cannot pop the stack.\n");
+		}
+		return true;
+	}
+	fileBeingPrinted.Set(f);
+
+	// Deal with nested macros (rewind back to the position before the last code so it is called again later)
+
+	unsigned int lastStackPointer = stackPointer - 1;
+	if (doingFileMacroStack[lastStackPointer])
+	{
+		fileStack[lastStackPointer].Seek(fileStack[lastStackPointer].Position() - fileMacroGCode->Length());
+	}
+
+	// Set some values so the macro file gets processed properly
+
+	doingFileMacro = true;
+	fileMacroGCode->Init();
+	fileMacroGCode->Put(0);
+
 	return false;
 }
 
@@ -704,11 +744,11 @@ bool GCodes::FileMacroCyclesReturn()
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
 
-	doingFileMacro = false;
-	fileMacroGCode->Init();
-
 	fileBeingPrinted.Close();
-	return true;
+	fileMacroGCode->Init();
+	fileMacroGCode->Put(0);
+
+	return Pop();
 }
 
 // To execute any move, call this until it returns true.
@@ -1094,7 +1134,7 @@ bool GCodes::SetBedEquationWithProbe(StringRef& reply)
 {
 	// zpl-2014-10-09: In order to stay compatible with old firmware versions, only execute bed.g
 	// if it is actually present in the sys directory
-	if (platform->GetMassStorage()->PathExists(SYS_DIR SET_BED_EQUATION))
+	if (platform->GetMassStorage()->FileExists(SYS_DIR SET_BED_EQUATION))
 	{
 		return DoFileMacro(SET_BED_EQUATION);
 	}
@@ -2495,6 +2535,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			const char* filename = gb->GetUnprecedentedString(true);	// get filename, or NULL if none provided
 			reprap.GetPrintMonitor()->GetFileInfoResponse(reply, filename);
+			reply.cat("\n");
 		}
 		break;
 
@@ -2613,6 +2654,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 105: // Get Extruder Temperature / Get Status Message
 		{
 			int param = (gb->Seen('S')) ? gb->GetIValue() : 0;
+			int seq = (gb->Seen('R')) ? gb->GetIValue() : -1;
 			switch (param)
 			{
 				// case 1 is reserved for future Pronterface versions, see
@@ -2620,11 +2662,13 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 				/* NOTE: The following responses are subject to deprecation */
 				case 2:
-					reprap.GetLegacyStatusResponse(reply, 2);		// send JSON-formatted status response
+					reprap.GetLegacyStatusResponse(reply, 2, seq);	// send JSON-formatted status response
+					reply.cat("\n");
 					break;
 
 				case 3:
-					reprap.GetLegacyStatusResponse(reply, 3);		// send extended JSON-formatted response
+					reprap.GetLegacyStatusResponse(reply, 3, seq);	// send extended JSON-formatted response
+					reply.cat("\n");
 					break;
 
 				/* This one isn't */
@@ -4016,6 +4060,19 @@ bool GCodeBuffer::IsEmpty() const
 		buf++;
 	}
 	return false;
+}
+
+// How many bytes have been fed into this buffer (including terminating character)
+
+unsigned int GCodeBuffer::Length() const
+{
+	unsigned int length = 0;
+	const char *buf = gcodeBuffer;
+	while (*buf++ != 0)
+	{
+		length++;
+	}
+	return length + 1;
 }
 
 // Is 'c' in the G Code string?

@@ -1182,6 +1182,7 @@ void Move::SetProbedBedEquation(StringRef& reply)
 	{
 		reply.catf(" [%.1f, %.1f, %.3f]", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
 	}
+	reply.cat("\n");
 }
 
 // FIXME

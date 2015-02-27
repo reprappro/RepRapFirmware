@@ -1697,6 +1697,13 @@ bool MassStorage::Rename(const char *oldFilename, const char *newFilename)
 	return true;
 }
 
+// Check if the specified file exists
+bool MassStorage::FileExists(const char *file) const
+{
+	FILINFO fil;
+	return (f_stat(file, &fil) == FR_OK);
+}
+
 // Check if the specified directory exists
 bool MassStorage::PathExists(const char *path) const
 {
@@ -1784,6 +1791,11 @@ bool FileStore::Close()
 	writing = false;
 	lastBufferEntry = 0;
 	return ok && fr == FR_OK;
+}
+
+unsigned long FileStore::Position() const
+{
+	return bytesRead;
 }
 
 bool FileStore::Seek(unsigned long pos)

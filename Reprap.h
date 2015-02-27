@@ -79,7 +79,7 @@ class RepRap
     uint16_t GetHeatersInUse() const;
 
     void GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver);
-    void GetLegacyStatusResponse(StringRef &response, uint8_t type);
+    void GetLegacyStatusResponse(StringRef &response, uint8_t type, int seq);
     void GetNameResponse(StringRef& response) const;
     void GetFilesResponse(StringRef& response, const char* dir) const;
 
@@ -99,7 +99,7 @@ class RepRap
     static void EncodeString(StringRef& response, const char* src, size_t spaceToLeave, bool allowControlChars);
   
     char GetStatusCharacter() const;
-    unsigned int GetReplySeq();
+    unsigned int GetReplySeq() const;
 
     Platform* platform;
     Network* network;
@@ -134,8 +134,7 @@ class RepRap
 
     char gcodeReplyBuffer[GCODE_REPLY_LENGTH];
     StringRef gcodeReply;
-    unsigned int seq, replySeq;
-    bool increaseSeq;
+    unsigned int replySeq;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -199,6 +198,7 @@ inline bool RepRap::IsStopped() const { return stopped; }
 inline uint16_t RepRap::GetTicksInSpinState() const { return ticksInSpinState; }
 
 inline const StringRef& RepRap::GetGcodeReply() const { return gcodeReply; }
+inline unsigned int RepRap::GetReplySeq() const { return replySeq; }
 
 #endif
 

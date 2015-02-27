@@ -878,7 +878,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 			else
 			{
 				// Deprecated
-				reprap.GetLegacyStatusResponse(response, 1);
+				reprap.GetLegacyStatusResponse(response, 1, 0);
 			}
 		}
 		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))

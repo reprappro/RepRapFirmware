@@ -231,6 +231,10 @@ bool PrintMonitor::GetFileInfo(const char *directory, const char *fileName, Gcod
 		info.layerHeight = 0.0;
 		info.numFilaments = DRIVES - AXES;
 		info.generatedBy[0] = 0;
+		for(size_t extr=0; extr<DRIVES - AXES; extr++)
+		{
+			info.filamentNeeded[extr] = 0.0;
+		}
 
 		if (info.fileSize != 0 && (StringEndsWith(fileName, ".gcode") || StringEndsWith(fileName, ".g") || StringEndsWith(fileName, ".gco") || StringEndsWith(fileName, ".gc")))
 		{

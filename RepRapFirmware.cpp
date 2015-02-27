@@ -188,8 +188,7 @@ void RepRap::Init()
   message[0] = 0;
 
   gcodeReply[0] = 0;
-  increaseSeq = false;
-  seq = replySeq = 0;
+  replySeq = 0;
   processingConfig = true;
 
   // All of the following init functions must execute reasonably quickly before the watchdog times us out
@@ -942,7 +941,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 // Type 2 is the M105 S2 response, which is like the new-style status response but some fields are omitted.
 // Type 3 is the M105 S3 response, which is like the M105 S2 response except that static values are also included.
 // 'seq' is the response sequence number, if it is not -1 and we have a different sequence number then we send the gcode response
-void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
+void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 {
 	const GCodes *gc = reprap.GetGCodes();
 	if (type != 0)
@@ -1103,34 +1102,34 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type)
 	response.cat(",\"message\":");
 	EncodeString(response, message, 2, false);
 
-	if (type == 2 && gCodes->PrintingAFile())
-	{
-		// Send estimated times left based on file progress, filament usage, and layers
-		response.catf(",\"timesLeft\":[%.1f,%.1f,%.1f]",
-				printMonitor->EstimateTimeLeft(fileBased),
-				printMonitor->EstimateTimeLeft(filamentBased),
-				printMonitor->EstimateTimeLeft(layerBased));
-	}
-
 	if (type < 2)
 	{
-		const unsigned int newSeq = GetReplySeq();
-		if (newSeq != replySeq)
+		response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());	// send the amount of buffer space available for gcodes
+	}
+	else if (type == 2)
+	{
+		if (gCodes->PrintingAFile())
 		{
-			response.catf(",\"buff\":%u", webserver->GetGcodeBufferSpace());	// send the amount of buffer space available for gcodes
-			response.catf(",\"seq\":%u", newSeq);								// send the response sequence number
-			replySeq = newSeq;
+			// Send estimated times left based on file progress, filament usage, and layers
+			response.catf(",\"timesLeft\":[%.1f,%.1f,%.1f]",
+					printMonitor->EstimateTimeLeft(fileBased),
+					printMonitor->EstimateTimeLeft(filamentBased),
+					printMonitor->EstimateTimeLeft(layerBased));
 		}
-
-		// Send the response to the last command. Do this last because it is long and may need to be truncated.
-		response.cat(",\"resp\":");
-		EncodeString(response, GetGcodeReply().Pointer(), 2, true);
 	}
 	else if (type == 3)
 	{
 		// Add the static fields. For now this is just the machine name, but other fields could be added e.g. axis lengths.
 		response.cat(",\"myName\":");
 		EncodeString(response, GetName(), 2, false);
+	}
+
+	const unsigned int newSeq = GetReplySeq();
+	if (type < 2 || (seq != -1 && newSeq != seq))
+	{
+		// Send the response to the last command. Do this last because it is long and may need to be truncated.
+		response.catf(",\"seq\":%u,\"resp\":", newSeq);						// send the response sequence number
+		EncodeString(response, GetGcodeReply().Pointer(), 2, true);
 	}
 
 	response.cat("}");
@@ -1215,7 +1214,9 @@ void RepRap::GetNameResponse(StringRef& response) const
 // Get the list of files in the specified directory in JSON format
 void RepRap::GetFilesResponse(StringRef& response, const char* dir) const
 {
-	response.copy("{\"files\":[");
+	response.copy("{\"dir\":");
+	EncodeString(response, dir, 3, false);
+	response.cat(",\"files\":[");
 	FileInfo file_info;
 	bool firstFile = true;
 	bool gotFile = platform->GetMassStorage()->FindFirst(dir, file_info);
@@ -1257,19 +1258,17 @@ void RepRap::SetMessage(const char *msg)
 void RepRap::MessageToGCodeReply(const char *message)
 {
 	gcodeReply.copy(message);
-	increaseSeq = true;
+	replySeq++;
 }
 
 void RepRap::AppendMessageToGCodeReply(const char *message)
 {
 	gcodeReply.cat(message);
-	increaseSeq = true;
 }
 
 void RepRap::AppendCharToStatusResponse(const char c)
 {
 	gcodeReply.catf("%c", c);
-	increaseSeq = true;
 }
 
 char RepRap::GetStatusCharacter() const
@@ -1311,17 +1310,6 @@ char RepRap::GetStatusCharacter() const
 	}
 	// Idle
 	return 'I';
-}
-
-unsigned int RepRap::GetReplySeq()
-{
-	if (increaseSeq)
-	{
-		seq++;
-		increaseSeq = false;
-	}
-
-	return seq;
 }
 
 bool RepRap::NoPasswordSet() const
