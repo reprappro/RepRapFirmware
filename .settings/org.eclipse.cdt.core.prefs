@@ -91,13 +91,13 @@ environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPI
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.ELF.EXTRA_FLAGS/value=
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.ELF.FLAGS/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.ELF.FLAGS/operation=replace
-environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.ELF.FLAGS/value=-Os -Wl,--gc-sections
+environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.ELF.FLAGS/value=-O3 -Wl,--gc-sections
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.EXTRA_FLAGS/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.EXTRA_FLAGS/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.EXTRA_FLAGS/value=
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.FLAGS/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.FLAGS/operation=replace
-environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.FLAGS/value=-c -g -Os -w -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single\=500 -Dprintf\=iprintf
+environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.C.FLAGS/value=-c -g -O3 -w -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single\=500 -Dprintf\=iprintf
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.CMD/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.CMD/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.CMD/value=arm-none-eabi-g++
@@ -106,7 +106,7 @@ environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPI
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.EXTRA_FLAGS/value=
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.FLAGS/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.FLAGS/operation=replace
-environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.FLAGS/value=-c -g -Os -w -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single\=500 -fno-rtti -fno-exceptions -Dprintf\=iprintf
+environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.CPP.FLAGS/value=-c -g -O3 -w -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single\=500 -fno-rtti -fno-exceptions -Dprintf\=iprintf
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.DEFINE/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.DEFINE/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.1371890514/A.COMPILER.DEFINE/value=-DARDUINO\=

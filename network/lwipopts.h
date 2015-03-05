@@ -65,6 +65,7 @@
 
 /* Enable DHCP */
 #define DHCP_USED					1
+#define LWIP_NETIF_HOSTNAME			1
 
 /* These are not available when using "NO_SYS" */
 #define LWIP_NETCONN            	0

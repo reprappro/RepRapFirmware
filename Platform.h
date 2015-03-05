@@ -322,7 +322,7 @@ public:
 	uint8_t day;
 	uint8_t month;
 	uint16_t year;
-	char fileName[255];
+	char fileName[FILENAME_LENGTH];
 };
 
 class MassStorage
@@ -871,6 +871,7 @@ public:
 	}
 
 	bool Write(const char *s, unsigned int len)
+	//pre(len <= 256)
 	{
 		return f->Write(s, len);
 	}

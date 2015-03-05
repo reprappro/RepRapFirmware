@@ -3217,19 +3217,19 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 500: // Store parameters in EEPROM
-		reprap.GetPlatform()->WriteNvData();
+		platform->WriteNvData();
 		break;
 
 	case 501: // Load parameters from EEPROM
-		reprap.GetPlatform()->ReadNvData();
+		platform->ReadNvData();
 		if (gb->Seen('S'))
 		{
-			reprap.GetPlatform()->SetAutoSave(gb->GetIValue() > 0);
+			platform->SetAutoSave(gb->GetIValue() > 0);
 		}
 		break;
 
 	case 502: // Revert to default "factory settings"
-		reprap.GetPlatform()->ResetNvData();
+		platform->ResetNvData();
 		break;
 
 	case 503: // List variable settings

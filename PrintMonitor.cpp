@@ -229,7 +229,7 @@ bool PrintMonitor::GetFileInfo(const char *directory, const char *fileName, Gcod
 		info.fileSize = f->Length();
 		info.objectHeight = 0.0;
 		info.layerHeight = 0.0;
-		info.numFilaments = DRIVES - AXES;
+		info.numFilaments = 0;
 		info.generatedBy[0] = 0;
 		for(size_t extr=0; extr<DRIVES - AXES; extr++)
 		{
@@ -265,7 +265,7 @@ bool PrintMonitor::GetFileInfo(const char *directory, const char *fileName, Gcod
 						nFilaments = FindFilamentUsed(buf, sizeToRead, filaments, DRIVES - AXES);
 						if (nFilaments != 0 && nFilaments >= filamentsFound)
 						{
-							filamentsFound = min<unsigned int>(nFilaments, info.numFilaments);
+							filamentsFound = nFilaments;
 							for (unsigned int i = 0; i < filamentsFound; ++i)
 							{
 								info.filamentNeeded[i] = filaments[i];
@@ -378,7 +378,7 @@ bool PrintMonitor::GetFileInfo(const char *directory, const char *fileName, Gcod
 						nFilaments = FindFilamentUsed(buf, sizeToScan, filaments, DRIVES - AXES);
 						if (nFilaments != 0 && nFilaments >= filamentsFound)
 						{
-							filamentsFound = min<unsigned int>(nFilaments, info.numFilaments);
+							filamentsFound = nFilaments;
 							for (unsigned int i = 0; i < filamentsFound; ++i)
 							{
 								info.filamentNeeded[i] = filaments[i];
