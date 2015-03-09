@@ -33,5 +33,9 @@ M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
 M201 X3000 Y3000 Z150 E500          ; Accelerations (mm/s^2)  
 M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
 M566 X1200 Y1200 Z30 E1200          ; Minimum speeds mm/minute    
-M563 P1 D0 H1                       ; Define tool 1
-G10 P1 S-273 R-273                  ; Set tool 1 operating and standby temperatures
+M563 P0 D0 H1                       ; Define tool 0
+G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures
+//P1 D1 H2                           ; Define tool 1 Uncomment if you have a dual colour upgrade
+//G10 P1 S-273 R-273                ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade
+/P2 D2 H3                           ; Define tool 2 Uncomment if you have a tri colour upgrade
+//G10 P2 S-273 R-273                ; Set tool 2 operating and standby temperatures  Uncomment if you have a dual colour upgrade
