@@ -1702,12 +1702,12 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 
 		if(!seen)
 		{
-			snprintf(reply, STRING_LENGTH, "Steps/mm: X: %d, Y: %d, Z: %d, E: ",
+			snprintf(reply, STRING_LENGTH, "Steps/mm: X: %.4f, Y: %.4f, Z: %.4f, E: ",
 					(int)platform->DriveStepsPerUnit(X_AXIS), (int)platform->DriveStepsPerUnit(Y_AXIS),
 					(int)platform->DriveStepsPerUnit(Z_AXIS));
 			for(int8_t drive = AXES; drive < DRIVES; drive++)
 			{
-				snprintf(scratchString, STRING_LENGTH, "%f", platform->DriveStepsPerUnit(drive));
+				snprintf(scratchString, STRING_LENGTH, "%.4f", platform->DriveStepsPerUnit(drive));
 				strncat(reply, scratchString, STRING_LENGTH);
 				if(drive < DRIVES-1)
 					strncat(reply, ":", STRING_LENGTH);
