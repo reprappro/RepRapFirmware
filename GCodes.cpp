@@ -1494,6 +1494,22 @@ bool GCodes::HandleTcode(int code, GCodeBuffer *gb)
 {
 	if(!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
+
+	// Special case - a T on its own?  Report the current tool number
+
+	if(strlen(gb->Buffer()) <= 1)
+	{
+		Tool* tool = reprap.GetCurrentTool();
+		if(tool)
+			snprintf(scratchString, STRING_LENGTH, "Tool %d is selected.", tool->Number());
+		else
+			snprintf(scratchString, STRING_LENGTH, "No tool is selected.");
+		HandleReply(false, gb == serialGCode, scratchString, 'T', code, false);
+		return true;
+	}
+
+	// We are actually selecting a tool
+
 	bool result = ChangeTool(code);
 	if(result)
 		HandleReply(false, gb == serialGCode, "", 'T', code, false);
@@ -1703,8 +1719,8 @@ bool GCodes::HandleMcode(int code, GCodeBuffer *gb)
 		if(!seen)
 		{
 			snprintf(reply, STRING_LENGTH, "Steps/mm: X: %.4f, Y: %.4f, Z: %.4f, E: ",
-					(int)platform->DriveStepsPerUnit(X_AXIS), (int)platform->DriveStepsPerUnit(Y_AXIS),
-					(int)platform->DriveStepsPerUnit(Z_AXIS));
+					platform->DriveStepsPerUnit(X_AXIS), platform->DriveStepsPerUnit(Y_AXIS),
+					platform->DriveStepsPerUnit(Z_AXIS));
 			for(int8_t drive = AXES; drive < DRIVES; drive++)
 			{
 				snprintf(scratchString, STRING_LENGTH, "%.4f", platform->DriveStepsPerUnit(drive));
