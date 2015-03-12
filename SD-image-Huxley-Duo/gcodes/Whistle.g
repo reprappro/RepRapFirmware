@@ -12,6 +12,7 @@ M104 S215 ; set temperature
 G28
 G32
 M83
+T0;
 M109 S215 ; wait for temperature to be reached
 G90 ; use absolute coordinates
 M83 ; use relative distances for extrusion
