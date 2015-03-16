@@ -44,6 +44,7 @@ class PID
     bool SwitchedOff();								// Are we switched off?
     void ResetFault();								// Reset a fault condition - only call this if you know what you are doing
     float GetTemperature();							// Get the current temperature
+    float GetAveragePWM();							// Return the running average PWM to the heater.  Answer is a fraction in [0, 1].
 
   private:
 
@@ -61,6 +62,9 @@ class PID
     int8_t heater;									// The index of our heater
     int8_t badTemperatureCount;						// Count of sequential dud readings
     bool temperatureFault;							// Has our heater developed a fault?
+    float timeSetHeating;							// When we were switched on
+    bool heatingUp;									// Are we heating up?
+    float averagePWM;								// The running average of the PWM.
 };
 
 /**
@@ -85,9 +89,10 @@ class Heat
     float GetTemperature(int8_t heater);						// Get the temperature of a heater
     bool SwitchedOff(int8_t heater);						    // Is this heater in use?
     void ResetFault(int8_t heater);								// Reset a heater fault - only call this if you know what you are doing
-    bool AllHeatersAtSetTemperatures();							// Is everything at temperature within tolerance?
+    bool AllHeatersAtSetTemperatures(bool heaters[]);			// Is everything in the list at temperature within tolerance?
     bool HeaterAtSetTemperature(int8_t heater);					// Is a specific heater at temperature within tolerance?
     void Diagnostics();											// Output useful information
+    float GetAveragePWM(int8_t heater);							// Return the running average PWM to the heater.    Answer is a fraction in [0, 1].
     
   private:
   
@@ -140,12 +145,18 @@ inline void PID::Activate()
 {
   SwitchOn();
   active = true;
+  if(!heatingUp)
+	  timeSetHeating = platform->Time();
+  heatingUp = activeTemperature > temperature;
 }
 
 inline void PID::Standby()
 {
   SwitchOn();
   active = false;
+  if(!heatingUp)
+	  timeSetHeating = platform->Time();
+  heatingUp = standbyTemperature > temperature;
 }
 
 inline void PID::ResetFault()
@@ -159,12 +170,18 @@ inline void PID::SwitchOff()
 	platform->SetHeater(heater, 0.0);
 	active = false;
 	switchedOff = true;
+	heatingUp = false;
 }
 
 
 inline bool PID::SwitchedOff()
 {
 	return switchedOff;
+}
+
+inline float PID::GetAveragePWM()
+{
+	return averagePWM*INV_HEAT_PWM_AVERAGE_COUNT;
 }
 
 //**********************************************************************************
@@ -229,6 +246,11 @@ inline void Heat::ResetFault(int8_t heater)
   {
     pids[heater]->ResetFault();
   }
+}
+
+inline float Heat::GetAveragePWM(int8_t heater)
+{
+	return pids[heater]->GetAveragePWM();
 }
 
 

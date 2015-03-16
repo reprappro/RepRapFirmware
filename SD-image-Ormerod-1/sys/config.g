@@ -23,14 +23,10 @@ M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
 M92 E420                            ; Set extruder steps per mm
 M558 P1                             ; Use an unmodulated Z probe
 G31 Z0.8 P600                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
-M557 P0 X45 Y0                      ; Four... 
-M557 P1 X45 Y190                    ; ...probe points...
-M557 P2 X215 Y190                   ; ...for bed...
-M557 P3 X215 Y0                     ; ...levelling
 M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
 M201 X500 Y500 Z15 E500             ; Accelerations (mm/s^2)
 M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
-M566 X1200 Y1200 Z30 E1200          ; Minimum speeds mm/minute
+M566 X200 Y200 Z30 E20              ; Minimum speeds mm/minute
 M563 P0 D0 H1                       ; Define tool 0
 G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures
 ;M563 P1 D1 H2                          ; Define tool 1 Uncomment if you have a dual colour upgrade

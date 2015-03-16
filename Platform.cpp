@@ -21,6 +21,55 @@ Licence: GPL
 
 #include "RepRapFirmware.h"
 
+// Default values for the arrays.
+
+// Drives
+
+const int8_t step_pins[DRIVES] = STEP_PINS;
+const int8_t direction_pins[DRIVES] = DIRECTION_PINS;
+const bool directions_[DRIVES] = DIRECTIONS;
+const int8_t enable_pins[DRIVES] = ENABLE_PINS;
+const bool disable_drives[DRIVES] = DISABLE_DRIVES;
+const int8_t low_stop_pins[DRIVES] = LOW_STOP_PINS;
+const int8_t high_stop_pins[DRIVES] = HIGH_STOP_PINS;
+const int8_t pot_wipes[DRIVES] = POT_WIPES;
+const float max_feedrates[DRIVES] = MAX_FEEDRATES;
+const float accelerations_[DRIVES] = ACCELERATIONS;
+const float drive_steps_per_unit[DRIVES] = DRIVE_STEPS_PER_UNIT;
+const float instant_dvs[DRIVES] = INSTANT_DVS;
+
+// Axes
+
+const float axis_lengths[AXES] = AXIS_LENGTHS;
+const float home_feedrates[AXES] = HOME_FEEDRATES;
+const float head_offsets[AXES] = HEAD_OFFSETS;
+
+// Heaters
+
+const int8_t temp_sense_pins[HEATERS] = TEMP_SENSE_PINS;
+const int8_t heat_on_pins[HEATERS] = HEAT_ON_PINS;
+const float thermistor_betas[HEATERS] = THERMISTOR_BETAS;
+const float thermistor_series_rs[HEATERS] = THERMISTOR_SERIES_RS;
+const float thermistor_25_rs[HEATERS] = THERMISTOR_25_RS;
+const bool use_pids[HEATERS] = USE_PIDS;
+const float pid_kis[HEATERS] = PID_KIS;
+const float pid_kds[HEATERS] = PID_KDS;
+const float pid_kps[HEATERS] = PID_KPS;
+const float full_pid_bands[HEATERS] = FULL_PID_BANDS;
+const float pid_mins[HEATERS] = PID_MINS;
+const float pid_maxes[HEATERS] = PID_MAXES;
+const float d_mixes[HEATERS] = D_MIXES;
+const float standby_temperatures[HEATERS] = STANDBY_TEMPERATURES;
+const float active_temperatures[HEATERS] = ACTIVE_TEMPERATURES;
+
+// Network
+
+const uint8_t ip_address[4] = IP_ADDRESS;
+const uint8_t net_mask[4] = NET_MASK;
+const uint8_t gate_way[4] = GATE_WAY;
+const uint8_t mac_address[6] = MAC_ADDRESS;
+
+
 #define WINDOWED_SEND_PACKETS	(2)
 
 extern char _end;
@@ -74,7 +123,10 @@ Platform::Platform()
 
 void Platform::Init()
 { 
-  byte i;
+  uint8_t drive;
+  uint8_t heater;
+  uint8_t ip;
+  uint8_t file;
 
   compatibility = me;
 
@@ -83,8 +135,8 @@ void Platform::Init()
 
   massStorage->Init();
 
-  for(i=0; i < MAX_FILES; i++)
-    files[i]->Init();
+  for(file=0; file < MAX_FILES; file++)
+    files[file]->Init();
 
   fileStructureInitialised = true;
 
@@ -93,131 +145,151 @@ void Platform::Init()
   sysDir = SYS_DIR;
   configFile = CONFIG_FILE;
 
-  ipAddress = IP_ADDRESS;
-  netMask = NET_MASK;
-  gateWay = GATE_WAY;
-  macAddress = MAC_ADDRESS;
+  for(ip = 0; ip < 4; ip++)
+  {
+	  ipAddress[ip] = ip_address[ip];
+	  netMask[ip] = net_mask[ip];
+	  gateWay[ip] = gate_way[ip];
+  }
+  for(ip = 0; ip < 6; ip++)
+	  macAddress[ip] = mac_address[ip];
 
   // DRIVES
 
-  stepPins = STEP_PINS;
-  directionPins = DIRECTION_PINS;
-  enablePins = ENABLE_PINS;
-  disableDrives = DISABLE_DRIVES;
-  directions = DIRECTIONS;
-  lowStopPins = LOW_STOP_PINS;
-  highStopPins = HIGH_STOP_PINS;
-  maxFeedrates = MAX_FEEDRATES;
-  accelerations = ACCELERATIONS;
-  driveStepsPerUnit = DRIVE_STEPS_PER_UNIT;
-  instantDvs = INSTANT_DVS;
-  potWipes = POT_WIPES;
+  for(drive = 0; drive < DRIVES; drive++)
+  {
+	  stepPins[drive] = step_pins[drive];
+	  directionPins[drive] = direction_pins[drive];
+	  directions[drive] = directions_[drive];
+	  enablePins[drive] = enable_pins[drive];
+	  disableDrives[drive] = disable_drives[drive];
+	  lowStopPins[drive] = low_stop_pins[drive];
+	  highStopPins[drive] = high_stop_pins[drive];
+	  maxFeedrates[drive] = max_feedrates[drive];
+	  accelerations[drive] = accelerations_[drive];
+	  driveStepsPerUnit[drive] = drive_steps_per_unit[drive];
+	  instantDvs[drive] = instant_dvs[drive];
+	  potWipes[drive] = pot_wipes[drive];
+  }
+
   senseResistor = SENSE_RESISTOR;
   maxStepperDigipotVoltage = MAX_STEPPER_DIGIPOT_VOLTAGE;
-  numMixingDrives = NUM_MIXING_DRIVES;
+  //numMixingDrives = NUM_MIXING_DRIVES;
 
   // Z PROBE
 
   zProbePin = Z_PROBE_PIN;
   zProbeModulationPin = Z_PROBE_MOD_PIN;
-  zProbeType = 0;	// Default is to use the switch
+  zProbeType = 0;
   zProbeADValue = Z_PROBE_AD_VALUE;
   zProbeStopHeight = Z_PROBE_STOP_HEIGHT;
   InitZProbe();
 
   // AXES
 
-  axisLengths = AXIS_LENGTHS;
-  homeFeedrates = HOME_FEEDRATES;
-  headOffsets = HEAD_OFFSETS;
+  for(drive = 0; drive < AXES; drive++)
+  {
+	  axisLengths[drive] = axis_lengths[drive];
+	  homeFeedrates[drive] = home_feedrates[drive];
+	  headOffsets[drive] = head_offsets[drive];
+  }
 
   SetSlowestDrive();
 
-  // HEATERS - Bed is assumed to be the first
+  extrusionAncilliaryPWM = 0.0;
 
-  tempSensePins = TEMP_SENSE_PINS;
-  heatOnPins = HEAT_ON_PINS;
-  thermistorBetas = THERMISTOR_BETAS;
-  thermistorSeriesRs = THERMISTOR_SERIES_RS;
-  thermistorRAt25 = THERMISTOR_25_RS;
-  usePID = USE_PID;
-  pidKis = PID_KIS;
-  pidKds = PID_KDS;
-  pidKps = PID_KPS;
-  fullPidBand = FULL_PID_BAND;
-  pidMin = PID_MIN;
-  pidMax = PID_MAX;
-  dMix = D_MIX;
+  // HEATERS - Bed is assumed to be index 0
+
+  for(heater = 0; heater < HEATERS; heater++)
+  {
+	  tempSensePins[heater] = temp_sense_pins[heater];
+	  heatOnPins[heater] = heat_on_pins[heater];
+	  thermistorBetas[heater] = thermistor_betas[heater];
+	  thermistorSeriesRs[heater] = thermistor_series_rs[heater];
+	  thermistorRAt25[heater] = thermistor_25_rs[heater];
+	  usePIDs[heater] = use_pids[heater];
+	  pidKis[heater] = pid_kis[heater];
+	  pidKds[heater] = pid_kds[heater];
+	  pidKps[heater] = pid_kps[heater];
+	  fullPidBands[heater] = full_pid_bands[heater];
+	  pidMins[heater] = pid_mins[heater];
+	  pidMaxes[heater] = pid_maxes[heater];
+	  dMixes[heater] = d_mixes[heater];
+	  standbyTemperatures[heater] = standby_temperatures[heater];
+	  activeTemperatures[heater] = active_temperatures[heater];
+  }
+
   heatSampleTime = HEAT_SAMPLE_TIME;
-  standbyTemperatures = STANDBY_TEMPERATURES;
-  activeTemperatures = ACTIVE_TEMPERATURES;
+
   coolingFanPin = COOLING_FAN_PIN;
-  //turnHeatOn = HEAT_ON;
+  timeToHot = TIME_TO_HOT;
 
   webDir = WEB_DIR;
   gcodeDir = GCODE_DIR;
   tempDir = TEMP_DIR;
+
   /*
   	FIXME Nasty having to specify individually if a pin is arduino or not.
     requires a unified variant file. If implemented this would be much better
 	to allow for different hardware in the future
   */
-  for(i = 0; i < DRIVES; i++)
+  for(drive = 0; drive < DRIVES; drive++)
   {
 
-	  if(stepPins[i] >= 0)
+	  if(stepPins[drive] >= 0)
 	  {
-		  if(i == E0_DRIVE || i == E3_DRIVE) //STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
-			  pinModeNonDue(stepPins[i], OUTPUT);
+		  if(drive == E0_DRIVE || drive == E3_DRIVE) //STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
+			  pinModeNonDue(stepPins[drive], OUTPUT);
 		  else
-			  pinMode(stepPins[i], OUTPUT);
+			  pinMode(stepPins[drive], OUTPUT);
 	  }
-	  if(directionPins[i] >= 0)
+	  if(directionPins[drive] >= 0)
 	  {
-		  if(i == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
-			  pinModeNonDue(directionPins[i], OUTPUT);
+		  if(drive == E0_DRIVE) //DIRECTION_PINS {15, 26, 4, X3, 35, 53, 51, 48}
+			  pinModeNonDue(directionPins[drive], OUTPUT);
 		  else
-			  pinMode(directionPins[i], OUTPUT);
+			  pinMode(directionPins[drive], OUTPUT);
 	  }
-	  if(enablePins[i] >= 0)
+	  if(enablePins[drive] >= 0)
 	  {
-		  if(i == Z_AXIS || i==E0_DRIVE || i==E2_DRIVE) //ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
-			  pinModeNonDue(enablePins[i], OUTPUT);
+		  if(drive == Z_AXIS || drive==E0_DRIVE || drive==E2_DRIVE) //ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
+			  pinModeNonDue(enablePins[drive], OUTPUT);
 		  else
-			  pinMode(enablePins[i], OUTPUT);
+			  pinMode(enablePins[drive], OUTPUT);
 	  }
-	  Disable(i);
-	  driveEnabled[i] = false;
+	  Disable(drive);
+	  driveEnabled[drive] = false;
   }
-  for(i = 0; i < DRIVES; i++)
+
+  for(drive = 0; drive < DRIVES; drive++)
   {
-	  if(lowStopPins[i] >= 0)
+	  if(lowStopPins[drive] >= 0)
 	  {
-		  pinMode(lowStopPins[i], INPUT);
-		  digitalWrite(lowStopPins[i], HIGH); // Turn on pullup
+		  pinMode(lowStopPins[drive], INPUT);
+		  digitalWrite(lowStopPins[drive], HIGH); // Turn on pullup
 	  }
-	  if(highStopPins[i] >= 0)
+	  if(highStopPins[drive] >= 0)
 	  {
-		  pinMode(highStopPins[i], INPUT);
-		  digitalWrite(highStopPins[i], HIGH); // Turn on pullup
+		  pinMode(highStopPins[drive], INPUT);
+		  digitalWrite(highStopPins[drive], HIGH); // Turn on pullup
 	  }
   }  
   
-  for(i = 0; i < HEATERS; i++)
+  for(heater = 0; heater < HEATERS; heater++)
   {
-    if(heatOnPins[i] >= 0)
-    	if(i == E0_HEATER || i==E1_HEATER) //HEAT_ON_PINS {6, X5, X7, 7, 8, 9}
-    		pinModeNonDue(heatOnPins[i], OUTPUT);
+    if(heatOnPins[heater] >= 0)
+    	if(heater == E0_HEATER || heater==E1_HEATER) //HEAT_ON_PINS {6, X5, X7, 7, 8, 9}
+    		pinModeNonDue(heatOnPins[heater], OUTPUT);
     	else
-    		pinMode(heatOnPins[i], OUTPUT);
-    thermistorRAt25[i] = ( thermistorRAt25[i]*exp(-thermistorBetas[i]/(25.0 - ABS_ZERO)) );
-    tempSum[i] = 0;
+    		pinMode(heatOnPins[heater], OUTPUT);
+    thermistorRAt25[heater] = ( thermistorRAt25[heater]*exp(-thermistorBetas[heater]/(25.0 - ABS_ZERO)) );
+    tempSum[heater] = 0;
   }
 
   if(coolingFanPin >= 0)
   {
 	  //pinModeNonDue(coolingFanPin, OUTPUT); //not required as analogwrite does this automatically
-	  analogWriteNonDue(coolingFanPin, 255); //inverse logic for Duet v0.6 this turns it off
+	  analogWriteNonDue(coolingFanPin, 255); //inverse logic for Duet v0.6 amd later; this turns it off
   }
 
   InitialiseInterrupts();
@@ -259,8 +331,15 @@ void Platform::InitZProbe()
 
   if(zProbeModulationPin >= 0)
   {
-	pinMode(zProbeModulationPin, OUTPUT);
-	digitalWrite(zProbeModulationPin, HIGH);	// turn on the IR LED
+	if(zProbeType == 3)
+	{
+		pinModeNonDue(zProbeModulationPin, OUTPUT);
+		digitalWriteNonDue(zProbeModulationPin, HIGH);	// turn on the IR LED
+	}else
+	{
+		pinMode(zProbeModulationPin, OUTPUT);
+		digitalWrite(zProbeModulationPin, HIGH);
+	}
   }
 }
 
@@ -379,7 +458,6 @@ void Platform::ClassReport(char* className, float &lastTime)
 // then the thermistor resistance, R = V.RS/(1024 - V)
 // and the temperature, T = BETA/ln(R/R_INF)
 // To get degrees celsius (instead of kelvin) add -273.15 to T
-//#define THERMISTOR_R_INFS ( THERMISTOR_25_RS*exp(-THERMISTOR_BETAS/298.15) ) // Compute in Platform constructor
 
 // Result is in degrees celsius
 
@@ -670,6 +748,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 
   writing = write;
   lastBufferEntry = FILE_BUF_LEN - 1;
+  bytesRead = 0;
   FRESULT openReturn;
 
   if(writing)
@@ -739,6 +818,14 @@ unsigned long FileStore::Length()
 	return 0;
 }
 
+float FileStore::FractionRead()
+{
+	unsigned long len = Length();
+	if(len <= 0)
+		return 0.0;
+	return (float)bytesRead/(float)len;
+}
+
 int8_t FileStore::Status()
 {
   if(!inUse)
@@ -783,7 +870,7 @@ bool FileStore::Read(char& b)
 
   b = (char)buf[bufferPointer];
   bufferPointer++;
-
+  bytesRead++;
   return true;
 }
 
@@ -1121,6 +1208,7 @@ Network::Network()
 	for(int8_t i = 1; i < HTTP_STATE_SIZE; i++)
 		netRingGetPointer = new NetRing(netRingGetPointer);
 	netRingAddPointer->SetNext(netRingGetPointer);
+	enabled = true;
 }
 
 // Reset the network to its disconnected and ready state.
@@ -1149,6 +1237,11 @@ void Network::CleanRing()
 
 void Network::Init()
 {
+	if(!enabled)
+	{
+		reprap.GetPlatform()->Message(HOST_MESSAGE, "Attempting to start the network when it is disabled.\n");
+		return;
+	}
 	CleanRing();
 	Reset();
 	RepRapNetworkSetMACAddress(reprap.GetPlatform()->MACAddress());
@@ -1160,7 +1253,7 @@ void Network::Init()
 
 void Network::Spin()
 {
-	if(!active)
+	if(!active || !enabled)
 	{
 		//ResetEther();
 		return;
@@ -1289,6 +1382,8 @@ void Network::ReceiveInput(char* data, int length, void* pbuf, void* pcb, void* 
 
 bool Network::CanWrite() const
 {
+	if(!enabled)
+		return false;
 	if(windowedSendPackets > 1)
 		return writeEnabled && sentPacketsOutstanding < windowedSendPackets;
 	return writeEnabled;

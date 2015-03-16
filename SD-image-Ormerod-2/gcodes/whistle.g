@@ -16,17 +16,20 @@
 ; solid infill extrusion width = 0.85mm
 ; top infill extrusion width = 0.85mm
 
+M107 ; Fan off
 G21 ; set units to millimeters
 G90 ; use absolute coordinates
 M83 ; use relative distances for extrusion
-M140 S65; Set bed temperature
+M140 S60; Set bed temperature
 G28 ; Home all axes
+G32 ; Set the bed compensation
 G1 Z5 F200 ; lift nozzle
 G1 X2 Y50 F2000; Go to wait for warm position
-M116; Wait for all temperatures
-G10 P1 S185 R0 ; Set extruder temperature
+M116; Wait for all temperatures (just the bed in this case)
+G10 P0 S215; Set extruder temperature
 T0; Select extruder
-M116; Wait for all temperatures
+M116; Wait for all temperatures 
+
 G1 F1800.000 E-4.00000
 G1 Z0.240 F3600.000
 G1 X100.357 Y87.431 F3600.000

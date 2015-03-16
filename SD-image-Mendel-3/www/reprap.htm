@@ -1,7 +1,7 @@
 <!DOCTYPE HTML> 
 <html>
     <head>
-        <title>Ormerod Control v0.65</title>
+        <title>Ormerod Control v0.65rrp</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
         <!-- Bootstrap -->
@@ -21,7 +21,7 @@
             <nav class="navbar navbar-default" role="navigation">
                 <!-- Brand and toggle get grouped for better mobile display -->
                 <div class="navbar-header">
-                    <a class="navbar-brand" href="#"><strong>RepRapPro Ormerod</strong> <small>- <span id="hostLocation"></span></small></a>
+                    <a class="navbar-brand" href="#"><strong>RepRapPro</strong> <small>- <span id="hostLocation"></span></small></a>
                 </div>
                 <!-- Collect the nav links, forms, and other content for toggling -->
                 <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
@@ -82,34 +82,17 @@ Requires reset button on duet to restart">STOP!</button>
                         <table class="table table-bordered" id="temp">
                             <tbody>
                                 <tr>
-                                    <th colspan="3" class="text-center">Heater Temps</th>
-                                    <td rowspan="3">
-                                        <div id="tempchart" style="width: 250px; height: 120px ">
+                                    <th colspan="3" class="text-center">Heater Temperatures</th>
+                                    <td rowspan="5">
+                                        <div id="tempchart" style="width: 240px; height: 240px ">
 
                                         </div>
                                     </td>
                                 </tr>
 
-                                <tr>
-                                    <td style="padding-top: 15px"><strong><span id="headTxt">Head</span></strong></td>
-                                    <td style="padding-top: 15px; width:60px"><span id="headTemp">0</span>&deg;C</td>
-                                    <td>
-                                        <div class="input-group" id="headTemperature">
-                                            <div class="input-group-btn">
-                                                <button type="button" id='setHeadTemp' class="btn btn-default disabled">Set</button>
-                                                <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown"><span class="caret"></span></button>
-                                                <ul class="dropdown-menu">
-                                                    <li class="divider"></li>
-                                                    <li><a href="#" id='addHeadTemp'>Add Temp</a></li>                                                
-                                                </ul>
-                                            </div><!-- /btn-group -->
-                                            <input type="text" id='headTempInput' class="form-control">
-                                        </div><!-- /input-group -->  
-                                    </td>
-                                </tr>
-                                
-                                <tr>
-                                    <td style="padding-top: 15px"><strong><span id="bedTxt">Bed</span></strong></td>
+
+<tr>
+                                    <td style="padding-top: 15px"><button style="background-color:rgb(69,75,255)" type="button" id="bedTxt" class="btn btn-danger disabled" value="0">Bed (H 0)</button><strong></strong></td>
                                     <td style="padding-top: 15px; width:60px"><span id="bedTemp">0</span>&deg;C</td>
                                     <td>
                                         <div class="input-group" id="bedTemperature">
@@ -121,10 +104,64 @@ Requires reset button on duet to restart">STOP!</button>
                                                     <li><a href="#" id='addBedTemp'>Add Temp</a></li>                                                    
                                                 </ul>
                                             </div><!-- /btn-group -->
-                                            <input type="text" id='bedTempInput' class="form-control">
+                                            <input style="width:60px" type="text" id='bedTempInput' class="form-control">
                                         </div><!-- /input-group -->                                        
                                     </td>
-                                </tr>                                
+                                </tr>    
+
+                                <tr>
+                                    <td style="padding-top: 15px"><strong><button style="background-color:rgb(252,45,45)" type="button" id="headTxt1" class="btn btn-danger disabled" value="0">Heater 1</button></strong></td>
+                                    <td style="padding-top: 15px; width:60px"><span id="headTemp1">0</span>&deg;C</td>
+                                    <td>
+                                        <div class="input-group" id="headTemperature1">
+                                            <div class="input-group-btn">
+                                                <button type="button" id='setHeadTemp1' class="btn btn-default disabled">Set</button>
+                                                <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown"><span class="caret"></span></button>
+                                                <ul class="dropdown-menu">
+                                                    <li class="divider"></li>
+                                                    <li><a href="#" id='addHeadTemp1'>Add Temp</a></li>                                                
+                                                </ul>
+                                            </div><!-- /btn-group -->
+                                            <input style="width:60px" type="text" id='headTempInput1' class="form-control">
+                                        </div><!-- /input-group -->  
+                                    </td>
+                                </tr>
+
+											<tr>
+                                    <td style="padding-top: 15px"><strong><button style="background-color:rgb(92,183,92)" type="button" id="headTxt2" class="btn btn-danger disabled" value="0">Heater 2</button></strong></td>
+                                    <td style="padding-top: 15px; width:60px"><span id="headTemp2">0</span>&deg;C</td>
+                                    <td>
+                                        <div class="input-group" id="headTemperature2">
+                                            <div class="input-group-btn">
+                                                <button type="button" id='setHeadTemp2' class="btn btn-default disabled">Set</button>
+                                                <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown"><span class="caret"></span></button>
+                                                <ul class="dropdown-menu">
+                                                    <li class="divider"></li>
+                                                    <li><a href="#" id='addHeadTemp2'>Add Temp</a></li>                                                
+                                                </ul>
+                                            </div><!-- /btn-group -->
+                                            <input style="width:60px" type="text" id='headTempInput2' class="form-control">
+                                        </div><!-- /input-group -->  
+                                    </td>
+                                </tr>
+
+											<tr>
+                                    <td style="padding-top: 15px"><strong><button style="background-color:rgb(236,155,40)" type="button" id="headTxt3" class="btn btn-danger disabled" value="0">Heater 3</button></strong></td>
+                                    <td style="padding-top: 15px; width:60px"><span id="headTemp3">0</span>&deg;C</td>
+                                    <td>
+                                        <div class="input-group" id="headTemperature3">
+                                            <div class="input-group-btn">
+                                                <button type="button" id='setHeadTemp3' class="btn btn-default disabled">Set</button>
+                                                <button type="button" class="btn btn-default dropdown-toggle disabled" data-toggle="dropdown"><span class="caret"></span></button>
+                                                <ul class="dropdown-menu">
+                                                    <li class="divider"></li>
+                                                    <li><a href="#" id='addHeadTemp3'>Add Temp</a></li>                                                
+                                                </ul>
+                                            </div><!-- /btn-group -->
+                                            <input style="width:60px" type="text" id='headTempInput3' class="form-control">
+                                        </div><!-- /input-group -->  
+                                    </td>
+                                </tr>                            
                                 
                             </tbody>
                         </table>   
@@ -252,9 +289,24 @@ Requires reset button on duet to restart">STOP!</button>
                                             </td>
                                         </tr>
 
+													 <tr>
+														<td colspan="2">
+															<span>Proportions (5 drives):</span>
+															<table class="table" id="proportions">
+															 <tbody><tr>
+																<td><input class="btn btn-default" style="width:60px" type="text" id="drive0_P" value = "1.0"></td>
+																<td><input class="btn btn-default" style="width:60px" type="text" id="drive1_P" value = "0.0"></td>
+																<td><input class="btn btn-default" style="width:60px" type="text" id="drive2_P" value = "0.0"></td>
+																<td><input class="btn btn-default" style="width:60px" type="text" id="drive3_P" value = "0.0"></td>
+																<td><input class="btn btn-default" style="width:60px" type="text" id="drive4_P" value = "0.0"></td>
+															 </tr><tbody>
+															</table>
+														</td>
+                                        </tr>
+
                                         <tr>
                                             <td colspan="2">
-                                                <span>Feed</span>
+                                                <span>Feed:</span>
                                                 <div class="btn-group" id="feed">
                                                     <button type="button" class="btn btn-default disabled" id="feed" value="1">1mm</button>
                                                     <button type="button" class="btn btn-default disabled" id="feed" value="5">5mm</button>
@@ -264,6 +316,10 @@ Requires reset button on duet to restart">STOP!</button>
                                                 </div>
                                             </td>
                                         </tr>
+
+                                      
+
+
                                     </tbody>
                                 </table>
                             </div>
@@ -277,6 +333,7 @@ Requires reset button on duet to restart">STOP!</button>
                                 <a href="#" role="button" class="btn btn-default disabled" title="Move X & Y axes to zero">G1 X0 Y0</a>
                                 <a href="#" role="button" class="btn btn-default disabled" title="Move Z axis to zero">G1 Z0</a>
                                 <a href="#" role="button" class="btn btn-default disabled" title="Move X & Y to Bed Centre">G1 X100 Y100</a>
+                                <a href="#" role="button" class="btn btn-default disabled" title="Probe bed & set bed equation">G32</a>
                                 </td></tr>
                                 </table>
                             </div>
@@ -350,8 +407,7 @@ Requires reset button on duet to restart">STOP!</button>
                                 <div class="panel panel-default">
                                     <div class="panel-body">
                                         <div class="col-md-3">
-                                                <button type="button" id="uploadGfile" class="btn btn-default btn-lg disabled" title="Drop a G file here to
-Upload it to the Duets SD card">SD Upload Drop</button>
+                                                <button type="button" id="uploadGfile" class="btn btn-default btn-lg disabled" title="Drop a G file here to upload it to the Duets SD card">SD Upload Drop</button>
                                         </div>
                                         <div class="col-md-3">
                                             <input type="file" id="printGselect" style="display:none">
@@ -466,7 +522,7 @@ Upload it to the Duets SD card">SD Upload Drop</button>
 
         <div id="footer">
             <div class="container text-middle">
-                <p class="text-muted"><small><a href="//forums.reprap.org/read.php?340,290811" target="_blank">get help here</a><span class="pull-right">Web Interface by iamburny :) </span></small>
+                <p class="text-muted"><small><a href="//reprappro.com/support-channel/" target="_blank">get help here</a><span class="pull-right">Web Interface by iamburny & RepRapPro </span></small>
                 </p>
             </div>
         </div>     
@@ -498,7 +554,7 @@ Upload it to the Duets SD card">SD Upload Drop</button>
         <script src="//reprappro.github.io/OrmerodWebControl/js/jquery.storageapi.min.js"></script>         
         <script src="//cdnjs.cloudflare.com/ajax/libs/flot/0.8.1/jquery.flot.min.js"></script>
         <script src="//chrismbarr.github.io/FileDrop/jQuery.FileDrop.min.js"></script>
-        <script src="//reprappro.github.io/OrmerodWebControl/js/reprap.js"></script> 
+        <script src="reprap.js"></script> 
     </body>
 </html>
 <!-- **EoF** -->

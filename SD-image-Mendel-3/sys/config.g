@@ -25,17 +25,13 @@ M569 P3 S0                          ;
 M92 E660                            ; Set extruder steps per mm
 M558 P2                             ; Use a modulated Z probe
 G31 Z0.6 P550                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
-M557 P0 X90 Y0                      ; Four... 
-M557 P1 X90 Y200                    ; ...probe points...
-M557 P2 X260 Y200                   ; ...for bed...
-M557 P3 X260 Y0                     ; ...levelling
 M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
 M201 X3000 Y3000 Z150 E500          ; Accelerations (mm/s^2)  
 M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
-M566 X1200 Y1200 Z30 E1200          ; Minimum speeds mm/minute    
+M566 X200 Y200 Z30 E20              ; Minimum speeds mm/minute    
 M563 P0 D0 H1                       ; Define tool 0
 G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures
-;M563 P1 D1 H2                           ; Define tool 1 Uncomment if you have a dual colour upgrade
-;G10 P1 S-273 R-273                ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade
-;M563 P2 D2 H3                           ; Define tool 2 Uncomment if you have a tri colour upgrade
-;G10 P2 S-273 R-273                ; Set tool 2 operating and standby temperatures  Uncomment if you have a dual colour upgrade
+;M563 P1 D1 H2                      ; Define tool 1 Uncomment if you have a dual colour upgrade
+;G10 P1 S-273 R-273                 ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade
+;M563 P2 D2 H3                      ; Define tool 2 Uncomment if you have a tri colour upgrade
+;G10 P2 S-273 R-273                 ; Set tool 2 operating and standby temperatures  Uncomment if you have a dual colour upgrade
