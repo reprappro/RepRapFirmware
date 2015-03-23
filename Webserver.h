@@ -79,7 +79,7 @@ class ProtocolInterpreter
 		virtual bool DoFastUpload();
 		virtual bool DoingFastUpload() const;
 	    bool FlushUploadData();
-	    void CancelUpload();
+	    virtual void CancelUpload();
 
 	protected:
 
@@ -104,7 +104,7 @@ class ProtocolInterpreter
 	    virtual bool StartUpload(FileStore *file);
 	    virtual bool StoreUploadData(const char* data, unsigned int len);
 		bool IsUploading() const;
-	    void FinishUpload(uint32_t fileLength);
+	    virtual void FinishUpload(uint32_t fileLength);
 };
 
 class Webserver

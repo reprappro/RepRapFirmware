@@ -20,10 +20,7 @@
  ****************************************************************************************************/
 
 #include "RepRapFirmware.h"
-
-#ifdef FLASH_SAVE_ENABLED
 #include "DueFlashStorage.h"
-#endif
 
 extern char _end;
 extern "C" char *sbrk(int i);
@@ -122,8 +119,14 @@ void Platform::Init()
 	digitalWriteNonDue(atxPowerPin, LOW);		// ensure ATX power is off by default
 	pinModeNonDue(atxPowerPin, OUTPUT);
 
-	SerialUSB.begin(BAUD_RATE);
-	Serial.begin(BAUD_RATE_AUX);	// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
+	idleCurrentFactor = DEFAULT_IDLE_CURRENT_FACTOR;
+
+	baudRates[0] = BAUD_RATE;
+	baudRates[1] = AUX_BAUD_RATE;
+	commsParams[0] = commsParams[1] = 0;
+
+	SerialUSB.begin(baudRates[0]);
+	Serial.begin(baudRates[1]);					// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
 
 #if __cplusplus >= 201103L
 	static_assert(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024, "NVData too large");
@@ -164,7 +167,7 @@ void Platform::Init()
 	ARRAY_INIT(directionPins, DIRECTION_PINS);
 	ARRAY_INIT(directions, DIRECTIONS);
 	ARRAY_INIT(enablePins, ENABLE_PINS);
-	ARRAY_INIT(disableDrives, DISABLE_DRIVES);
+	//ARRAY_INIT(disableDrives, DISABLE_DRIVES);			// not currently used
 	ARRAY_INIT(lowStopPins, LOW_STOP_PINS);
 	ARRAY_INIT(highStopPins, HIGH_STOP_PINS);
 	ARRAY_INIT(maxFeedrates, MAX_FEEDRATES);
@@ -232,9 +235,12 @@ void Platform::Init()
 		{
 			pinModeNonDue(highStopPins[drive], INPUT_PULLUP);
 		}
-		Disable(drive);
-		driveEnabled[drive] = false;
+		motorCurrents[drive] = 0.0;
+		DisableDrive(drive);
+		driveState[drive] = DriveStatus::disabled;
 	}
+
+	extrusionAncilliaryPWM = 0.0;
 
 	for (size_t heater = 0; heater < HEATERS; heater++)
 	{
@@ -970,7 +976,7 @@ void Platform::Diagnostics()
 
 	// Show the number of free entries in the file table
 	unsigned int numFreeFiles = 0;
-	for (int8_t i = 0; i < MAX_FILES; i++)
+	for (size_t i = 0; i < MAX_FILES; i++)
 	{
 		if (!files[i]->inUse)
 		{
@@ -1142,74 +1148,127 @@ EndStopHit Platform::Stopped(int8_t drive)
 	return noStop;
 }
 
-void Platform::SetDirection(byte drive, bool direction)
+// This is called from the step ISR as well as other places, so keep it fast, especially in the case where the motor is already enabled
+void Platform::SetDirection(size_t drive, bool direction)
 {
-	if(directionPins[drive] < 0)
-		return;
-
-	bool d = (direction == FORWARDS) ? directions[drive] : !directions[drive];
-	digitalWriteNonDue(directionPins[drive], d);
-}
-
-void Platform::Disable(byte drive)
-{
-	if(enablePins[drive] < 0)
-		  return;
-	digitalWriteNonDue(enablePins[drive], DISABLE);
-	driveEnabled[drive] = false;
-}
-
-void Platform::Step(byte drive)
-{
-	if(stepPins[drive] < 0)
-		return;
-	if(!driveEnabled[drive] && enablePins[drive] >= 0)
+	const int8_t pin = directionPins[drive];
+	if (pin >= 0)
 	{
-		digitalWriteNonDue(enablePins[drive], ENABLE);
-		driveEnabled[drive] = true;
-	}
-	digitalWriteNonDue(stepPins[drive], 0);
-	digitalWriteNonDue(stepPins[drive], 1);
-}
-
-// current is in mA
-
-void Platform::SetMotorCurrent(byte drive, float current)
-{
-	unsigned short pot = (unsigned short)(0.256*current*8.0*senseResistor/maxStepperDigipotVoltage);
-//	Message(HOST_MESSAGE, "Set pot to: ");
-//	snprintf(scratchString, STRING_LENGTH, "%d", pot);
-//	Message(HOST_MESSAGE, scratchString);
-//	Message(HOST_MESSAGE, "\n");
-	if (drive < 4)
-	{
-		mcpDuet.setNonVolatileWiper(potWipes[drive], pot);
-		mcpDuet.setVolatileWiper(potWipes[drive], pot);
-	}
-	else
-	{
-		mcpExpansion.setNonVolatileWiper(potWipes[drive], pot);
-		mcpExpansion.setVolatileWiper(potWipes[drive], pot);
+		bool d = (direction == FORWARDS) ? directions[drive] : !directions[drive];
+		digitalWriteNonDue(pin, d);
 	}
 }
 
-float Platform::MotorCurrent(byte drive)
+// Enable a drive. Must not be called from an ISR, or with interrupts disabled.
+void Platform::EnableDrive(size_t drive)
 {
-	unsigned short pot;
-	if (drive < 4)
+	if (drive < DRIVES)
 	{
-		pot = mcpDuet.getNonVolatileWiper(potWipes[drive]);
-	}
-	else
-	{
-		pot = mcpExpansion.getNonVolatileWiper(potWipes[drive]);
-	}
+		DriveStatus oldState = driveState[drive];
+		if (oldState != DriveStatus::enabled)
+		{
+			driveState[drive] = DriveStatus::enabled;
+			if (oldState == DriveStatus::idle)
+			{
+				UpdateMotorCurrent(drive);
+			}
 
-	return (float)pot * maxStepperDigipotVoltage / (0.256 * 8.0 * senseResistor);
+			const int pin = enablePins[drive];
+			if (pin >= 0)
+			{
+				digitalWriteNonDue(pin, ENABLE);
+			}
+		}
+	}
+}
+
+// Disable a drive, if it has a disable pin
+void Platform::DisableDrive(size_t drive)
+{
+	if (drive < DRIVES)
+	{
+		const int pin = enablePins[drive];
+		if (pin >= 0)
+		{
+			digitalWriteNonDue(pin, DISABLE);
+			driveState[drive] = DriveStatus::disabled;
+		}
+	}
+}
+
+// Set a drive to idle hold if it is enabled. If it is disabled, leave it alone.
+// Must not be called from an ISR, or with interrupts disabled.
+void Platform::SetDriveIdle(size_t drive)
+{
+	if (drive < DRIVES && driveState[drive] == DriveStatus::enabled)
+	{
+		driveState[drive] = DriveStatus::idle;
+		UpdateMotorCurrent(drive);
+	}
+}
+
+// Set the current for a motor. Current is in mA.
+void Platform::SetMotorCurrent(size_t drive, float current)
+{
+	if (drive < DRIVES)
+	{
+		motorCurrents[drive] = current;
+		UpdateMotorCurrent(drive);
+	}
+}
+
+// This must not be called from an ISR, or with interrupts disabled.
+void Platform::UpdateMotorCurrent(size_t drive)
+{
+	if (drive < DRIVES)
+	{
+		float current = motorCurrents[drive];
+		if (driveState[drive] == DriveStatus::idle)
+		{
+			current *= idleCurrentFactor;
+		}
+		unsigned short pot = (unsigned short)((0.256*current*8.0*senseResistor + maxStepperDigipotVoltage/2)/maxStepperDigipotVoltage);
+		if (drive < 4)
+		{
+			mcpDuet.setNonVolatileWiper(potWipes[drive], pot);
+			mcpDuet.setVolatileWiper(potWipes[drive], pot);
+		}
+		else
+		{
+			mcpExpansion.setNonVolatileWiper(potWipes[drive], pot);
+			mcpExpansion.setVolatileWiper(potWipes[drive], pot);
+		}
+	}
+}
+
+float Platform::MotorCurrent(size_t drive) const
+{
+	return (drive < DRIVES) ? motorCurrents[drive] : 0.0;
+}
+
+// Set the motor idle current factor
+void Platform::SetIdleCurrentFactor(float f)
+{
+	idleCurrentFactor = f;
+	for (size_t drive = 0; drive < DRIVES; ++drive)
+	{
+		if (driveState[drive] == DriveStatus::idle)
+		{
+			UpdateMotorCurrent(drive);
+		}
+	}
+}
+
+void Platform::Step(size_t drive)
+{
+	if (stepPins[drive] >= 0)
+	{
+		digitalWriteNonDue(stepPins[drive], 0);
+		digitalWriteNonDue(stepPins[drive], 1);
+	}
 }
 
 // Get current cooling fan speed on a scale between 0 and 1
-
 float Platform::GetFanValue() const
 {
 	return coolingFanValue;
@@ -1221,14 +1280,12 @@ float Platform::GetFanValue() const
 // the G Code reader will get right for a float or an int) and attempts to
 // do the right thing whichever the user has done.  This will only not work
 // for an old-style fan speed of 1/255...
-
 void Platform::SetFanValue(float speed)
 {
-	if(coolingFanPin >= 0)
+	if (coolingFanPin >= 0)
 	{
 		byte p;
-
-		if(speed <= 1.0)
+		if (speed <= 1.0)
 		{
 			p = (byte)(255.0 * max<float>(0.0, speed));
 			coolingFanValue = speed;
@@ -1245,7 +1302,6 @@ void Platform::SetFanValue(float speed)
 }
 
 // Get current fan RPM
-
 float Platform::GetFanRPM()
 {
 	// The ISR sets fanInterval to the number of microseconds it took to get fanMaxInterruptCount interrupts.
@@ -1456,6 +1512,54 @@ void Platform::SetAtxPower(bool on)
 	digitalWriteNonDue(atxPowerPin, (on) ? HIGH : LOW);
 }
 
+void Platform::SetBaudRate(size_t chan, uint32_t br)
+{
+	if (chan < NUM_SERIAL_CHANNELS)
+	{
+		baudRates[chan] = br;
+		ResetChannel(chan);
+	}
+}
+
+uint32_t Platform::GetBaudRate(size_t chan) const
+{
+	return (chan < NUM_SERIAL_CHANNELS) ? baudRates[chan] : 0;
+}
+
+void Platform::SetCommsProperties(size_t chan, uint32_t cp)
+{
+	if (chan < NUM_SERIAL_CHANNELS)
+	{
+		commsParams[chan] = cp;
+		ResetChannel(chan);
+	}
+}
+
+uint32_t Platform::GetCommsProperties(size_t chan) const
+{
+	return (chan < NUM_SERIAL_CHANNELS) ? commsParams[chan] : 0;
+}
+
+
+// Re-initialise a serial channel.
+// Ideally, this would be part of the Line class. However, the Arduino core inexplicably fails to make the serial I/O begin() and end() members
+// virtual functions of a base class, which makes that difficult to do.
+void Platform::ResetChannel(size_t chan)
+{
+	switch(chan)
+	{
+		case 0:
+			SerialUSB.end();
+			SerialUSB.begin(baudRates[0]);
+			break;
+		case 1:
+			Serial.end();
+			Serial.begin(baudRates[1]);
+			break;
+		default:
+			break;
+	}
+}
 
 /*********************************************************************************
 
@@ -1466,42 +1570,90 @@ void Platform::SetAtxPower(bool on)
 MassStorage::MassStorage(Platform* p)
 {
 	platform = p;
+	memset(&fileSystem, 0, sizeof(FATFS));
 }
 
 void MassStorage::Init()
 {
-	hsmciPinsinit();
 	// Initialize SD MMC stack
+
+	hsmciPinsinit();
 	sd_mmc_init();
 	delay(20);
-	int sdPresentCount = 0;
-	while ((CTRL_NO_PRESENT == sd_mmc_check(0)) && (sdPresentCount < 5))
+
+	bool insertMessageSent = false;
+	sd_mmc_err_t err;
+	do {
+		err = sd_mmc_check(0);
+		if (err == SD_MMC_ERR_NO_CARD && platform->Time() > 5.0 && insertMessageSent)
+		{
+			platform->Message(HOST_MESSAGE, "Please insert an SD card\n");
+			insertMessageSent = true;
+		}
+		else if (err > SD_MMC_ERR_NO_CARD)
+		{
+			// Wait a few seconds, so users have a chance to see the following error message
+			delay(3000);
+			platform->Message(HOST_MESSAGE, "Can't initialize the SD card: ");
+			switch (err)
+			{
+				case SD_MMC_ERR_UNUSABLE:
+					platform->AppendMessage(HOST_MESSAGE, "Card is unusable, try another one\n");
+					break;
+				case SD_MMC_ERR_SLOT:
+					platform->AppendMessage(HOST_MESSAGE, "Slot unknown\n");
+					break;
+				case SD_MMC_ERR_COMM:
+					platform->AppendMessage(HOST_MESSAGE, "General communication error\n");
+					break;
+				case SD_MMC_ERR_PARAM:
+					platform->AppendMessage(HOST_MESSAGE, "Illegal input parameter\n");
+					break;
+				case SD_MMC_ERR_WP:
+					platform->AppendMessage(HOST_MESSAGE, "Card write protected\n");
+					break;
+				default:
+					platform->AppendMessage(HOST_MESSAGE, "Unknown (code %d)\m", err);
+					break;
+
+			}
+			return;
+		}
+	} while (err != SD_MMC_OK);
+
+	// Print some card details (optional)
+
+	/*platform->Message(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
+	platform->AppendMessage(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
+	platform->AppendMessage(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
+	switch (sd_mmc_get_type(0))
 	{
-		//platform->Message(HOST_MESSAGE, "Please plug in the SD card.\n");
-		//delay(1000);
-		sdPresentCount++;
-	}
+		case CARD_TYPE_SD | CARD_TYPE_HC:
+			platform->AppendMessage(HOST_MESSAGE, "SDHC\n");
+			break;
+		case CARD_TYPE_SD:
+			platform->AppendMessage(HOST_MESSAGE, "SD\n");
+			break;
+		case CARD_TYPE_MMC | CARD_TYPE_HC:
+			platform->AppendMessage(HOST_MESSAGE, "MMC High Density\n");
+			break;
+		case CARD_TYPE_MMC:
+			platform->AppendMessage(HOST_MESSAGE, "MMC\n");
+			break;
+		case CARD_TYPE_SDIO:
+			platform->AppendMessage(HOST_MESSAGE, "SDIO\n");
+			return;
+		case CARD_TYPE_SD_COMBO:
+			platform->AppendMessage(HOST_MESSAGE, "SD COMBO\n");
+			break;
+		case CARD_TYPE_UNKNOWN:
+		default:
+			platform->AppendMessage(HOST_MESSAGE, "Unknown\n");
+			return;
+	}*/
 
-	if (sdPresentCount >= 5)
-	{
-		platform->Message(HOST_MESSAGE, "Can't find the SD card.\n");
-		return;
-	}
+	// Mount the file system
 
-	//print card info
-
-//	SerialUSB.print("sd_mmc_card->capacity: ");
-//	SerialUSB.print(sd_mmc_get_capacity(0));
-//	SerialUSB.print(" bytes\n");
-//	SerialUSB.print("sd_mmc_card->clock: ");
-//	SerialUSB.print(sd_mmc_get_bus_clock(0));
-//	SerialUSB.print(" Hz\n");
-//	SerialUSB.print("sd_mmc_card->bus_width: ");
-//	SerialUSB.println(sd_mmc_get_bus_width(0));
-
-	memset(&fileSystem, 0, sizeof(FATFS));
-	//f_mount (LUN_ID_SD_MMC_0_MEM, NULL);
-	//int mounted = f_mount(LUN_ID_SD_MMC_0_MEM, &fileSystem);
 	int mounted = f_mount(0, &fileSystem);
 	if (mounted != FR_OK)
 	{
@@ -1983,7 +2135,7 @@ bool FileStore::Write(const char *s, unsigned int len)
 	{
 		return false;
 	}
-	return InternalWriteBlock(s, len);;
+	return InternalWriteBlock(s, len);
 }
 
 bool FileStore::InternalWriteBlock(const char *s, unsigned int len)

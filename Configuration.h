@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "0.96n-zpl"
-#define DATE "2015-03-05"
+#define VERSION "1.08a-zpl"
+#define DATE "2015-03-22"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
@@ -46,16 +46,20 @@ enum Compatibility
 // Some numbers...
 
 #define ABS_ZERO (-273.15)  					// Celsius
+#define NEARLY_ABS_ZERO (-273)					// Celsius
 
 #define INCH_TO_MM (25.4)
 
 #define HEAT_SAMPLE_TIME (0.5)					// Seconds
+#define HEAT_PWM_AVERAGE_TIME (5.0)				// Seconds
 
 #define TEMPERATURE_CLOSE_ENOUGH (2.5) 			// Celsius
 #define TEMPERATURE_LOW_SO_DONT_CARE (40.0)		// Celsius
 #define HOT_ENOUGH_TO_EXTRUDE (160.0)       	// Celsius
 #define HOT_ENOUGH_TO_RETRACT (90.0)			// Celsius
 #define TIME_TO_HOT (150.0)						// Seconds
+
+#define DEFAULT_IDLE_CURRENT_FACTOR (0.3)		// Proportion of normal motor current that we use for idle hold
 
 // If temperatures fall outside this range, something nasty has happened.
 

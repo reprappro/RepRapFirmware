@@ -178,8 +178,9 @@ RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noMod
 void RepRap::Init()
 {
   debug = false;
-  activeExtruders = 1;		// we always report at least 1 extruder to the web interface
-  activeHeaters = 2;		// we always report the bed heater + 1 extruder heater to the web interface
+
+  // zpl thinks it's a bad idea to count the bed as an active heater...
+  activeExtruders = activeHeaters = 0;
 
   SetPassword(DEFAULT_PASSWORD);
   SetName(DEFAULT_NAME);
@@ -370,7 +371,7 @@ void RepRap::EmergencyStop()
 		for(int8_t drive = 0; drive < DRIVES; drive++)
 		{
 			platform->SetMotorCurrent(drive, 0.0);
-			platform->Disable(drive);
+			platform->DisableDrive(drive);
 		}
 	}
 }
@@ -413,21 +414,68 @@ void RepRap::PrintDebug()
 	}
 }
 
-/*
- * The first tool added becomes the one selected.  This will not happen in future releases.
- */
 void RepRap::AddTool(Tool* tool)
 {
 	if(toolList == NULL)
 	{
 		toolList = tool;
-		currentTool = tool;
-		tool->Activate(currentTool);
+	}
+	else
+	{
+		toolList->AddTool(tool);
+	}
+	tool->UpdateExtruderAndHeaterCount(activeExtruders, activeHeaters);
+}
+
+void RepRap::DeleteTool(Tool* tool)
+{
+	// Must have a valid tool...
+	if (tool == NULL)
+	{
 		return;
 	}
 
-	toolList->AddTool(tool);
-	tool->UpdateExtruderAndHeaterCount(activeExtruders, activeHeaters);
+	// Deselect it if necessary
+	if (GetCurrentTool() == tool)
+	{
+		SelectTool(-1);
+	}
+
+	// Switch off any associated heater
+	for(size_t i=0; i<tool->HeaterCount(); i++)
+	{
+		reprap.GetHeat()->SwitchOff(tool->Heater(i));
+	}
+
+	// Purge any references to this tool
+	Tool *parent = NULL;
+	for(Tool *t = toolList; t != NULL; t = t->Next())
+	{
+		if (t->Next() == tool)
+		{
+			parent = t;
+			break;
+		}
+	}
+
+	if (parent == NULL)
+	{
+		toolList = tool->Next();
+	}
+	else
+	{
+		parent->next = tool->next;
+	}
+
+	// Delete it
+	delete tool;
+
+	// Update the number of active heaters and extruder drives
+	activeExtruders = activeHeaters = 0;
+	for(Tool *t = toolList; t != NULL; t = t->Next())
+	{
+		t->UpdateExtruderAndHeaterCount(activeExtruders, activeHeaters);
+	}
 }
 
 void RepRap::SelectTool(int toolNumber)
@@ -436,7 +484,7 @@ void RepRap::SelectTool(int toolNumber)
 
 	while(tool)
 	{
-		if(tool->Number() == toolNumber)
+		if (tool->Number() == toolNumber)
 		{
 			tool->Activate(currentTool);
 			currentTool = tool;
@@ -447,7 +495,7 @@ void RepRap::SelectTool(int toolNumber)
 
 	// Selecting a non-existent tool is valid.  It sets them all to standby.
 
-	if(currentTool != NULL)
+	if (currentTool != NULL)
 	{
 		StandbyTool(currentTool->Number());
 	}
@@ -458,7 +506,7 @@ void RepRap::PrintTool(int toolNumber, StringRef& reply)
 {
 	for(Tool *tool = toolList; tool != NULL; tool = tool->next)
 	{
-		if(tool->Number() == toolNumber)
+		if (tool->Number() == toolNumber)
 		{
 			tool->Print(reply);
 			return;
@@ -473,10 +521,10 @@ void RepRap::StandbyTool(int toolNumber)
 
 	while(tool)
 	{
-		if(tool->Number() == toolNumber)
+		if (tool->Number() == toolNumber)
 		{
 			tool->Standby();
-			if(currentTool == tool)
+			if (currentTool == tool)
 			{
 				currentTool = NULL;
 			}
@@ -504,7 +552,7 @@ Tool* RepRap::GetTool(int toolNumber)
 	return NULL; // Not an error
 }
 
-Tool* RepRap::GetToolByDrive(int driveNumber)
+/*Tool* RepRap::GetToolByDrive(int driveNumber)
 {
 	Tool* tool = toolList;
 
@@ -521,7 +569,7 @@ Tool* RepRap::GetToolByDrive(int driveNumber)
 		tool = tool->Next();
 	}
 	return NULL;
-}
+}*/
 
 void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures)
 {
@@ -553,13 +601,13 @@ void RepRap::Tick()
 			if (ticksInSpinState >= 20000)	// if we stall for 20 seconds, save diagnostic data and reset
 			{
 				resetting = true;
-				for(uint8_t i = 0; i < HEATERS; i++)
+				for(size_t i = 0; i < HEATERS; i++)
 				{
 					platform->SetHeater(i, 0.0);
 				}
-				for(uint8_t i = 0; i < DRIVES; i++)
+				for(size_t i = 0; i < DRIVES; i++)
 				{
-					platform->Disable(i);
+					platform->DisableDrive(i);
 					// We can't set motor currents to 0 here because that requires interrupts to be working, and we are in an ISR
 				}
 
@@ -606,6 +654,10 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 			response.catf("%c%.1f", ch, liveCoordinates[AXES + extruder]);
 			ch = ',';
 		}
+		if (ch == '[')
+		{
+			response.cat("[");
+		}
 
 		// XYZ positions
 		response.cat("],\"xyz\":");
@@ -618,7 +670,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	}
 
 	// Current tool number
-	int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
+	int toolNumber = (currentTool == NULL) ? -1 : currentTool->Number();
 	response.catf("]},\"currentTool\":%d", toolNumber);
 
 	/* Output - only reported once */
@@ -664,11 +716,13 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 
 		// Speed and Extrusion factors
 		response.catf(",\"speedFactor\":%.2f,\"extrFactors\":", move->GetSpeedFactor() * 100.0);
+		ch = '[';
 		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)
 		{
-			response.catf("%c%.2f", (!extruder) ? '[' : ',', move->GetExtrusionFactor(extruder) * 100.0);
+			response.catf("%c%.2f", ch, move->GetExtrusionFactor(extruder) * 100.0);
+			ch = ',';
 		}
-		response.cat("]}");
+		response.cat((ch == '[') ? "[]}" : "]}");
 	}
 
 	// G-code reply sequence for webserver
@@ -723,40 +777,44 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 
 			// Current temperatures
 			ch = '[';
-			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			for (size_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
 			{
 				response.catf("%c%.1f", ch, heat->GetTemperature(heater));
 				ch = ',';
 			}
+			response.cat((ch == '[') ? "[]" : "]");
 
 			// Active temperatures
-			response.catf("],\"active\":");
+			response.catf(",\"active\":");
 			ch = '[';
-			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			for (size_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
 			{
 				response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
 				ch = ',';
 			}
+			response.cat((ch == '[') ? "[]" : "]");
 
 			// Standby temperatures
-			response.catf("],\"standby\":");
+			response.catf(",\"standby\":");
 			ch = '[';
-			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			for (size_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
 			{
 				response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
 				ch = ',';
 			}
+			response.cat((ch == '[') ? "[]" : "]");
 
 			// Heater statuses (0=off, 1=standby, 2=active, 3=fault)
-			response.cat("],\"state\":");
+			response.cat(",\"state\":");
 			ch = '[';
-			for (int8_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
+			for (size_t heater = E0_HEATER; heater < GetHeatersInUse(); heater++)
 			{
-				response.catf("%c%d", ch, (int)heat->GetStatus(heater));
+				response.catf("%c%d", ch, static_cast<int>(heat->GetStatus(heater)));
 				ch = ',';
 			}
+			response.cat((ch == '[') ? "[]" : "]");
 		}
-		response.cat("]}}");
+		response.cat("}}");
 	}
 
 	// Time since last reset
@@ -797,8 +855,8 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 			for(Tool *tool=toolList; tool != NULL; tool = tool->Next())
 			{
 				// Heaters
-				response.cat("{\"heaters\":[");
-				for(uint8_t heater=0; heater<tool->HeaterCount(); heater++)
+				response.catf("{\"number\":%d,\"heaters\":[", tool->Number());
+				for(size_t heater=0; heater<tool->HeaterCount(); heater++)
 				{
 					response.catf("%d", tool->Heater(heater));
 					if (heater < tool->HeaterCount() - 1)
@@ -809,7 +867,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 
 				// Extruder drives
 				response.cat("],\"drives\":[");
-				for(uint8_t drive=0; drive<tool->DriveCount(); drive++)
+				for(size_t drive=0; drive<tool->DriveCount(); drive++)
 				{
 					response.catf("%d", tool->Drive(drive));
 					if (drive < tool->DriveCount() - 1)
@@ -848,6 +906,10 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		{
 			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
 			ch = ',';
+		}
+		if (ch == '[')
+		{
+			response.cat("]");
 		}
 
 		// Fraction of file printed
@@ -960,39 +1022,63 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 
 		// Send the heater actual temperatures
 		const Heat *heat = reprap.GetHeat();
+#if HOT_BED != -1
+		ch = ',';
+		response.catf("[%.1f", heat->GetTemperature(HOT_BED));
+#else
 		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+#endif
+		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%.1f", ch, heat->GetTemperature(heater));
+			response.catf("%c%.1f", ch, heat->GetTemperature(heater + 1));
 			ch = ',';
 		}
+		response.cat((ch == '[') ? "[]" : "]");
 
 		// Send the heater active temperatures
-		response.catf("],\"active\":");
+		response.catf(",\"active\":");
+#if HOT_BED != -1
+		ch = ',';
+		response.catf("[%.1f", heat->GetActiveTemperature(HOT_BED));
+#else
 		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+#endif
+		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
+			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater + 1));
 			ch = ',';
 		}
+		response.cat((ch == '[') ? "[]" : "]");
 
 		// Send the heater standby temperatures
-		response.catf("],\"standby\":");
+		response.catf(",\"standby\":");
+#if HOT_BED != -1
+		ch = ',';
+		response.catf("[%.1f", heat->GetStandbyTemperature(HOT_BED));
+#else
 		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+#endif
+		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
+			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater + 1));
 			ch = ',';
 		}
+		response.cat((ch == '[') ? "[]" : "]");
 
 		// Send the heater statuses (0=off, 1=standby, 2=active)
-		response.cat("],\"hstat\":");
+		response.cat(",\"hstat\":");
+#if HOT_BED != -1
+		ch = ',';
+		response.catf("[%d", static_cast<int>(heat->GetStatus(HOT_BED)));
+#else
 		ch = '[';
-		for (int8_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+#endif
+		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%d", ch, (int)heat->GetStatus(heater));
+			response.catf("%c%d", ch, static_cast<int>(heat->GetStatus(heater + 1)));
 			ch = ',';
 		}
+		response.cat((ch == '[') ? "[]" : "]");
 
 		// Send XYZ positions
 		float liveCoordinates[DRIVES + 1];
@@ -1006,7 +1092,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 				liveCoordinates[i] += offset[i];
 			}
 		}
-		response.catf("],\"pos\":");		// announce the XYZ position
+		response.catf(",\"pos\":");		// announce the XYZ position
 		ch = '[';
 		for (int8_t drive = 0; drive < AXES; drive++)
 		{
@@ -1022,15 +1108,17 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 			response.catf("%c%.1f", ch, liveCoordinates[drive + AXES]);
 			ch = ',';
 		}
-		response.cat("]");
+		response.cat((ch == ']') ? "[]" : "]");
 
 		// Send the speed and extruder override factors
 		response.catf(",\"sfactor\":%.2f,\"efactor\":", move->GetSpeedFactor() * 100.0);
-		for (unsigned int i = 0; i < reprap.GetExtrudersInUse(); ++i)
+		ch = '[';
+		for (size_t i = 0; i < reprap.GetExtrudersInUse(); ++i)
 		{
-			response.catf("%c%.2f", (i == 0) ? '[' : ',', move->GetExtrusionFactor(i) * 100.0);
+			response.catf("%c%.2f", ch, move->GetExtrusionFactor(i) * 100.0);
+			ch = ',';
 		}
-		response.cat("]");
+		response.cat((ch == '[') ? "[]" : "]");
 
 		// Send the current tool number
 		int toolNumber = (currentTool == NULL) ? 0 : currentTool->Number();
@@ -1044,14 +1132,14 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 		// RRP reversed the order at version 0.65 to send the positions before the heaters, but we haven't yet done that.
 		char c = (gc->PrintingAFile()) ? 'P' : 'I';
 		response.printf("{\"poll\":[\"%c\",", c); // Printing
-		for (int8_t heater = 0; heater < HEATERS; heater++)
+		for (size_t heater = 0; heater < HEATERS; heater++)
 		{
 			response.catf("\"%.1f\",", reprap.GetHeat()->GetTemperature(heater));
 		}
 		// Send XYZ and extruder positions
 		float liveCoordinates[DRIVES + 1];
 		reprap.GetMove()->LiveCoordinates(liveCoordinates);
-		for (int8_t drive = 0; drive < DRIVES; drive++)	// loop through extruders
+		for (size_t drive = 0; drive < DRIVES; drive++)	// loop through extruders
 		{
 			char ch = (drive == DRIVES - 1) ? ']' : ',';	// append ] to the last one but , to the others
 			response.catf("\"%.2f\"%c", liveCoordinates[drive], ch);

@@ -71,6 +71,8 @@ Licence: GPL
 // The numbers of entries in each array must correspond with the values of DRIVES,
 // AXES, or HEATERS. Set values to -1 to flag unavailability.
 
+#define NUM_SERIAL_CHANNELS			(2)
+
 // DRIVES
 
 #define STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
@@ -195,6 +197,7 @@ const unsigned int adDisconnectedVirtual = adDisconnectedReal << adOversampleBit
 #define E3_HEATER 4 //the index of the fourth extruder heater
 #define E4_HEATER 5 //the index of the fifth extruder heater
 
+
 /****************************************************************************************************/
 
 // File handling
@@ -215,14 +218,14 @@ const unsigned int adDisconnectedVirtual = adDisconnectedReal << adOversampleBit
 // Miscellaneous...
 
 #define BAUD_RATE 115200 						// Communication speed of the USB if needed.
-#define BAUD_RATE_AUX 57600						// Default communication speed for AUX devices
+#define AUX_BAUD_RATE 57600						// Default communication speed for AUX devices
 
 const int atxPowerPin = 12;						// Arduino Due pin number that controls the ATX power on/off
 
 const uint16_t lineInBufsize = 256;				// use a power of 2 for good performance
 const uint16_t lineOutBufSize = 2048;			// ideally this should be large enough to hold the results of an M503 command,
 												// but could be reduced if we ever need the memory
-const size_t messageStringLength = 1024;		// max length of a message chunk sent via Message or AppendMessage
+const size_t messageStringLength = 256;			// max length of a message chunk sent via Message or AppendMessage
 
 /****************************************************************************************************/
 
@@ -546,6 +549,9 @@ public:
   
 //-------------------------------------------------------------------------------------------------------------
 
+// Enumeration to describe the status of a drive
+  enum class DriveStatus : uint8_t { disabled, idle, enabled };
+
 // These are the functions that form the interface between Platform and the rest of the firmware.
 
   void Init(); // Set the machine up after a restart.  If called subsequently this should set the machine up as if
@@ -582,6 +588,11 @@ public:
   const unsigned char* GateWay() const;
   void SetMACAddress(uint8_t mac[]);
   const unsigned char* MACAddress() const;
+  void SetBaudRate(size_t chan, uint32_t br);
+  uint32_t GetBaudRate(size_t chan) const;
+  void SetCommsProperties(size_t chan, uint32_t cp);
+  uint32_t GetCommsProperties(size_t chan) const;
+
   
   friend class FileStore;
   
@@ -607,13 +618,17 @@ public:
   // Movement
   
   void EmergencyStop();
-  void SetDirection(byte drive, bool direction);
-  void SetDirectionValue(byte drive, bool dVal);
-  bool GetDirectionValue(byte drive) const;
-  void Step(byte drive);
-  void Disable(byte drive); // There is no drive enable; drives get enabled automatically the first time they are used.
-  void SetMotorCurrent(byte drive, float current);
-  float MotorCurrent(byte drive);
+  void SetDirection(size_t drive, bool direction);
+  void SetDirectionValue(size_t drive, bool dVal);
+  bool GetDirectionValue(size_t drive) const;
+  void Step(size_t drive);
+  void EnableDrive(size_t drive);
+  void DisableDrive(size_t drive);
+  void SetDriveIdle(size_t drive);
+  void SetMotorCurrent(size_t drive, float current);
+  float MotorCurrent(size_t drive) const;
+  void SetIdleCurrentFactor(float f);
+  float GetIdleCurrentFactor() const { return idleCurrentFactor; }
   float DriveStepsPerUnit(int8_t drive) const;
   void SetDriveStepsPerUnit(int8_t drive, float value);
   float Acceleration(int8_t drive) const;
@@ -649,12 +664,17 @@ public:
   bool SetZProbeParameters(const struct ZProbeParameters& params);
   bool MustHomeXYBeforeZ() const;
   
+  void SetExtrusionAncilliaryPWM(float v);
+  float GetExtrusionAncilliaryPWM() const;
+  void ExtrudeOn();
+  void ExtrudeOff();
+
   // Mixing support
 
   //void SetMixingDrives(int);
   //int GetMixingDrives();
 
-  int8_t SlowestDrive() const;
+  size_t SlowestDrive() const;
 
   // Heat and temperature
   
@@ -686,7 +706,8 @@ public:
 //-------------------------------------------------------------------------------------------------------
   
 private:
-  
+  void ResetChannel(size_t chan); // re-initialise a serial channel
+
   // These are the structures used to hold out non-volatile data.
   // The SAM3X doesn't have EEPROM so we save the data to flash. This unfortunately means that it gets cleared
   // every time we reprogram the firmware. So there is no need to cater for writing one version of this
@@ -745,12 +766,13 @@ private:
 // DRIVES
 
   void SetSlowestDrive();
+  void UpdateMotorCurrent(size_t drive);
 
   int8_t stepPins[DRIVES];
   int8_t directionPins[DRIVES];
   int8_t enablePins[DRIVES];
-  bool disableDrives[DRIVES];
-  volatile bool driveEnabled[DRIVES];
+  //bool disableDrives[DRIVES];
+  volatile DriveStatus driveState[DRIVES];
   bool directions[DRIVES];
   int8_t lowStopPins[DRIVES];
   int8_t highStopPins[DRIVES];
@@ -758,9 +780,11 @@ private:
   float accelerations[DRIVES];
   float driveStepsPerUnit[DRIVES];
   float instantDvs[DRIVES];
+  float motorCurrents[DRIVES];
+  float idleCurrentFactor;
   MCP4461 mcpDuet;
   MCP4461 mcpExpansion;
-  int8_t slowestDrive;
+  size_t slowestDrive;
 
 
   int8_t potWipes[DRIVES];
@@ -773,6 +797,8 @@ private:
   volatile ZProbeAveragingFilter zProbeOffFilter;					// Z probe readings we took with the IR turned off
   volatile ThermistorAveragingFilter thermistorFilters[HEATERS];	// bed and extruder thermistor readings
   //int8_t numMixingDrives;
+
+  float extrusionAncilliaryPWM;
 
 // AXES
 
@@ -802,6 +828,8 @@ private:
 
   Line* line;
   Line* aux;
+  uint32_t baudRates[NUM_SERIAL_CHANNELS];
+  uint8_t commsParams[NUM_SERIAL_CHANNELS];
   uint8_t messageIndent;
 
 // Files
@@ -974,6 +1002,36 @@ inline const char* Platform::GetDefaultFile() const
   return defaultFile;
 }
 
+inline void Platform::SetExtrusionAncilliaryPWM(float v)
+{
+	extrusionAncilliaryPWM = v;
+}
+
+inline float Platform::GetExtrusionAncilliaryPWM() const
+{
+	return extrusionAncilliaryPWM;
+}
+
+// For the Duet we use the fan output for this
+// DC 2015-03-21: To allow users to control the cooling fan via gcodes generated by slic3r etc.,
+// only turn the fan on/off if the extruder ancilliary PWM has been set nonzero.
+inline void Platform::ExtrudeOn()
+{
+	if (extrusionAncilliaryPWM > 0.0)
+	{
+		SetFanValue(extrusionAncilliaryPWM);
+	}
+}
+
+// DC 2015-03-21: To allow users to control the cooling fan via gcodes generated by slic3r etc.,
+// only turn the fan on/off if the extruder ancilliary PWM has been set nonzero.
+inline void Platform::ExtrudeOff()
+{
+	if (extrusionAncilliaryPWM > 0.0)
+	{
+		SetFanValue(0.0);
+	}
+}
 
 //*****************************************************************************************************************
 
@@ -1030,7 +1088,7 @@ inline void Platform::SetInstantDv(int8_t drive, float value)
 	SetSlowestDrive();
 }
 
-inline int8_t Platform::SlowestDrive() const
+inline size_t Platform::SlowestDrive() const
 {
 	return slowestDrive;
 }
@@ -1047,12 +1105,12 @@ inline bool Platform::HighStopButNotLow(int8_t axis) const
 }
 #endif
 
-inline void Platform::SetDirectionValue(byte drive, bool dVal)
+inline void Platform::SetDirectionValue(size_t drive, bool dVal)
 {
 	directions[drive] = dVal;
 }
 
-inline bool Platform::GetDirectionValue(byte drive) const
+inline bool Platform::GetDirectionValue(size_t drive) const
 {
 	return directions[drive];
 }
@@ -1141,7 +1199,7 @@ inline const unsigned char* Platform::GateWay() const
 inline void Platform::SetMACAddress(uint8_t mac[])
 {
 	bool changed = false;
-	for(int8_t i = 0; i < 6; i++)
+	for(size_t i = 0; i < 6; i++)
 	{
 		if (nvData.macAddress[i] != mac[i])
 		{

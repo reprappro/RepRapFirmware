@@ -112,6 +112,7 @@ void Move::Init()
   int8_t slow = platform->SlowestDrive();
   lastRingMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), 0, zeroExtruderPositions);
   lastRingMove->Release();
+  isolatedMove->Init(ep, platform->HomeFeedRate(slow), platform->InstantDv(slow), platform->MaxFeedrate(slow), platform->Acceleration(slow), 0, zeroExtruderPositions);
   isolatedMove->Release();
   readIsolatedMove = isolatedMoveAvailable = false;
 
@@ -136,8 +137,7 @@ void Move::Init()
   xRectangle = 1.0/(0.8*platform->AxisMaximum(X_AXIS));
   yRectangle = xRectangle;
 
-  lastTime = platform->Time();
-  longWait = lastTime;
+  longWait = platform->Time();
 
   for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
   {
@@ -282,6 +282,7 @@ void Move::Spin()
 		{
 			if (nextMachineEndPoints[drive] - lastMove->MachineCoordinates()[drive] != 0)
 			{
+				platform->EnableDrive(drive);
 				noMove = false;
 			}
 			normalisedDirectionVector[drive] = nextMove[drive] - lastMove->MachineToEndPoint(drive);
@@ -290,6 +291,7 @@ void Move::Spin()
 		{
 			if (nextMachineEndPoints[drive] != 0)
 			{
+				platform->EnableDrive(drive);
 				noMove = false;
 			}
 			normalisedDirectionVector[drive] = nextMove[drive];
@@ -1447,9 +1449,24 @@ void DDA::Start()
 {
 	reprap.GetExtruderCapabilities(eMoveAllowed, directions);
 
-	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
 		platform->SetDirection(drive, directions[drive]);
+	}
+
+	bool extrusionMove = false;
+	for(size_t extruder = AXES; extruder < DRIVES; extruder++)
+	{
+		if (delta[extruder] > 0)
+		{
+			extrusionMove = true;
+			platform->ExtrudeOn();
+			break;
+		}
+	}
+	if (!extrusionMove)
+	{
+		platform->ExtrudeOff();
 	}
 
 	platform->SetInterrupt(timeStep); // seconds

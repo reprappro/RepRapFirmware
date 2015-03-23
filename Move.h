@@ -298,7 +298,6 @@ class Move
     DDA* lookAheadDDA;
     int lookAheadRingCount;
 
-    float lastTime;									// The last time we were called (secs)
     bool addNoMoreMoves;							// If true, allow no more moves to be added to the look-ahead
     bool active;									// Are we live and running?
     float currentFeedrate;                          // Err... the current feed rate...
@@ -575,7 +574,10 @@ inline bool Move::Resume()
 
 inline void Move::Cancel()
 {
-	state = cancelled;
+	if (state != running)
+	{
+		state = cancelled;
+	}
 }
 
 inline bool Move::DDARingEmpty() const

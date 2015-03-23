@@ -56,12 +56,12 @@ class GCodeBuffer
     bool Active() const;
     void SetFinished(bool f);							// Set the G Code executed (or not)
     void Pause();
-    void CancelPause();
     void Resume();
     const char* WritingFileDirectory() const;			// If we are writing the G Code to a file, where that file is
     void SetWritingFileDirectory(const char* wfd);		// Set the directory for the file to write the GCode in
     int GetToolNumberAdjust() const { return toolNumberAdjust; }
     void SetToolNumberAdjust(int arg) { toolNumberAdjust = arg; }
+    void SetCommsProperties(uint32_t arg) { checksumRequired = (arg & 1); }
 
   private:
 
@@ -73,6 +73,7 @@ class GCodeBuffer
     int gcodePointer;									// Index in the buffer
     int readPointer;									// Where in the buffer to read next
     bool inComment;										// Are we after a ';' character?
+    bool checksumRequired;								// True if we only accept commands with a valid checksum
     State state;										// Idle, executing or paused
     const char* writingFileDirectory;					// If the G Code is going into a file, where that is
     int toolNumberAdjust;
@@ -92,13 +93,14 @@ class CodeQueueItem
 	public:
 
 		CodeQueueItem(CodeQueueItem *n);
-		void Init(const char *cmd, unsigned int executeAtMove);
+		void Init(GCodeBuffer *gb, unsigned int executeAtMove);
 		void SetNext(CodeQueueItem *n);
 		CodeQueueItem *Next() const;
 
 		unsigned int ExecuteAtMove() const;
 		const char *GetCommand() const;
 		size_t GetCommandLength() const;
+		GCodeBuffer *GetSource() const;
 
 		void Execute();
 		bool IsExecuting() const;
@@ -108,6 +110,8 @@ class CodeQueueItem
 		char command[GCODE_LENGTH];
 		size_t commandLength;
 		unsigned int moveToExecute;
+
+		GCodeBuffer *source;
 		CodeQueueItem *next;
 		bool executing;
 };
@@ -125,7 +129,6 @@ class GCodes
     void Init();														// Set it up
     void Exit();														// Shut it down
     void Reset();														// Reset some parameter to defaults
-    bool RunConfigurationGCodes();										// Run the configuration G Code file on reboot
     bool ReadMove(float* m, EndstopChecks& ce);							// Called by the Move class to get a movement set by the last G Code
     void QueueFileToPrint(const char* fileName);						// Open a file of G Codes to run
     void DeleteFile(const char* fileName);								// Does what it says
@@ -179,7 +182,7 @@ class GCodes
     void DisableDrives();												// Turn the motors off
     void SetEthernetAddress(GCodeBuffer *gb, int mCode);				// Does what it says
     void SetMACAddress(GCodeBuffer *gb);								// Deals with an M540
-    void HandleReply(bool error, const GCodeBuffer *gb, 				// If the GCode is from the serial interface, reply to it
+    void HandleReply(bool error,						 				// Handle G-Code replies
     		const char* reply, char gMOrT, int code, bool resend);
     bool OpenFileToWrite(const char* directory,							// Start saving GCodes in a file
     		const char* fileName, GCodeBuffer *gb);
@@ -189,8 +192,7 @@ class GCodes
     bool OffsetAxes(GCodeBuffer *gb);									// Set offsets - deprecated, use G10
     void SetPidParameters(GCodeBuffer *gb, int heater, StringRef& reply);	// Set the P/I/D parameters for a heater
     void SetHeaterParameters(GCodeBuffer *gb, StringRef& reply);		// Set the thermistor and ADC parameters for a heater
-    int8_t Heater(int8_t head) const;									// Legacy G codes start heaters at 0, but we use 0 for the bed.  This sorts that out.
-    void AddNewTool(GCodeBuffer *gb, StringRef& reply);					// Create a new tool definition
+    void ManageTool(GCodeBuffer *gb, StringRef& reply);					// Create a new tool definition
     void SetToolHeaters(Tool *tool, float temperature);					// Set all a tool's heaters to the temperature.  For M104...
     bool ChangeTool(int newToolNumber);									// Select a new tool
     bool ToolHeatersAtSetTemperatures(const Tool *tool) const;			// Wait for the heaters associated with the specified tool to reach their set temperatures
@@ -280,7 +282,15 @@ inline bool GCodeBuffer::Active() const
 
 inline void GCodeBuffer::SetFinished(bool f)
 {
-  state = (f) ? idle : executing;
+	if (f)
+	{
+		state = idle;
+		gcodeBuffer[0] = 0;
+	}
+	else
+	{
+		f = executing;
+	}
 }
 
 inline void GCodeBuffer::Pause()
@@ -288,15 +298,6 @@ inline void GCodeBuffer::Pause()
 	if (state == executing)
 	{
 		state = paused;
-	}
-}
-
-// If we paused a print, cancel printing that file and get ready to print a new one
-inline void GCodeBuffer::CancelPause()
-{
-	if (state == paused)
-	{
-		Init();
 	}
 }
 
@@ -340,27 +341,6 @@ inline bool GCodes::NoHome() const
 {
    return !(homeX || homeY || homeZ);
 }
-
-// This function takes care of the fact that the heater and head indices 
-// don't match because the bed is heater 0.
-
-inline int8_t GCodes::Heater(int8_t head) const
-{
-   return head+1; 
-}
-
-// Run the configuration G Code file to set up the machine.  Usually just called once
-// on re-boot.
-
-inline bool GCodes::RunConfigurationGCodes()
-{
-	return !DoFileMacro(platform->GetConfigFile());
-}
-
-//inline int8_t GCodes::GetSelectedHead()
-//{
-//  return selectedHead;
-//}
 
 inline bool GCodes::CoolingInverted() const
 {

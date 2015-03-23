@@ -47,11 +47,12 @@ class RepRap
     void SetPassword(const char* pw);
 
     void AddTool(Tool* t);
+    void DeleteTool(Tool* t);
     void SelectTool(int toolNumber);
     void StandbyTool(int toolNumber);
     Tool* GetCurrentTool();
     Tool* GetTool(int toolNumber);
-    Tool* GetToolByDrive(int driveNumber);
+    //Tool* GetToolByDrive(int driveNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
 
     void AllowColdExtrude();

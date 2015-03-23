@@ -64,11 +64,9 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 * Implemented M500, M501 and M502 (EEPROM tools) and made Flash usage optional when building the firmware.
   Passing 'S1' to M501 will enable auto-save for non-volatile parameters, so backward compatibility with forks based on dc42's firmware can be maintained.
 
-* Implemented M32 (Select fiel and start SD print)
+* Implemented M32 (Select file and start SD print)
 
 * Print status is not changed when a macro file is being executed unless it's part of a real G-Code file
-
-* PIDs return ABS_ZERO as the current temperature if a heater fault occurs
 
 * New-style JSON status and config responses (see http://reprap.org/wiki/Proposed_RepRap_Duet_Status_Responses) including firmware-based print end-time estimations
 

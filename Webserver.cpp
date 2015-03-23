@@ -160,20 +160,23 @@ void Webserver::Spin()
 				uint16_t localPort = req->GetLocalPort();
 				switch (localPort)
 				{
-					case 80: 	/* HTTP */
-						interpreter = httpInterpreter;
-						break;
-
-					case 21: 	/* FTP */
+					case ftpPort:		/* FTP */
 						interpreter = ftpInterpreter;
 						break;
 
-					case 23: 	/* Telnet */
+					case telnetPort:	/* Telnet */
 						interpreter = telnetInterpreter;
 						break;
 
-					default:	/* FTP data */
-						interpreter = ftpInterpreter;
+					default:			/* HTTP and FTP data */
+						if (localPort == network->GetHttpPort())
+						{
+							interpreter = httpInterpreter;
+						}
+						else
+						{
+							interpreter = ftpInterpreter;
+						}
 						break;
 				}
 
@@ -416,20 +419,21 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 	ProtocolInterpreter *interpreter;
 	switch (localPort)
 	{
-		case 80: /* HTTP */
-			interpreter = httpInterpreter;
-			break;
-
-		case 21: /* FTP */
+		case ftpPort:		/* FTP */
 			interpreter = ftpInterpreter;
 			break;
 
-		case 23: /* Telnet */
+		case telnetPort:	/* Telnet */
 			interpreter = telnetInterpreter;
 			break;
 
-		default: /* FTP data */
-			if (localPort == network->GetDataPort())
+		default:			/* HTTP and FTP data */
+			if (localPort == network->GetHttpPort())
+			{
+				interpreter = httpInterpreter;
+				break;
+			}
+			else if (localPort == network->GetDataPort())
 			{
 				interpreter = ftpInterpreter;
 				break;
@@ -438,6 +442,7 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 			platform->Message(BOTH_ERROR_MESSAGE, "Webserver: Connection closed at local port %d, but no handler found!\n", localPort);
 			return;
 	}
+
 	if (reprap.Debug(moduleWebserver))
 	{
 		platform->Message(HOST_MESSAGE, "Webserver: ConnectionLost called with port %d\n", localPort);
@@ -1702,7 +1707,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 	switch (state)
 	{
 		case waitingForPasvPort:
-			if (req->GetLocalPort() == 21)
+			if (req->GetLocalPort() == ftpPort)
 			{
 				network->SendAndClose(NULL);
 				return;
@@ -1716,7 +1721,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 		default:
 			// I (zpl) wanted to allow only one active FTP session, but some FTP programs
 			// like FileZilla open a second connection for transfers for some reason.
-			if (req->GetLocalPort() == 21)
+			if (req->GetLocalPort() == ftpPort)
 			{
 				req->Write("220 RepRapPro Ormerod\r\n");
 				network->SendAndClose(NULL, true);
@@ -1730,7 +1735,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 
 void Webserver::FtpInterpreter::ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort)
 {
-	if (localPort != 21)
+	if (localPort != ftpPort)
 	{
 		// Close the data port
 		network->CloseDataPort();

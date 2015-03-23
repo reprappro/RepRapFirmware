@@ -44,6 +44,7 @@ class PID
     bool SwitchedOff() const;						// Are we switched off?
     void ResetFault();								// Reset a fault condition - only call this if you know what you are doing
     float GetTemperature() const;					// Get the current temperature
+    float GetAveragePWM() const;					// Return the running average PWM to the heater. Answer is a fraction in [0, 1].
 
   private:
 
@@ -62,6 +63,7 @@ class PID
     bool temperatureFault;							// Has our heater developed a fault?
     float timeSetHeating;							// When we were switched on
     bool heatingUp;									// Are we heating up?
+    float averagePWM;								// The running average of the PWM.
 };
 
 /**
@@ -86,12 +88,15 @@ class Heat
     void Standby(int8_t heater);								// Set a heater idle
     float GetTemperature(int8_t heater) const;					// Get the temperature of a heater
     HeaterStatus GetStatus(int8_t heater) const;				// Get the off/standby/active status
+    void SwitchOff(int8_t heater);								// Turn off a specific heater
     void SwitchOffAll();										// Turn all heaters off
     void ResetFault(int8_t heater);								// Reset a heater fault - only call this if you know what you are doing
     bool AllHeatersAtSetTemperatures(bool includingBed) const;	// Is everything at temperature within tolerance?
     bool HeaterAtSetTemperature(int8_t heater) const;			// Is a specific heater at temperature within tolerance?
     void Diagnostics();											// Output useful information
     
+    float GetAveragePWM(int8_t heater) const;					// Return the running average PWM to the heater. Answer is a fraction in [0, 1].
+
   private:
   
     Platform* platform;							// The instance of the RepRap hardware class
@@ -178,6 +183,11 @@ inline bool PID::SwitchedOff() const
 	return switchedOff;
 }
 
+inline float Heat::GetAveragePWM(int8_t heater) const
+{
+	return pids[heater]->GetAveragePWM();
+}
+
 //**********************************************************************************
 
 // Heat
@@ -229,6 +239,14 @@ inline void Heat::Activate(int8_t heater)
   {
     pids[heater]->Activate();
   }
+}
+
+inline void Heat::SwitchOff(int8_t heater)
+{
+	if (heater >= 0 && heater < HEATERS)
+	{
+		pids[heater]->SwitchOff();
+	}
 }
 
 inline void Heat::SwitchOffAll()
