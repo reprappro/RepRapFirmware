@@ -2742,20 +2742,35 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					break;
 
 				default:
+					// Report first active tool heater
 					reply.copy("T:");
-					for(int8_t heater = 1; heater < HEATERS; heater++)
+					Tool *currentTool = reprap.GetCurrentTool();
+					if (currentTool != NULL && currentTool->HeaterCount() > 0)
 					{
-						Heat::HeaterStatus hs = reprap.GetHeat()->GetStatus(heater);
-						if (hs != Heat::HS_off && hs != Heat::HS_fault)
-						{
-							reply.catf("%.1f ", reprap.GetHeat()->GetTemperature(heater));
-						}
+						reply.catf("%.1f", reprap.GetHeat()->GetTemperature(currentTool->Heater(0)));
 					}
+
+					// Report bed temperature and temperatures for all heaters in use
+					char ch = ' ';
+					float targetTemperature;
 #if HOT_BED != -1
-					reply.catf("B:%.1f\n", reprap.GetHeat()->GetTemperature(HOT_BED));
+					reply.catf(" B:%.1f", reprap.GetHeat()->GetTemperature(HOT_BED));
+					for(size_t heater = HOT_BED; heater < reprap.GetHeatersInUse(); heater++)
 #else
-					reply.cat("\n");
+					for(size_t heater = E0_HEATER; heater < reprap.GetHeatersInUse(); heater++)
 #endif
+					{
+						if (reprap.GetHeat()->GetStatus(heater) == Heat::HeaterStatus::HS_active)
+						{
+							targetTemperature = reprap.GetHeat()->GetActiveTemperature(heater);
+						}
+						else
+						{
+							targetTemperature = reprap.GetHeat()->GetStandbyTemperature(heater);
+						}
+						reply.catf(" H%d:%.1f/%.1f", heater, reprap.GetHeat()->GetTemperature(heater), targetTemperature);
+					}
+					reply.cat("\n");
 					break;
 			}
 		}

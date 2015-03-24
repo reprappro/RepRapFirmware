@@ -34,6 +34,7 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	heaterCount = hCount;
 	heaterFault = false;
 	mixing = false;
+	displayColdExtrudeWarning = false;
 
 	for(size_t axis = 0; axis < AXES; axis++)
 	{
@@ -296,7 +297,8 @@ void Tool::GetVariables(float* standby, float* active) const
 	}
 }
 
-bool Tool::ToolCanDrive(bool extrude) const
+// May be called from ISR
+bool Tool::ToolCanDrive(bool extrude)
 {
 	if (heaterFault)
 		return false;
@@ -304,6 +306,7 @@ bool Tool::ToolCanDrive(bool extrude) const
 	if (reprap.ColdExtrude() || AllHeatersAtHighTemperature(extrude))
 		return true;
 
+	displayColdExtrudeWarning = true;
 	return false;
 }
 
@@ -327,3 +330,9 @@ void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHea
 	}
 }
 
+bool Tool::DisplayColdExtrudeWarning()
+{
+	bool result = displayColdExtrudeWarning;
+	displayColdExtrudeWarning = false;
+	return result;
+}

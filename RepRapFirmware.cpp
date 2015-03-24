@@ -305,6 +305,18 @@ void RepRap::Spin()
 	spinningModule = noModule;
 	ticksInSpinState = 0;
 
+	// Check if we need to display a cold extrusion warning
+
+	bool displayWarning = false;
+	for(Tool *t = toolList; t != NULL; t = t->Next())
+	{
+		displayWarning |= t->DisplayColdExtrudeWarning();
+	}
+	if (displayWarning)
+	{
+		platform->Message(BOTH_MESSAGE, "Warning: Tools can only be driven if their heater temperatures are high!\n");
+	}
+
 	// Keep track of the loop time
 
 	float t = platform->Time();
@@ -1094,7 +1106,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 		}
 		response.catf(",\"pos\":");		// announce the XYZ position
 		ch = '[';
-		for (int8_t drive = 0; drive < AXES; drive++)
+		for (size_t drive = 0; drive < AXES; drive++)
 		{
 			response.catf("%c%.2f", ch, liveCoordinates[drive]);
 			ch = ',';
@@ -1103,7 +1115,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 		// Send extruder total extrusion since power up, last G92 or last M23
 		response.cat("],\"extr\":");		// announce the extruder positions
 		ch = '[';
-		for (int8_t drive = 0; drive < reprap.GetExtrudersInUse(); drive++)		// loop through extruders
+		for (size_t drive = 0; drive < reprap.GetExtrudersInUse(); drive++)		// loop through extruders
 		{
 			response.catf("%c%.1f", ch, liveCoordinates[drive + AXES]);
 			ch = ',';

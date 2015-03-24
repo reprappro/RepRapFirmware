@@ -356,6 +356,9 @@ private:
   Platform* platform;
   FATFS fileSystem;
   DIR findDir;
+
+  char combinedNameBuff[FILENAME_LENGTH];
+  StringRef combinedName;
 };
 
 // This class handles input from, and output to, files.

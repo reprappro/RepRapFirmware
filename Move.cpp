@@ -1447,8 +1447,6 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
 
 void DDA::Start()
 {
-	reprap.GetExtruderCapabilities(eMoveAllowed, directions);
-
 	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
 		platform->SetDirection(drive, directions[drive]);
@@ -1460,11 +1458,16 @@ void DDA::Start()
 		if (delta[extruder] > 0)
 		{
 			extrusionMove = true;
-			platform->ExtrudeOn();
 			break;
 		}
 	}
-	if (!extrusionMove)
+
+	if (extrusionMove)
+	{
+		reprap.GetExtruderCapabilities(eMoveAllowed, directions);
+		platform->ExtrudeOn();
+	}
+	else
 	{
 		platform->ExtrudeOff();
 	}
@@ -1477,8 +1480,10 @@ void DDA::Start()
 // Any variables it modifies that are also read by code outside the ISR must be declared 'volatile'.
 void DDA::Step()
 {
-  if(!active || !move->active)
-    return;
+  if (!active || !move->active)
+  {
+	  return;
+  }
   
   // Try to slow down the current move to achieve a better deceleration profile
 

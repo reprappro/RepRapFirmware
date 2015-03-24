@@ -481,7 +481,7 @@ inline bool Move::Pause()
 
 		// ...we can record the current coordinates, so the machine knows where to resume the print
 
-		for(uint8_t drive=0; drive<DRIVES; drive++)
+		for(size_t drive=0; drive<DRIVES; drive++)
 		{
 			pauseCoordinates[drive] = liveCoordinates[drive];
 			isolatedMove->endPoint[drive] = LookAhead::EndPointToMachine(drive, pauseCoordinates[drive]);
@@ -492,7 +492,7 @@ inline bool Move::Pause()
 		// Take care of our state and of the next move to be executed when the print resumes
 
 		state = paused;
-		if (ddaRingGetPointer != NULL)
+		if (ddaRingGetPointer != ddaRingAddPointer)
 		{
 			// Our current move has almost stopped (velocity is instantDv), so make sure the next one accelerates nicely
 			float u = ddaRingGetPointer->instantDv, v = ddaRingGetPointer->feedRate;

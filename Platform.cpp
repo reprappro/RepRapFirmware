@@ -1567,7 +1567,7 @@ void Platform::ResetChannel(size_t chan)
 
  */
 
-MassStorage::MassStorage(Platform* p)
+MassStorage::MassStorage(Platform* p) : combinedName(combinedNameBuff, ARRAY_SIZE(combinedNameBuff))
 {
 	platform = p;
 	memset(&fileSystem, 0, sizeof(FATFS));
@@ -1670,10 +1670,10 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 	{
 		while (directory[in] != 0 && directory[in] != '\n')
 		{
-			scratchString[out] = directory[in];
+			combinedName[out] = directory[in];
 			in++;
 			out++;
-			if (out >= scratchString.Length())
+			if (out >= combinedName.Length())
 			{
 				platform->Message(BOTH_ERROR_MESSAGE, "CombineName() buffer overflow.");
 				out = 0;
@@ -1683,25 +1683,25 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 
 	if (in > 0 && directory[in -1] != '/' && out < STRING_LENGTH -1)
 	{
-		scratchString[out] = '/';
+		combinedName[out] = '/';
 		out++;
 	}
 
 	in = 0;
 	while (fileName[in] != 0 && fileName[in] != '\n')
 	{
-		scratchString[out] = fileName[in];
+		combinedName[out] = fileName[in];
 		in++;
 		out++;
-		if (out >= scratchString.Length())
+		if (out >= combinedName.Length())
 		{
 			platform->Message(BOTH_ERROR_MESSAGE, "CombineName() buffer overflow.");
 			out = 0;
 		}
 	}
-	scratchString[out] = 0;
+	combinedName[out] = 0;
 
-	return scratchString.Pointer();
+	return combinedName.Pointer();
 }
 // Open a directory to read a file list. Returns true if it contains any files, false otherwise.
 bool MassStorage::FindFirst(const char *directory, FileInfo &file_info)
