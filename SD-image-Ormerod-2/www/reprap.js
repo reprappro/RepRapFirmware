@@ -476,16 +476,16 @@ function loadSettings() {
     $('div#headTemperature1 ul').html('<li class="divider"></li><li><a href="#" id="addHeadTemp1">Add Temp</a></li>');
     $('div#headTemperature2 ul').html('<li class="divider"></li><li><a href="#" id="addHeadTemp2">Add Temp</a></li>');
     $('div#headTemperature3 ul').html('<li class="divider"></li><li><a href="#" id="addHeadTemp3">Add Temp</a></li>');
-    storage.get('temps', 'bed').forEach(function(item){
+    (storage.get('temps', 'bed')||[]).forEach(function(item){
         $('div#bedTemperature ul').prepend('<li><a href="#" id="bedTempLink">'+item+'</a></li>');
     });
-    storage.get('temps', 'head1').forEach(function(item){
+    (storage.get('temps', 'head1')||[]).forEach(function(item){
         $('div#headTemperature1 ul').prepend('<li><a href="#" id="headTempLink1">'+item+'</a></li>');
     });
-	 storage.get('temps', 'head2').forEach(function(item){
+    (storage.get('temps', 'head2')||[]).forEach(function(item){
         $('div#headTemperature2 ul').prepend('<li><a href="#" id="headTempLink2">'+item+'</a></li>');
     });
-	 storage.get('temps', 'head3').forEach(function(item){
+    (storage.get('temps', 'head3')||[]).forEach(function(item){
         $('div#headTemperature3 ul').prepend('<li><a href="#" id="headTempLink3">'+item+'</a></li>');
     });
 }
