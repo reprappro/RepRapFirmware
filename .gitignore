@@ -1,10 +1,9 @@
 *.d
 *.o
-Release/*
-!Release/RepRapFirmware*.bin
 *~
 *orig
 /Release/
-arduino
+!Release/RepRapFirmware*.bin
+/arduino
 .*
 spec.d
