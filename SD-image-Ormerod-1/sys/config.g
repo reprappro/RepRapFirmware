@@ -20,6 +20,7 @@ M83                                 ; ...but relative extruder moves
 M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
 ;M305 P0 R4700                       ; Set the heated bed thermistor series resistor to 4K7
 ;M305 P1 R4700                       ; Set the hot end thermistor series resistor to 4K7
+M569 P0 S1									; Reverse the X axis
 M92 E420                            ; Set extruder steps per mm
 M558 P1                             ; Use an unmodulated Z probe
 G31 Z0.8 P600                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
@@ -30,5 +31,5 @@ M566 X200 Y200 Z30 E20              ; Minimum speeds mm/minute
 M563 P0 D0 H1                       ; Define tool 0
 G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures
 ;M563 P1 D1 H2                          ; Define tool 1 Uncomment if you have a dual colour upgrade
-;G10 P1 S-273 R-273                ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade
+;G10 P1 X19 S-273 R-273                ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade
 
