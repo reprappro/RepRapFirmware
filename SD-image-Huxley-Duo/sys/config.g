@@ -33,4 +33,4 @@ M305 P0 T100000                     ; set bed thermistor resistance at 25C
 M563 P0 D0 H1                       ; Define tool 0
 G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures
 ;M563 P1 D1 H2                       ; Define tool 1 Uncomment if you have a dual colour upgrade
-;G10 P1 S-273 R-273                  ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade
+;G10 P1 X19 S-273 R-273                  ; Set tool 1 operating and standby temperatures  Uncomment if you have a dual colour upgrade

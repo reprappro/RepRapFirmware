@@ -5,10 +5,8 @@ G90
 G92 Y0
 G1 Y-250 F2000 S1
 G92 Y0
-G1 Y3 F500
-G1 Y-30 F500 S1
-G92 Y0
-G1 Y3 F500 ; adjust the Y value to put the nozzle on the edge of the bed
+G1 Y3 F200
+G1 Y-30 F200 S1
 G92 Y0
 G91
 G1 X-20 F2000
