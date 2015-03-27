@@ -457,13 +457,22 @@ function setTempString(heater, temp)
 }
 
 function getCookies() {
-    //if none use defaults here, probably move them elsewhere at some point!
-    if (!storage.get('settings')) {
-        storage.set('settings', { pollDelay : 1000, layerHeight : 0.24, halfz : 0, noOK : 0 });
-    }
-    if (!storage.get('temps')) {
-        storage.set('temps', {'bed' : [120,65,0], 'head1' : [240,185,0], 'head2' : [240,185,0], 'head3' : [240,185,0]});
-    }
+    // See if any usable settings were saved
+    var settings = storage.get('settings');
+    if (!(settings instanceof Object)) settings = {};
+    if (!(settings.pollDelay instanceof Number)) settings.pollDelay = 1000;
+    if (!(settings.layerHeight instanceof Number)) settings.layerHeight = 0.24;
+    if (!(settings.halfz instanceof Number)) settings.halfz = 0;
+    if (!(settings.noOK instanceof Number)) settings.noOK = 0;
+    storage.set('settings', settings);
+    // Check if the saved temperatures may be used
+    var temps = storage.get('temps');
+    if (!(temps instanceof Object)) temps = {};
+    if (!(temps.bed instanceof Array)) temps.bed = [120, 65, 0];
+    if (!(temps.head1 instanceof Array)) temps.head1 = [240, 185, 0];
+    if (!(temps.head2 instanceof Array)) temps.head2 = [240, 185, 0];
+    if (!(temps.head3 instanceof Array)) temps.head3 = [240, 185, 0];
+    storage.set('temps', temps);
 }
 
 function loadSettings() {
