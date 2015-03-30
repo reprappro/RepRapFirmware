@@ -80,6 +80,7 @@ class RepRap
     uint16_t GetHeatersInUse() const;
 
     void GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver);
+    void GetConfigResponse(StringRef& response);
     void GetLegacyStatusResponse(StringRef &response, uint8_t type, int seq);
     void GetNameResponse(StringRef& response) const;
     void GetFilesResponse(StringRef& response, const char* dir) const;
@@ -91,7 +92,7 @@ class RepRap
     void AppendMessageToGCodeReply(const char *message);
     void AppendCharToStatusResponse(const char c);
 
-    const StringRef& GetGcodeReply() const;
+    const StringRef& GetGcodeReply();
 
     static void CopyParameterText(const char* src, char *dst, size_t length);
 
@@ -135,7 +136,8 @@ class RepRap
 
     char gcodeReplyBuffer[GCODE_REPLY_LENGTH];
     StringRef gcodeReply;
-    unsigned int replySeq;
+    unsigned int replySeq;							// The current reply sequence number
+    unsigned int webSeq, auxSeq;					// The last-known reply sequence number for web and AUX
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -159,7 +161,7 @@ inline void RepRap::DenyColdExtrude() { coldExtrude = false; }
 
 inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directions[]) const
 {
-	for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+	for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 	{
 		canDrive[extruder] = false;
 	}
@@ -167,7 +169,7 @@ inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directio
 	Tool *tool = toolList;
 	while (tool)
 	{
-		for(uint8_t driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
+		for(size_t driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
 		{
 			const int extruderDrive = tool->Drive(driveNum);
 			canDrive[extruderDrive] = tool->ToolCanDrive(directions[extruderDrive + AXES] == FORWARDS);
@@ -198,7 +200,7 @@ inline void RepRap::Interrupt() { move->Interrupt(); }
 inline bool RepRap::IsStopped() const { return stopped; }
 inline uint16_t RepRap::GetTicksInSpinState() const { return ticksInSpinState; }
 
-inline const StringRef& RepRap::GetGcodeReply() const { return gcodeReply; }
+inline const StringRef& RepRap::GetGcodeReply() { webSeq = replySeq; return gcodeReply; }
 inline unsigned int RepRap::GetReplySeq() const { return replySeq; }
 
 #endif

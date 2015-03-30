@@ -49,7 +49,6 @@ Licence: GPL
 // Platform-specific includes
 
 #include "Arduino.h"
-#include "SamNonDuePin.h"
 #include "SD_HSMCI.h"
 #include "MCP4461.h"
 
@@ -81,8 +80,8 @@ Licence: GPL
 #define BACKWARDS (!FORWARDS) // ...in each direction
 #define DIRECTIONS {BACKWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS} // What each axis needs to make it go forwards - defaults
 #define ENABLE_PINS {29, 27, X1, X0, 37, X8, 50, 47}
-#define ENABLE false // What to send to enable...
-#define DISABLE true // ...and disable a drive
+#define ENABLE_DRIVE false // What to send to enable...
+#define DISABLE_DRIVE true // ...and disable a drive
 #define DISABLE_DRIVES {false, false, true, false, false, false, false, false} // Set true to disable a drive when it becomes idle
 #define LOW_STOP_PINS {11, -1, 60, 31, 24, 46, 45, 44} //E Stops not currently used
 #define HIGH_STOP_PINS {-1, 28, -1, -1, -1, -1, -1, -1}
@@ -204,7 +203,6 @@ const unsigned int adDisconnectedVirtual = adDisconnectedReal << adOversampleBit
 
 #define MAX_FILES (10)		// must be large enough to handle the max number of simultaneous web requests + file being printed
 #define FILE_BUF_LEN (256)
-#define SD_SPI (4) //Pin
 #define WEB_DIR "0:/www/" 						// Place to find web files on the SD card
 #define GCODE_DIR "0:/gcodes/" 					// Ditto - g-codes
 #define SYS_DIR "0:/sys/" 						// Ditto - system files
@@ -342,7 +340,7 @@ public:
   bool Rename(const char *oldFilename, const char *newFilename);
   bool FileExists(const char *file) const;
   bool PathExists(const char *path) const;
-  bool PathExists(const char* directory, const char* fileName);
+  bool PathExists(const char* directory, const char* subDirectory);
 
 friend class Platform;
 
@@ -355,7 +353,9 @@ private:
 
   Platform* platform;
   FATFS fileSystem;
-  DIR findDir;
+
+  FILINFO *filStruct;
+  DIR *dirStruct, *findDir;
 
   char combinedNameBuff[FILENAME_LENGTH];
   StringRef combinedName;
@@ -703,7 +703,6 @@ public:
   void SetAutoSave(bool enabled);
 
   // AUX device
-  bool HaveAux() const;
   void Beep(int freq, int ms);
 
 //-------------------------------------------------------------------------------------------------------

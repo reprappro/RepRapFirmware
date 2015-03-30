@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.08b-zpl"
-#define DATE "2015-03-24"
+#define VERSION "1.08c-zpl"
+#define DATE "2015-03-28"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
@@ -105,7 +105,8 @@ enum Compatibility
 #define SET_BED_EQUATION "bed.g"
 #define PAUSE_G "pause.g"
 #define RESUME_G "resume.g"
-#define RESET_G "reset.g"
+#define STOP_G "stop.g"
+#define SLEEP_G "sleep.g"
 
 #define WEB_DEBUG_TRUE 9
 #define WEB_DEBUG_FALSE 8

@@ -116,8 +116,8 @@ Platform::Platform() :
 
 void Platform::Init()
 {
-	digitalWriteNonDue(atxPowerPin, LOW);		// ensure ATX power is off by default
-	pinModeNonDue(atxPowerPin, OUTPUT);
+	digitalWrite(atxPowerPin, LOW);		// ensure ATX power is off by default
+	pinMode(atxPowerPin, OUTPUT);
 
 	idleCurrentFactor = DEFAULT_IDLE_CURRENT_FACTOR;
 
@@ -145,6 +145,11 @@ void Platform::Init()
 	line->Init();
 	aux->Init();
 	messageIndent = 0;
+
+	addToTime = 0.0;
+	lastTimeCall = 0;
+	lastTime = Time();
+	longWait = lastTime;
 
 	massStorage->Init();
 
@@ -217,23 +222,23 @@ void Platform::Init()
 	{
 		if (stepPins[drive] >= 0)
 		{
-			pinModeNonDue(stepPins[drive], OUTPUT);
+			pinMode(stepPins[drive], OUTPUT);
 		}
 		if (directionPins[drive] >= 0)
 		{
-			pinModeNonDue(directionPins[drive], OUTPUT);
+			pinMode(directionPins[drive], OUTPUT);
 		}
 		if (enablePins[drive] >= 0)
 		{
-			pinModeNonDue(enablePins[drive], OUTPUT);
+			pinMode(enablePins[drive], OUTPUT);
 		}
 		if (lowStopPins[drive] >= 0)
 		{
-			pinModeNonDue(lowStopPins[drive], INPUT_PULLUP);
+			pinMode(lowStopPins[drive], INPUT_PULLUP);
 		}
 		if (highStopPins[drive] >= 0)
 		{
-			pinModeNonDue(highStopPins[drive], INPUT_PULLUP);
+			pinMode(highStopPins[drive], INPUT_PULLUP);
 		}
 		motorCurrents[drive] = 0.0;
 		DisableDrive(drive);
@@ -246,8 +251,8 @@ void Platform::Init()
 	{
 		if (heatOnPins[heater] >= 0)
 		{
-			digitalWriteNonDue(heatOnPins[heater], HIGH);	// turn the heater off
-			pinModeNonDue(heatOnPins[heater], OUTPUT);
+			digitalWrite(heatOnPins[heater], HIGH);	// turn the heater off
+			pinMode(heatOnPins[heater], OUTPUT);
 		}
 		analogReadResolution(12);
 		thermistorFilters[heater].Init(analogRead(tempSensePins[heater]));
@@ -264,17 +269,15 @@ void Platform::Init()
 	if (coolingFanPin >= 0)
 	{
 		// Inverse logic for Duet v0.6 and later; this turns it off
-		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? 255 : 0, true);
+		analogWriteDuet(coolingFanPin, (HEAT_ON == 0) ? 255 : 0, true);
 	}
 	if (coolingFanRpmPin >= 0)
 	{
-		pinModeNonDue(coolingFanRpmPin, INPUT_PULLUP, 1500);
+		pinModeDuet(coolingFanRpmPin, INPUT_PULLUP, 1500);
 	}
 
 	InitialiseInterrupts();
 
-	addToTime = 0.0;
-	lastTimeCall = 0;
 	lastTime = Time();
 	longWait = lastTime;
 }
@@ -317,8 +320,8 @@ void Platform::InitZProbe()
 	if (nvData.zProbeType >= 1)
 	{
 		zProbeModulationPin = (nvData.zProbeChannel == 1) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
-		pinModeNonDue(zProbeModulationPin, OUTPUT);
-		digitalWriteNonDue(zProbeModulationPin, (nvData.zProbeType <= 2) ? HIGH : LOW);	// enable the IR LED or alternate sensor
+		pinMode(zProbeModulationPin, OUTPUT);
+		digitalWrite(zProbeModulationPin, (nvData.zProbeType <= 2) ? HIGH : LOW);	// enable the IR LED or alternate sensor
 	}
 }
 
@@ -867,7 +870,7 @@ void Platform::Tick()
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
 		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
 		{
-			digitalWriteNonDue(zProbeModulationPin, LOW);		// turn off the IR emitter
+			digitalWrite(zProbeModulationPin, LOW);		// turn off the IR emitter
 		}
 		++tickState;
 		break;
@@ -881,7 +884,7 @@ void Platform::Tick()
 		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
 		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
 		{
-			digitalWriteNonDue(zProbeModulationPin, HIGH);		// turn on the IR emitter
+			digitalWrite(zProbeModulationPin, HIGH);		// turn on the IR emitter
 		}
 	}
 		tickState = 1;
@@ -1115,7 +1118,7 @@ void Platform::SetHeater(size_t heater, float power)
 		return;
 
 	byte p = (byte) (255.0 * min<float>(1.0, max<float>(0.0, power)));
-	analogWriteNonDue(heatOnPins[heater], (HEAT_ON == 0) ? 255 - p : p);
+	analogWrite(heatOnPins[heater], (HEAT_ON == 0) ? 255 - p : p);
 }
 
 EndStopHit Platform::Stopped(int8_t drive)
@@ -1137,12 +1140,12 @@ EndStopHit Platform::Stopped(int8_t drive)
 
 	if (lowStopPins[drive] >= 0)
 	{
-		if (digitalReadNonDue(lowStopPins[drive]) == ENDSTOP_HIT)
+		if (digitalRead(lowStopPins[drive]) == ENDSTOP_HIT)
 			return lowHit;
 	}
 	if (highStopPins[drive] >= 0)
 	{
-		if (digitalReadNonDue(highStopPins[drive]) == ENDSTOP_HIT)
+		if (digitalRead(highStopPins[drive]) == ENDSTOP_HIT)
 			return highHit;
 	}
 	return noStop;
@@ -1155,7 +1158,7 @@ void Platform::SetDirection(size_t drive, bool direction)
 	if (pin >= 0)
 	{
 		bool d = (direction == FORWARDS) ? directions[drive] : !directions[drive];
-		digitalWriteNonDue(pin, d);
+		digitalWrite(pin, d);
 	}
 }
 
@@ -1176,7 +1179,7 @@ void Platform::EnableDrive(size_t drive)
 			const int pin = enablePins[drive];
 			if (pin >= 0)
 			{
-				digitalWriteNonDue(pin, ENABLE);
+				digitalWrite(pin, ENABLE_DRIVE);
 			}
 		}
 	}
@@ -1190,7 +1193,7 @@ void Platform::DisableDrive(size_t drive)
 		const int pin = enablePins[drive];
 		if (pin >= 0)
 		{
-			digitalWriteNonDue(pin, DISABLE);
+			digitalWrite(pin, DISABLE_DRIVE);
 			driveState[drive] = DriveStatus::disabled;
 		}
 	}
@@ -1263,8 +1266,8 @@ void Platform::Step(size_t drive)
 {
 	if (stepPins[drive] >= 0)
 	{
-		digitalWriteNonDue(stepPins[drive], 0);
-		digitalWriteNonDue(stepPins[drive], 1);
+		digitalWrite(stepPins[drive], 0);
+		digitalWrite(stepPins[drive], 1);
 	}
 }
 
@@ -1297,7 +1300,7 @@ void Platform::SetFanValue(float speed)
 		}
 
 		// The cooling fan output pin gets inverted if HEAT_ON == 0
-		analogWriteNonDue(coolingFanPin, (HEAT_ON == 0) ? (255 - p) : p, true);
+		analogWriteDuet(coolingFanPin, (HEAT_ON == 0) ? (255 - p) : p, true);
 	}
 }
 
@@ -1504,12 +1507,12 @@ void Platform::AppendMessage(char type, const StringRef& message)
 
 bool Platform::AtxPower() const
 {
-	return (digitalReadNonDue(atxPowerPin) == HIGH);
+	return (digitalRead(atxPowerPin) == HIGH);
 }
 
 void Platform::SetAtxPower(bool on)
 {
-	digitalWriteNonDue(atxPowerPin, (on) ? HIGH : LOW);
+	digitalWrite(atxPowerPin, (on) ? HIGH : LOW);
 }
 
 void Platform::SetBaudRate(size_t chan, uint32_t br)
@@ -1570,33 +1573,43 @@ void Platform::ResetChannel(size_t chan)
 MassStorage::MassStorage(Platform* p) : combinedName(combinedNameBuff, ARRAY_SIZE(combinedNameBuff))
 {
 	platform = p;
+
 	memset(&fileSystem, 0, sizeof(FATFS));
+
+	filStruct = new FILINFO();
+	dirStruct = new DIR();
+	findDir = new DIR();
 }
 
 void MassStorage::Init()
 {
 	// Initialize SD MMC stack
 
-	hsmciPinsinit();
 	sd_mmc_init();
 	delay(20);
 
-	bool insertMessageSent = false;
+	bool abort = false;
 	sd_mmc_err_t err;
 	do {
 		err = sd_mmc_check(0);
-		if (err == SD_MMC_ERR_NO_CARD && platform->Time() > 5.0 && insertMessageSent)
+		if (err > SD_MMC_ERR_NO_CARD)
 		{
-			platform->Message(HOST_MESSAGE, "Please insert an SD card\n");
-			insertMessageSent = true;
+			abort = true;
+			delay(3000);	// Wait a few seconds, so users have a chance to see the following error message
 		}
-		else if (err > SD_MMC_ERR_NO_CARD)
+		else
 		{
-			// Wait a few seconds, so users have a chance to see the following error message
-			delay(3000);
-			platform->Message(HOST_MESSAGE, "Can't initialize the SD card: ");
+			abort = (err == SD_MMC_ERR_NO_CARD && platform->Time() > 5.0);
+		}
+
+		if (abort)
+		{
+			platform->Message(HOST_MESSAGE, "Cannot initialize the SD card: ");
 			switch (err)
 			{
+				case SD_MMC_ERR_NO_CARD:
+					platform->AppendMessage(HOST_MESSAGE, "Card not found\n");
+					break;
 				case SD_MMC_ERR_UNUSABLE:
 					platform->AppendMessage(HOST_MESSAGE, "Card is unusable, try another one\n");
 					break;
@@ -1615,7 +1628,6 @@ void MassStorage::Init()
 				default:
 					platform->AppendMessage(HOST_MESSAGE, "Unknown (code %d)\m", err);
 					break;
-
 			}
 			return;
 		}
@@ -1706,10 +1718,10 @@ const char* MassStorage::CombineName(const char* directory, const char* fileName
 // Open a directory to read a file list. Returns true if it contains any files, false otherwise.
 bool MassStorage::FindFirst(const char *directory, FileInfo &file_info)
 {
-	TCHAR loc[64 + 1];
+	TCHAR loc[FILENAME_LENGTH];
 
 	// Remove the trailing '/' from the directory name
-	size_t len = strnlen(directory, ARRAY_SIZE(loc) - 1);	// the -1 ensures we have room for a null terminator
+	size_t len = strnlen(directory, ARRAY_UPB(loc));
 	if (len == 0)
 	{
 		loc[0] = 0;
@@ -1725,7 +1737,7 @@ bool MassStorage::FindFirst(const char *directory, FileInfo &file_info)
 		loc[len] = 0;
 	}
 
-	FRESULT res = f_opendir(&findDir, loc);
+	FRESULT res = f_opendir(findDir, loc);
 	if (res == FR_OK)
 	{
 		FILINFO entry;
@@ -1734,7 +1746,7 @@ bool MassStorage::FindFirst(const char *directory, FileInfo &file_info)
 
 		for(;;)
 		{
-			res = f_readdir(&findDir, &entry);
+			res = f_readdir(findDir, &entry);
 			if (res != FR_OK || entry.fname[0] == 0) break;
 			if (StringEquals(entry.fname, ".") || StringEquals(entry.fname, "..")) continue;
 
@@ -1768,7 +1780,7 @@ bool MassStorage::FindNext(FileInfo &file_info)
 	entry.lfname = file_info.fileName;
 	entry.lfsize = ARRAY_SIZE(file_info.fileName);
 
-	if (f_readdir(&findDir, &entry) != FR_OK || entry.fname[0] == 0)
+	if (f_readdir(findDir, &entry) != FR_OK || entry.fname[0] == 0)
 	{
 		//f_closedir(findDir);
 		return false;
@@ -1852,22 +1864,20 @@ bool MassStorage::Rename(const char *oldFilename, const char *newFilename)
 // Check if the specified file exists
 bool MassStorage::FileExists(const char *file) const
 {
-	FILINFO fil;
-	return (f_stat(file, &fil) == FR_OK);
+	return (f_stat(file, filStruct) == FR_OK);
 }
 
 // Check if the specified directory exists
 bool MassStorage::PathExists(const char *path) const
 {
-	DIR dir;
-	return (f_opendir(&dir, path) == FR_OK);
+	return (f_opendir(dirStruct, path) == FR_OK);
 }
 
-bool MassStorage::PathExists(const char* directory, const char* fileName)
+bool MassStorage::PathExists(const char* directory, const char* subDirectory)
 {
 	const char* location = (directory != NULL)
-							? platform->GetMassStorage()->CombineName(directory, fileName)
-								: fileName;
+							? platform->GetMassStorage()->CombineName(directory, subDirectory)
+								: subDirectory;
 	return PathExists(location);
 }
 

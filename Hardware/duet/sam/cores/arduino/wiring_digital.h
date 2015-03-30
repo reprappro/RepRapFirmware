@@ -28,8 +28,10 @@
  *
  * \param ulPin The number of the pin whose mode you wish to set
  * \param ulMode Either INPUT or OUTPUT
+ * \param debounceCutoff Debounce cutoff frequency (only one can be set per PIO)
  */
-extern void pinMode( uint32_t dwPin, uint32_t dwMode ) ;
+extern void pinModeDuet( uint32_t dwPin, uint32_t dwMode, uint32_t debounceCutoff );
+extern void pinMode( uint32_t dwPin, uint32_t dwMode );
 
 /**
  * \brief Write a HIGH or a LOW value to a digital pin.

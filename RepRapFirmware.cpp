@@ -189,7 +189,7 @@ void RepRap::Init()
   message[0] = 0;
 
   gcodeReply[0] = 0;
-  replySeq = 0;
+  replySeq = webSeq = auxSeq = 0;
   processingConfig = true;
 
   // All of the following init functions must execute reasonably quickly before the watchdog times us out
@@ -955,12 +955,12 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	response.cat("}");
 }
 
-/*void RepRap::GetConfigResponse(StringRef& response, uint8_t type)
+void RepRap::GetConfigResponse(StringRef& response)
 {
 	// Axis minima
-	response.cat("{\"axisMins\":");
+	response.copy("{\"axisMins\":");
 	char ch = '[';
-	for (uint8_t axis = 0; axis < AXES; axis++)
+	for (size_t axis = 0; axis < AXES; axis++)
 	{
 		response.catf("%c%.2f", ch, platform->AxisMinimum(axis));
 		ch = ',';
@@ -969,7 +969,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	// Axis maxima
 	response.cat("],\"axisMaxes\":");
 	ch = '[';
-	for (uint8_t axis = 0; axis < AXES; axis++)
+	for (size_t axis = 0; axis < AXES; axis++)
 	{
 		response.catf("%c%.2f", ch, platform->AxisMaximum(axis));
 		ch = ',';
@@ -978,16 +978,22 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	// Accelerations
 	response.cat("],\"accelerations\":");
 	ch = '[';
-	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	for (size_t drive = 0; drive < DRIVES; drive++)
 	{
 		response.catf("%c%.2f", ch, platform->Acceleration(drive));
 		ch = ',';
 	}
 
+	// Firmware details
+	response.catf("],\"firmwareElectronics\":\"%s\"", ELECTRONICS);
+	response.catf(",\"firmwareName\":\"%s\"", NAME);
+	response.catf(",\"firmwareVersion\":\"%s\"", VERSION);
+	response.catf(",\"firmwareDate\":\"%s\"", DATE);
+
 	// Minimum feedrates
-	response.cat("],\"minFeedrates\":");
+	response.cat(",\"minFeedrates\":");
 	ch = '[';
-	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	for (size_t drive = 0; drive < DRIVES; drive++)
 	{
 		response.catf("%c%.2f", ch, platform->InstantDv(drive));
 		ch = ',';
@@ -996,18 +1002,70 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 	// Maximum feedrates
 	response.cat("],\"maxFeedrates\":");
 	ch = '[';
-	for (uint8_t drive = 0; drive < DRIVES; drive++)
+	for (size_t drive = 0; drive < DRIVES; drive++)
 	{
 		response.catf("%c%.2f", ch, platform->MaxFeedrate(drive));
 		ch = ',';
 	}
 
-	// Configuration File
-	response.cat("],\"configFile\":");
-	EncodeString(response, , 2, false);
+	// Configuration File (whitespaces are skipped, otherwise we risk overflowing the response buffer)
+	response.cat("],\"configFile\":\"");
+	FileStore *configFile = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
+	if (configFile == NULL)
+	{
+		response.cat("not found");
+	}
+	else
+	{
+		char c, esc;
+		bool readingWhitespace = false;
+		while (configFile->Read(c))
+		{
+			if (!readingWhitespace || (c != ' ' && c != '\t'))
+			{
+				switch (c)
+				{
+					case '\r':
+						esc = 'r';
+						break;
+					case '\n':
+						esc = 'n';
+						break;
+					case '\t':
+						esc = 't';
+						break;
+					case '"':
+						esc = '"';
+						break;
+					case '\\':
+						esc = '\\';
+						break;
+					default:
+						esc = 0;
+						break;
+				}
 
-	response.cat("}");
-}*/
+				if (esc)
+				{
+					response.catf("\\%c", esc);
+				}
+				else
+				{
+					response.catf("%c", c);
+				}
+
+				if (response.strlen() >= response.Length() - 4)
+				{
+					// Leave 4 chars to finish this response
+					break;
+				}
+			}
+			readingWhitespace = (c == ' ' || c == '\t');
+		}
+		configFile->Close();
+	}
+	response.cat("\"}");
+}
 
 // Get the legacy JSON status response for the web server or M105 command.
 // Type 0 is the old-style webserver status response (zpl fork doesn't support it any more).
@@ -1040,9 +1098,9 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 #else
 		ch = '[';
 #endif
-		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		for (size_t heater = E0_HEATER; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%.1f", ch, heat->GetTemperature(heater + 1));
+			response.catf("%c%.1f", ch, heat->GetTemperature(heater));
 			ch = ',';
 		}
 		response.cat((ch == '[') ? "[]" : "]");
@@ -1055,9 +1113,9 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 #else
 		ch = '[';
 #endif
-		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		for (size_t heater = E0_HEATER; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater + 1));
+			response.catf("%c%.1f", ch, heat->GetActiveTemperature(heater));
 			ch = ',';
 		}
 		response.cat((ch == '[') ? "[]" : "]");
@@ -1070,9 +1128,9 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 #else
 		ch = '[';
 #endif
-		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		for (size_t heater = E0_HEATER; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater + 1));
+			response.catf("%c%.1f", ch, heat->GetStandbyTemperature(heater));
 			ch = ',';
 		}
 		response.cat((ch == '[') ? "[]" : "]");
@@ -1085,9 +1143,9 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 #else
 		ch = '[';
 #endif
-		for (size_t heater = 0; heater < reprap.GetHeatersInUse(); heater++)
+		for (size_t heater = E0_HEATER; heater < reprap.GetHeatersInUse(); heater++)
 		{
-			response.catf("%c%d", ch, static_cast<int>(heat->GetStatus(heater + 1)));
+			response.catf("%c%d", ch, static_cast<int>(heat->GetStatus(heater)));
 			ch = ',';
 		}
 		response.cat((ch == '[') ? "[]" : "]");
@@ -1230,6 +1288,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 		// Send the response to the last command. Do this last because it is long and may need to be truncated.
 		response.catf(",\"seq\":%u,\"resp\":", newSeq);						// send the response sequence number
 		EncodeString(response, GetGcodeReply().Pointer(), 2, true);
+		auxSeq = newSeq;
 	}
 
 	response.cat("}");
@@ -1266,24 +1325,24 @@ void RepRap::EncodeString(StringRef& response, const char* src, size_t spaceToLe
 		char esc;
 		switch (c)
 		{
-		case '\r':
-			esc = 'r';
-			break;
-		case '\n':
-			esc = 'n';
-			break;
-		case '\t':
-			esc = 't';
-			break;
-		case '"':
-			esc = '"';
-			break;
-		case '\\':
-			esc = '\\';
-			break;
-		default:
-			esc = 0;
-			break;
+			case '\r':
+				esc = 'r';
+				break;
+			case '\n':
+				esc = 'n';
+				break;
+			case '\t':
+				esc = 't';
+				break;
+			case '"':
+				esc = '"';
+				break;
+			case '\\':
+				esc = '\\';
+				break;
+			default:
+				esc = 0;
+				break;
 		}
 		if (esc)
 		{
@@ -1352,12 +1411,19 @@ void RepRap::Beep(int freq, int ms)
 void RepRap::SetMessage(const char *msg)
 {
 	strncpy(message, msg, SHORT_STRING_LENGTH);
-	message[SHORT_STRING_LENGTH] = 0;
+	message[SHORT_STRING_LENGTH - 1] = 0;
 }
 
 void RepRap::MessageToGCodeReply(const char *message)
 {
-	gcodeReply.copy(message);
+	if (webSeq == replySeq && (!gCodes->HaveAux() || auxSeq == replySeq))
+	{
+		gcodeReply.copy(message);
+	}
+	else
+	{
+		gcodeReply.cat(message);
+	}
 	replySeq++;
 }
 

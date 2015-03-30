@@ -325,24 +325,22 @@ Network::Network(Platform* p)
 	  freeTransactions(NULL), readyTransactions(NULL), writingTransactions(NULL),
 	  dataCs(NULL), ftpCs(NULL), telnetCs(NULL), freeSendBuffers(NULL), freeConnections(NULL)
 {
-	for (int8_t i = 0; i < networkTransactionCount; i++)
+	for (size_t i = 0; i < networkTransactionCount; i++)
 	{
 		freeTransactions = new NetworkTransaction(freeTransactions);
 	}
 
-	for (int8_t i = 0; i < tcpOutputBufferCount; i++)
+	for (size_t i = 0; i < tcpOutputBufferCount; i++)
 	{
 		freeSendBuffers = new SendBuffer(freeSendBuffers);
 	}
 
-	for (int8_t i = 0; i < numConnections; i++)
+	for (size_t i = 0; i < numConnections; i++)
 	{
 		ConnectionState *cs = new ConnectionState;
 		cs->next = freeConnections;
 		freeConnections = cs;
 	}
-
-	ethPinsInit();
 }
 
 void Network::AppendTransaction(NetworkTransaction* volatile* list, NetworkTransaction *r)

@@ -1,4 +1,4 @@
-Custom hardware tree for the Duet platform (version 1.0)
+Custom hardware tree for the Duet platform (version 1.0.1)
 
 Set the private library path to this directory in the Arduino Eclipse plugin settings to compile RepRapFirmware.
 This tree is based upon the official "Arduino Due" platform files, however the following changes were made:

@@ -138,6 +138,9 @@ static uint16_t FindClockConfiguration(
  * function.
  * Beware: this function disables the ul_channel. It waits until disable is effective.
  *
+ * Note: This function has been patched for the Duet to not mess up PWM channel 0
+ * when another channel is programmed.
+ *
  * \param ul_channel  Channel number.
  * \param prescaler  Channel prescaler.
  * \param alignment  Channel alignment.
@@ -145,20 +148,17 @@ static uint16_t FindClockConfiguration(
  */
 void PWMC_ConfigureChannel( Pwm* pPwm, uint32_t ul_channel, uint32_t prescaler, uint32_t alignment, uint32_t polarity )
 {
-    pPwm->PWM_CH_NUM[0].PWM_CMR = 1;
-
-//    assert(prescaler < PWM_CMR0_CPRE_MCKB);
-    assert((alignment & (uint32_t)~PWM_CMR_CALG) == 0);
-    assert((polarity & (uint32_t)~PWM_CMR_CPOL) == 0);
-
-    /* Disable ul_channel (effective at the end of the current period) */
-    if ((pPwm->PWM_SR & (1 << ul_channel)) != 0) {
-        pPwm->PWM_DIS = 1 << ul_channel;
-        while ((pPwm->PWM_SR & (1 << ul_channel)) != 0);
-    }
-
-    /* Configure ul_channel */
-    pPwm->PWM_CH_NUM[ul_channel].PWM_CMR = prescaler | alignment | polarity;
+	 pPwm->PWM_CH_NUM[0].PWM_CMR = 1;
+	// assert(prescaler < PWM_CMR0_CPRE_MCKB);
+	assert((alignment & (uint32_t)~PWM_CMR_CALG) == 0);
+	assert((polarity & (uint32_t)~PWM_CMR_CPOL) == 0);
+	/* Disable ul_channel (effective at the end of the current period) */
+	if ((pPwm->PWM_SR & (1 << ul_channel)) != 0) {
+	pPwm->PWM_DIS = 1 << ul_channel;
+	while ((pPwm->PWM_SR & (1 << ul_channel)) != 0);
+	}
+	/* Configure ul_channel */
+	pPwm->PWM_CH_NUM[ul_channel].PWM_CMR = prescaler | alignment | polarity;
 }
 
 /**

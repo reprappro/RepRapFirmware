@@ -22,9 +22,9 @@
  extern "C" {
 #endif
 
-extern void pinMode( uint32_t ulPin, uint32_t ulMode )
+extern void pinModeDuet( uint32_t ulPin, uint32_t ulMode, uint32_t debounceCutoff )
 {
-	if ( g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
+	if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
     {
         return ;
     }
@@ -38,7 +38,11 @@ extern void pinMode( uint32_t ulPin, uint32_t ulMode )
             	g_APinDescription[ulPin].pPort,
             	PIO_INPUT,
             	g_APinDescription[ulPin].ulPin,
-            	0 ) ;
+				(debounceCutoff == 0) ? 0 : PIO_DEBOUNCE );
+            if (debounceCutoff != 0)
+            {
+            	PIO_SetDebounceFilter(g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, debounceCutoff);	// enable debounce filer with specified cutoff frequency
+            }
         break ;
 
         case INPUT_PULLUP:
@@ -48,7 +52,11 @@ extern void pinMode( uint32_t ulPin, uint32_t ulMode )
             	g_APinDescription[ulPin].pPort,
             	PIO_INPUT,
             	g_APinDescription[ulPin].ulPin,
-            	PIO_PULLUP ) ;
+				(debounceCutoff == 0) ? PIO_PULLUP : PIO_PULLUP | PIO_DEBOUNCE );
+            if (debounceCutoff != 0)
+            {
+            	PIO_SetDebounceFilter(g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, debounceCutoff);	// enable debounce filer with specified cutoff frequency
+            }
         break ;
 
         case OUTPUT:
@@ -70,37 +78,37 @@ extern void pinMode( uint32_t ulPin, uint32_t ulMode )
     }
 }
 
+extern void pinMode( uint32_t ulPin, uint32_t ulVal )
+{
+	pinModeDuet(ulPin, ulVal, 0);
+}
+
 extern void digitalWrite( uint32_t ulPin, uint32_t ulVal )
 {
   /* Handle */
-	if ( g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
+  if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
   {
     return ;
   }
 
-  if ( PIO_GetOutputDataStatus( g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin ) == 0 )
+  if (ulVal)		// we make use of the fact that LOW is zero and HIGH is nonzero
   {
-    PIO_PullUp( g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, ulVal ) ;
+    g_APinDescription[ulPin].pPort->PIO_SODR = g_APinDescription[ulPin].ulPin;
   }
   else
   {
-    PIO_SetOutput( g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, ulVal, 0, PIO_PULLUP ) ;
+    g_APinDescription[ulPin].pPort->PIO_CODR = g_APinDescription[ulPin].ulPin;
   }
 }
 
 extern int digitalRead( uint32_t ulPin )
 {
-	if ( g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
+	if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
     {
         return LOW ;
     }
 
-	if ( PIO_Get( g_APinDescription[ulPin].pPort, PIO_INPUT, g_APinDescription[ulPin].ulPin ) == 1 )
-    {
-        return HIGH ;
-    }
-
-	return LOW ;
+	return (PIO_Get(g_APinDescription[ulPin].pPort, PIO_INPUT, g_APinDescription[ulPin].ulPin ) == 1) ? HIGH : LOW;
 }
 
 #ifdef __cplusplus

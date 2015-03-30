@@ -44,8 +44,10 @@ extern void analogReference( eAnalogReference ulMode ) ;
  *
  * \param ulPin
  * \param ulValue
+ * \param Optional: Enable fast PWM (25kHz instead of 1kHz)
  */
-extern void analogWrite( uint32_t ulPin, uint32_t ulValue ) ;
+extern void analogWriteDuet( uint32_t ulPin, uint32_t ulValue, bool fastPwm ) ;
+extern void analogWrite( uint32_t ulPin, uint32_t ulValue );
 
 /*
  * \brief Reads the value from the specified analog pin.
@@ -70,7 +72,7 @@ extern void analogReadResolution(int res);
  */
 extern void analogWriteResolution(int res);
 
-extern void analogOutputInit( void ) ;
+//extern void analogOutputInit( void ) ;
 
 #ifdef __cplusplus
 }

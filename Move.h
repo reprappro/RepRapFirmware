@@ -827,7 +827,7 @@ inline float Move::SecondDegreeTransformZ(float x, float y) const
 inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 {
 	UpdateCurrentCoordinates(la, hitDDA);
-	float hitPoint = platform->AxisMinimum(drive);
+	float hitPoint = (hitDDA->directions[drive] == FORWARDS) ? platform->AxisMaximum(drive) : platform->AxisMinimum(drive);
 	if(drive == Z_AXIS)
 	{
 		if(zProbing)

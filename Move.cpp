@@ -1180,7 +1180,7 @@ void Move::SetProbedBedEquation(StringRef& reply)
 	}
 
 	reply.copy("Bed equation fits points");
-	for(int8_t point = 0; point < NumberOfProbePoints(); point++)
+	for(size_t point = 0; point < NumberOfProbePoints(); point++)
 	{
 		reply.catf(" [%.1f, %.1f, %.3f]", xBedProbePoints[point], yBedProbePoints[point], zBedProbePoints[point]);
 	}

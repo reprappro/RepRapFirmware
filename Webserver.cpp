@@ -292,14 +292,14 @@ void Webserver::ProcessGcode(const char* gc)
 			reprap.MessageToGCodeReply("");
 
 			char c;
-			bool reading_whitespace = false;
+			bool readingWhitespace = false;
 			while (configFile->Read(c))
 			{
-				if (!reading_whitespace || (c != ' ' && c != '\t'))
+				if (!readingWhitespace || (c != ' ' && c != '\t'))
 				{
 					reprap.AppendCharToStatusResponse(c);
 				}
-				reading_whitespace = (c == ' ' || c == '\t');
+				readingWhitespace = (c == ' ' || c == '\t');
 			}
 			configFile->Close();
 
@@ -1074,11 +1074,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		}
 		else if (StringEquals(request, "config"))
 		{
-			if (StringEquals(key, "type"))
-			{
-				int type = max<int>(2, min<int>(0, atoi(value)));
-				// TODO: implement this
-			}
+			reprap.GetConfigResponse(response);
 		}
 		else
 		{

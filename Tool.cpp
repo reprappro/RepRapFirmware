@@ -273,7 +273,7 @@ void Tool::SetVariables(float* standby, float* active)
 {
 	for(size_t heater = 0; heater < heaterCount; heater++)
 	{
-		if (active[heater] <= NEARLY_ABS_ZERO && standby[heater] <= NEARLY_ABS_ZERO)
+		if (active[heater] < NEARLY_ABS_ZERO && standby[heater] < NEARLY_ABS_ZERO)
 		{
 			// Temperatures close to ABS_ZERO turn off all associated heaters
 			reprap.GetHeat()->SwitchOff(heaters[heater]);

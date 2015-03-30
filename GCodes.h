@@ -231,9 +231,9 @@ class GCodes
     FileData fileToPrint;
     FileStore* fileBeingWritten;				// A file to write G Codes (or sometimes HTML) in
     FileStore* configFile;						// A file containing a macro
-    bool doingFileMacro;						// Are we executing a macro file?
-    bool returningFromMacro;					// Are we returning from a completed macro file?
-    bool isPausing, isResuming;					// Are we executing a pause/resume macro file?
+    bool doingFileMacro, returningFromMacro;	// Are we executing a macro file?
+    bool isPausing, isResuming;					// Are we dealing with a print interrupt?
+    bool doPauseMacro;							// Do we need to run pause.g and resume.g?
     float fractionOfFilePrinted;				// Only used to record the main file when a macro is being printed
     char* eofString;							// What's at the end of an HTML file?
     uint8_t eofStringCounter;					// Check the...
