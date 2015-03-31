@@ -1503,6 +1503,9 @@ void RepRap::SetName(const char* nm)
 {
 	// Users sometimes put a tab character between the machine name and the comment, so allow for this
 	CopyParameterText(nm, myName, ARRAY_SIZE(myName));
+
+	// Set new DHCP hostname
+	network->SetHostname(myName);
 }
 
 //*************************************************************************************************

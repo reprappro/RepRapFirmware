@@ -53,6 +53,7 @@
 bool ethernetif_phy_link_status(void);	//*****************************AB
 
 err_t ethernetif_init(struct netif *netif);
+void ethernetif_set_params(const u8_t macAddress[], const char *hostname);
 
 bool ethernetif_input(void *pv_parameters);
 

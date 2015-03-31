@@ -75,16 +75,6 @@ extern void RepRapNetworkMessage(const char*);
 /* Global variable containing MAC Config (hw addr, IP, GW, ...) */
 struct netif gs_net_if;
 
-//*****************************AB
-//Pass through function for interface status
-//by including ethernetif.h directly and calling ethernetif_phy_link_status(); this function is not required
-bool status_link_up()
-{
-	return ethernetif_phy_link_status();
-}
-//*****************************AB
-
-
 struct netif* ethernet_get_configuration()
 {
 	return &gs_net_if;
@@ -193,10 +183,13 @@ static void ethernet_configure_interface(unsigned char ipAddress[], unsigned cha
 /** \brief Initialize the Ethernet subsystem.
  *
  */
-void init_ethernet(void)
+void init_ethernet(const u8_t macAddress[], const char *hostname)
 {
 	lwip_init();
 	ethernet_hardware_init();
+
+	ethernetif_set_mac_address(macAddress);
+	netif_set_hostname(&gs_net_if, hostname);
 }
 
 /** \brief Try to establish a physical link at, returning true if successful.
@@ -216,14 +209,6 @@ void start_ethernet(const unsigned char ipAddress[], const unsigned char netMask
 	ethernet_configure_interface(ipAddress, netMask, gateWay);
 }
 
-
-/** \brief Set the DHCP hostname.
- *
- */
-void set_dhcp_hostname(const char *hostname)
-{
-	gs_net_if.hostname = hostname;
-}
 
 //*************************************************************************************************************
 /**
@@ -247,7 +232,6 @@ void ethernet_status_callback(struct netif *netif)
 		RepRapNetworkMessage("Network down\n");
 	}
 }
-
 
 
 /**0
@@ -276,6 +260,5 @@ bool ethernet_read(void)
  */
 void ethernet_set_rx_callback(emac_dev_tx_cb_t callback)
 {
-
 	ethernetif_set_rx_callback(callback);
 }

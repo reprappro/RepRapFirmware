@@ -43,14 +43,14 @@ void PrintMonitor::Spin()
 			// When a new print starts, the total (raw) extruder positions are zeroed
 			float extrRaw[DRIVES - AXES], totalRawFilament = 0.0;
 			reprap.GetMove()->GetRawExtruderPositions(extrRaw);
-			for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+			for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 			{
 				totalRawFilament += extrRaw[extruder];
 			}
 
 			// See if at least one heater is active and set
 			bool heatersAtHighTemperature = false;
-			for(uint8_t heater=E0_HEATER; heater<HEATERS; heater++)
+			for(size_t heater=E0_HEATER; heater<HEATERS; heater++)
 			{
 				if (reprap.GetHeat()->GetStatus(heater) == Heat::HS_active &&
 					reprap.GetHeat()->GetActiveTemperature(heater) > TEMPERATURE_LOW_SO_DONT_CARE &&
@@ -110,7 +110,7 @@ void PrintMonitor::Spin()
 					// Record untainted extruder positions for filament-based estimation
 					float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
 					reprap.GetMove()->GetRawExtruderPositions(extrRaw);
-					for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+					for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 					{
 						extrRawTotal += extrRaw[extruder];
 					}
@@ -139,7 +139,7 @@ void PrintMonitor::Spin()
 						}
 						else
 						{
-							for(unsigned int i=1; i<MAX_LAYER_SAMPLES; i++)
+							for(size_t i=1; i<MAX_LAYER_SAMPLES; i++)
 							{
 								layerDurations[i - 1] = layerDurations[i];
 								filamentUsagePerLayer[i - 1] = filamentUsagePerLayer[i];
@@ -157,7 +157,7 @@ void PrintMonitor::Spin()
 					if (numLayerSamples)
 					{
 						avgLayerTime = 0.0;
-						for(unsigned int layer=0; layer<numLayerSamples; layer++)
+						for(size_t layer=0; layer<numLayerSamples; layer++)
 						{
 							avgLayerTime += layerDurations[layer];
 							if (layer)

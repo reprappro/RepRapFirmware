@@ -459,7 +459,7 @@ err_t ethernetif_init(struct netif *netif)
 
 #if LWIP_NETIF_HOSTNAME
 	/* Initialize interface hostname */
-	netif->hostname = "lwip";
+//	netif->hostname = "lwip";				// Unused! Duet sets hostname explicitly
 #endif /* LWIP_NETIF_HOSTNAME */
 
 	/*
@@ -501,16 +501,15 @@ err_t ethernetif_init(struct netif *netif)
 	return ERR_OK;
 }
 
-void RepRapNetworkSetMACAddress(const u8_t macAddress[])
-{
-	size_t i;
-	for (i = 0; i < 8; ++i)
-	{
-		gs_uc_mac_address[i] = macAddress[i];
-	}
-}
-
 void ethernetif_set_rx_callback(emac_dev_tx_cb_t callback)
 {
 	emac_dev_set_rx_callback(&gs_emac_dev, callback);
+}
+
+void ethernetif_set_mac_address(const u8_t macAddress[])
+{
+	for (size_t i = 0; i < 8; ++i)
+	{
+		gs_uc_mac_address[i] = macAddress[i];
+	}
 }

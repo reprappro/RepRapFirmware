@@ -48,8 +48,6 @@ extern "C"
 {
 #include "lwipopts.h"
 #include "lwip/src/include/lwip/tcp.h"
-
-void RepRapNetworkSetMACAddress(const u8_t macAddress[]);
 }
 
 static tcp_pcb *http_pcb = NULL;
@@ -341,6 +339,8 @@ Network::Network(Platform* p)
 		cs->next = freeConnections;
 		freeConnections = cs;
 	}
+
+	strcpy(hostname, HOSTNAME);
 }
 
 void Network::AppendTransaction(NetworkTransaction* volatile* list, NetworkTransaction *r)
@@ -366,8 +366,9 @@ void Network::Init()
 		platform->Message(HOST_MESSAGE, "Attempting to start the network when it is disabled.\n");
 		return;
 	}
-	RepRapNetworkSetMACAddress(platform->MACAddress());
-	init_ethernet();
+
+	init_ethernet(platform->MACAddress(), hostname);
+
 	longWait = platform->Time();
 	state = NetworkInitializing;
 }
@@ -423,7 +424,6 @@ void Network::Spin()
 	}
 	else if (state == NetworkInitializing && establish_ethernet_link())
 	{
-		set_dhcp_hostname(reprap.GetName());
 		start_ethernet(platform->IPAddress(), platform->NetMask(), platform->GateWay());
 		httpd_init();
 		ftpd_init();
@@ -1034,6 +1034,34 @@ bool Network::AcquireTransaction(ConnectionState *cs)
 	// Replace the first entry of readyTransactions with our new transaction, so it can be used by SendAndClose().
 	PrependTransaction(&readyTransactions, transactionToUse);
 	return true;
+}
+
+// Set the DHCP hostname. Removes all whitespaces and converts the name to lower-case.
+void Network::SetHostname(const char *name)
+{
+	size_t i = 0;
+	while (*name && i < ARRAY_UPB(hostname))
+	{
+		char c = *name++;
+		if (c >= 'A' && c <= 'Z')
+		{
+			c += 'a' - 'A';
+		}
+
+		if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '-') || (c == '_'))
+		{
+			hostname[i++] = c;
+		}
+	}
+
+	if (i)
+	{
+		hostname[i] = 0;
+	}
+	else
+	{
+		strcpy(hostname, HOSTNAME);
+	}
 }
 
 // Initialise a ConnectionState for a new connection
