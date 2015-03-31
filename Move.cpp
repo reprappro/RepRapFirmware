@@ -73,7 +73,7 @@ void Move::Init()
 {
   long ep[DRIVES];
   
-  for(uint8_t drive = 0; drive < DRIVES; drive++)
+  for(size_t drive = 0; drive < DRIVES; drive++)
   {
     platform->SetDirection(drive, FORWARDS);
   }
@@ -99,12 +99,12 @@ void Move::Init()
   
   lastRingMove = lookAheadRingAddPointer->Previous();
   
-  for(uint8_t drive = 0; drive < DRIVES; drive++)
+  for(size_t drive = 0; drive < DRIVES; drive++)
   {
 	  ep[drive] = 0;
 	  liveCoordinates[drive] = 0.0;
   }
-  for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+  for(size_t extruder = 0; extruder < DRIVES - AXES; extruder++)
   {
 	  rawExtruderPos[extruder] = 0.0;
   }
@@ -237,7 +237,7 @@ void Move::Spin()
 	EndstopChecks endStopsToCheck = 0;
 	if (splitNextMove)
 	{
-		for(uint8_t drive=0; drive<DRIVES; drive++)
+		for(size_t drive=0; drive<DRIVES; drive++)
 		{
 			nextMove[drive] = splitMove[drive];
 		}
@@ -247,7 +247,7 @@ void Move::Spin()
 
 	else if (gCodes->ReadMove(nextMove, endStopsToCheck))
 	{
-		for(uint8_t drive = AXES; drive < DRIVES; drive++)
+		for(size_t drive = AXES; drive < DRIVES; drive++)
 		{
 			rawEDistances[drive - AXES] = nextMove[drive];
 			nextMove[drive] *= extrusionFactors[drive - AXES];
@@ -275,7 +275,7 @@ void Move::Spin()
 
 	const LookAhead *lastMove = (IsPaused()) ? isolatedMove : lastRingMove;
 	bool noMove = true;
-	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
 		nextMachineEndPoints[drive] = LookAhead::EndPointToMachine(drive, nextMove[drive]);
 		if (drive < AXES)
@@ -584,7 +584,7 @@ bool Move::GetCurrentMachinePosition(float m[]) const
 		if(LookAheadRingFull() || doingSplitMove)
 			return false;
 
-		for(uint8_t drive = 0; drive < DRIVES; drive++)
+		for(size_t drive = 0; drive < DRIVES; drive++)
 		{
 			m[drive] = lastRingMove->MachineToEndPoint(drive);
 		}
@@ -594,7 +594,7 @@ bool Move::GetCurrentMachinePosition(float m[]) const
 	// If there is no real movement, return liveCoordinates instead
 	else if (NoLiveMovement())
 	{
-		for(uint8_t drive = 0; drive <= DRIVES; drive++)
+		for(size_t drive = 0; drive <= DRIVES; drive++)
 		{
 			m[drive] = liveCoordinates[drive];
 		}
@@ -918,7 +918,7 @@ bool Move::SetUpIsolatedMove(float to[], float feedRate, bool axesOnly)
     // Analyze this move basically the same way as in Spin()
 
     long ep[DRIVES];
-	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
 		if (drive < AXES)
 		{
@@ -1388,7 +1388,7 @@ MovementProfile DDA::Init(LookAhead* lookAhead, float& u, float& v)
   // Set up the DDA
   
   counter[0] = -totalSteps/2;
-  for(unsigned int drive = 1; drive < DRIVES; drive++)
+  for(size_t drive = 1; drive < DRIVES; drive++)
   {
     counter[drive] = counter[0];
   }
@@ -1635,14 +1635,14 @@ void LookAhead::Init(long ep[], float fRate, float minS, float maxS, float acc, 
 	  v = maxSpeed;
   }
 
-  for(int8_t drive = 0; drive < DRIVES; drive++)
+  for(size_t drive = 0; drive < DRIVES; drive++)
   {
 	  endPoint[drive] = ep[drive];
   }
   
   endStopsToCheck = ce;
   
-  for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+  for(size_t extruder = 0; extruder < DRIVES - AXES; extruder++)
   {
 	  rawExDiff[extruder] = extrDiffs[extruder];
   }

@@ -48,6 +48,7 @@ extern "C"
 {
 #include "lwipopts.h"
 #include "lwip/src/include/lwip/tcp.h"
+#include "contrib/apps/netbios/netbios.h"
 }
 
 static tcp_pcb *http_pcb = NULL;
@@ -425,10 +426,14 @@ void Network::Spin()
 	else if (state == NetworkInitializing && establish_ethernet_link())
 	{
 		start_ethernet(platform->IPAddress(), platform->NetMask(), platform->GateWay());
+		ethernet_set_rx_callback(&emac_read_packet);
+
+
 		httpd_init();
 		ftpd_init();
 		telnetd_init();
-		ethernet_set_rx_callback(&emac_read_packet);
+
+		netbios_init();
 		state = NetworkActive;
 	}
 
