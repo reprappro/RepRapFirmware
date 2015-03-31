@@ -26,6 +26,11 @@ PrintMonitor::PrintMonitor(Platform *p, GCodes *gc) : platform(p), gCodes(gc), f
 {
 }
 
+void PrintMonitor::Init()
+{
+	longWait = platform->Time();
+}
+
 void PrintMonitor::Spin()
 {
 	if (gCodes->IsPausing() || reprap.GetMove()->IsPaused() || gCodes->IsResuming())
@@ -187,31 +192,27 @@ void PrintMonitor::Spin()
 			}
 		}
 	}
-	else if (printStartTime > 0.0 && reprap.GetMove()->NoLiveMovement())
-	{
-		currentLayer = numLayerSamples = 0;
-		firstLayerDuration = firstLayerHeight = firstLayerFilament = firstLayerProgress = 0.0;
-		layerEstimatedTimeLeft = printStartTime = warmUpDuration = 0.0;
-		lastLayerTime = lastLayerFilament = 0.0;
-	}
 	platform->ClassReport(longWait);
 }
 
-void PrintMonitor::Init()
-{
-	longWait = platform->Time();
-}
-
-void PrintMonitor::StartingFilePrint(const char* filename)
+void PrintMonitor::StartingPrint(const char* filename)
 {
 	fileInfoDetected = GetFileInfo(platform->GetGCodeDir(), filename, currentFileInfo);
 	strncpy(fileBeingPrinted, filename, ARRAY_SIZE(fileBeingPrinted));
 	fileBeingPrinted[ARRAY_UPB(fileBeingPrinted)] = 0;
 }
 
-void PrintMonitor::StartedFilePrint()
+void PrintMonitor::StartedPrint()
 {
 	printStartTime = platform->Time();
+}
+
+void PrintMonitor::StoppedPrint()
+{
+	currentLayer = numLayerSamples = 0;
+	firstLayerDuration = firstLayerHeight = firstLayerFilament = firstLayerProgress = 0.0;
+	layerEstimatedTimeLeft = printStartTime = warmUpDuration = 0.0;
+	lastLayerTime = lastLayerFilament = 0.0;
 }
 
 bool PrintMonitor::GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info) const

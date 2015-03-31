@@ -330,6 +330,7 @@ void GCodes::Spin()
 				if (!fileGCode->Active() && AllMovesAreFinishedAndMoveBufferIsLoaded())
 				{
 					fileBeingPrinted.Close();
+					reprap.GetPrintMonitor()->StoppedPrint();
 				}
 				break;
 			}
@@ -1395,12 +1396,12 @@ void GCodes::QueueFileToPrint(const char* fileName)
 		if (PrintingAFile())
 		{
 			CancelPrint();
-
-			fileGCode->SetToolNumberAdjust(0);
-			queuedGCode->SetToolNumberAdjust(0);
 		}
 
-		for (int8_t extruder = AXES; extruder < DRIVES; extruder++)
+		fileGCode->SetToolNumberAdjust(0);
+		queuedGCode->SetToolNumberAdjust(0);
+
+		for (size_t extruder = AXES; extruder < DRIVES; extruder++)
 		{
 			lastExtruderPosition[extruder - AXES] = 0.0;
 		}
@@ -2289,10 +2290,13 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 0: // Stop
 	case 1: // Sleep
 		// If Marlin is emulated and M1 is called during a live print, run M25 instead
-		if (code == 1 && gb == serialGCode && platform->Emulating() == marlin && reprap.GetMove()->IsRunning())
+		if (code == 1 && gb == serialGCode && platform->Emulating() == marlin)
 		{
-			gb->Put("M25", 3);
-			return false;
+			if (PrintingAFile() && reprap.GetMove()->IsRunning())
+			{
+				gb->Put("M25", 3);
+				return false;
+			}
 		}
 
 		// Call stop.g or sleep.g to allow users to execute custom actions before everything stops
@@ -2448,10 +2452,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		else
 		{
 			const char* filename = gb->GetUnprecedentedString();
-			reprap.GetPrintMonitor()->StartingFilePrint(filename);
 			QueueFileToPrint(filename);
 			if (fileToPrint.IsLive())
 			{
+				reprap.GetPrintMonitor()->StartingPrint(filename);
 				if (platform->Emulating() == marlin)
 				{
 					reply.copy("File opened\nFile selected\n");
@@ -2493,7 +2497,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			if (!isResuming)
 			{
-				reprap.GetPrintMonitor()->StartedFilePrint();
+				reprap.GetPrintMonitor()->StartedPrint();
 			}
 			isResuming = false;
 
@@ -4052,6 +4056,8 @@ void GCodes::CancelPrint()
 		fileBeingPrinted.Close();
 	}
 	reprap.GetMove()->Cancel();
+
+	reprap.GetPrintMonitor()->StoppedPrint();
 }
 
 // Return true if all the heaters for the specified tool are at their set temperatures
