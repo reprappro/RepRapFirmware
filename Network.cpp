@@ -238,7 +238,6 @@ static err_t conn_accept(void *arg, tcp_pcb *pcb, err_t err)
 	}
 
 	/* Keep the listening PCBs running */
-
 	switch (pcb->local_port)		// tell LWIP to accept further connections on the listening PCB
 	{
 	  case ftpPort: // FTP

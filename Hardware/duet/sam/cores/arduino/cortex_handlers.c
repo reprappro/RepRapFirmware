@@ -48,6 +48,8 @@ void SysTick_Handler(void)
 	if (sysTickHook())
 		return;
 
+	WDT_Restart(WDT);			// kick the watchdog
+
 	tickReset();
 
 	// Increment tick count each ms

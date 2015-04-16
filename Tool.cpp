@@ -159,11 +159,6 @@ void Tool::AddTool(Tool* tool)
 	Tool* last;
 	while(t != NULL)
 	{
-		if(t->Number() == tool->Number())
-		{
-			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Add tool: tool number already in use.\n");
-			return;
-		}
 		last = t;
 		t = t->Next();
 	}
@@ -271,6 +266,8 @@ void Tool::Standby()
 
 void Tool::SetVariables(float* standby, float* active)
 {
+	bool toolActive = (reprap.GetCurrentTool() == this);
+
 	for(size_t heater = 0; heater < heaterCount; heater++)
 	{
 		if (active[heater] < NEARLY_ABS_ZERO && standby[heater] < NEARLY_ABS_ZERO)
@@ -282,8 +279,15 @@ void Tool::SetVariables(float* standby, float* active)
 		{
 			activeTemperatures[heater] = active[heater];
 			standbyTemperatures[heater] = standby[heater];
+
 			reprap.GetHeat()->SetActiveTemperature(heaters[heater], activeTemperatures[heater]);
 			reprap.GetHeat()->SetStandbyTemperature(heaters[heater], standbyTemperatures[heater]);
+
+			if (toolActive)
+			{
+				// Must do this in case the heater was switched off before
+				reprap.GetHeat()->Activate(heaters[heater]);
+			}
 		}
 	}
 }

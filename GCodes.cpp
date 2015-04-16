@@ -1561,7 +1561,7 @@ void GCodes::SetOrReportOffsets(StringRef& reply, GCodeBuffer *gb)
 			if (hCount != 0)
 			{
 				reply.cat(", active/standby temperature(s):");
-				for(int8_t heater = 0; heater < hCount; heater++)
+				for(size_t heater = 0; heater < hCount; heater++)
 				{
 					reply.catf(" %.1f/%.1f", active[heater], standby[heater]);
 				}
@@ -1590,6 +1590,11 @@ void GCodes::ManageTool(GCodeBuffer *gb, StringRef& reply)
 	if (toolNumber < 0)
 	{
 		platform->Message(BOTH_ERROR_MESSAGE, "Tool number must be positive!\n");
+		return;
+	}
+	if (reprap.GetTool(toolNumber) != NULL)
+	{
+		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool number %d already in use!\n", toolNumber);
 		return;
 	}
 
@@ -1845,8 +1850,11 @@ void GCodes::HandleReply(bool error, const char* reply, char gMOrT, int code, bo
 		{
 			platform->GetLine()->Write(reply);
 		}
-		platform->GetLine()->Write(response);
-		platform->GetLine()->Write('\n');
+		if (!doingFileMacro)
+		{
+			platform->GetLine()->Write(response);
+			platform->GetLine()->Write('\n');
+		}
 		return;
 
 	case teacup:
@@ -2022,7 +2030,7 @@ void GCodes::SetToolHeaters(Tool *tool, float temperature)
 	float standby[HEATERS];
 	float active[HEATERS];
 	tool->GetVariables(standby, active);
-	for(int8_t h = 0; h < tool->HeaterCount(); h++)
+	for(size_t h = 0; h < tool->HeaterCount(); h++)
 	{
 		active[h] = temperature;
 	}
@@ -2391,7 +2399,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if (sparam == 2)
 			{
-				reprap.GetFilesResponse(reply, dir);			// Send the file list in JSON format
+				reprap.GetFilesResponse(reply, dir, true);		// Send the file list in JSON format
 			}
 			else
 			{
@@ -2958,6 +2966,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				seen = true;
 			}
 
+			if (gb->Seen('C'))
+			{
+				// Wait for chamber heater to be ready
+				const int8_t chamberHeater = reprap.GetChamberHeater();
+				if (chamberHeater != -1)
+				{
+					if (!reprap.GetHeat()->HeaterAtSetTemperature(chamberHeater))
+					{
+						return false;
+					}
+				}
+				seen = true;
+			}
+
 			if (!seen)
 			{
 				// Wait for all heaters to be ready
@@ -2975,7 +2997,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			reply.copy("Endstops - ");
 			char* es;
 			char comma = ',';
-			for(int8_t axis = 0; axis < AXES; axis++)
+			for(size_t axis = 0; axis < AXES; axis++)
 			{
 				switch(platform->Stopped(axis))
 				{
@@ -3070,9 +3092,74 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 141: // Chamber temperature
-		reply.copy("M141 - heated chamber not yet implemented\n");
-		break;
+		{
+			bool seen = false;
+			if (gb->Seen('H'))
+			{
+				seen = true;
 
+				int heater = gb->GetIValue();
+				if (heater < 0)
+				{
+					const int8_t currentHeater = reprap.GetChamberHeater();
+					if (currentHeater != -1)
+					{
+						reprap.GetHeat()->SwitchOff(currentHeater);
+					}
+
+					reprap.SetChamberHeater(-1);
+				}
+				else if (heater < HEATERS)
+				{
+					reprap.SetChamberHeater(heater);
+				}
+				else
+				{
+					reply.copy("Bad heater number specified!\n");
+					error = true;
+				}
+			}
+
+			if (gb->Seen('S'))
+			{
+				seen = true;
+
+				const int8_t currentHeater = reprap.GetChamberHeater();
+				if (currentHeater != -1)
+				{
+					float temperature = gb->GetFValue();
+
+					if (temperature < NEARLY_ABS_ZERO)
+					{
+						reprap.GetHeat()->SwitchOff(currentHeater);
+					}
+					else
+					{
+						reprap.GetHeat()->SetActiveTemperature(currentHeater, temperature);
+						reprap.GetHeat()->Activate(currentHeater);
+					}
+				}
+				else
+				{
+					reply.copy("No chamber heater has been set up yet!\n");
+					error = true;
+				}
+			}
+
+			if (!seen)
+			{
+				const int8_t currentHeater = reprap.GetChamberHeater();
+				if (currentHeater != -1)
+				{
+					reply.printf("Chamber heater %d is currently at %.1fC\n", currentHeater, reprap.GetHeat()->GetTemperature(currentHeater));
+				}
+				else
+				{
+					reply.copy("No chamber heater has been configured yet.\n");
+				}
+			}
+		}
+		break;
 
 	case 144: // Set bed to standby
 #if HOT_BED != -1
@@ -3365,6 +3452,37 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 400: // Wait for current moves to finish
 		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 			return false;
+		break;
+
+	case 408: // Report JSON status response
+		if (gb->Seen('S'))
+		{
+			const int type = gb->GetIValue();
+
+			int seq = -1;
+			if (gb->Seen('P'))
+			{
+				seq = gb->GetIValue();
+			}
+
+			switch(type)
+			{
+				case 0:
+				case 1:
+					reprap.GetLegacyStatusResponse(reply, type + 2, seq);
+					break;
+
+				case 2:
+				case 3:
+				case 4:
+					reprap.GetStatusResponse(reply, type - 2, false);
+					break;
+
+				case 5:
+					reprap.GetConfigResponse(reply);
+					break;
+			}
+		}
 		break;
 
 	case 500: // Store parameters in EEPROM

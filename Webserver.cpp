@@ -1043,7 +1043,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		{
 			// TODO: get rid of GetFilesResponse and write directly to NetworkTransaction!
 			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-			reprap.GetFilesResponse(response, dir);
+			reprap.GetFilesResponse(response, dir, false);
 		}
 		else if (StringEquals(request, "fileinfo"))
 		{

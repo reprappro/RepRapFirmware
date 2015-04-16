@@ -106,7 +106,7 @@ Platform::Platform() :
 
 	massStorage = new MassStorage(this);
 
-	for (int8_t i = 0; i < MAX_FILES; i++)
+	for(size_t i = 0; i < MAX_FILES; i++)
 	{
 		files[i] = new FileStore(this);
 	}
@@ -123,22 +123,13 @@ void Platform::Init()
 
 	baudRates[0] = BAUD_RATE;
 	baudRates[1] = AUX_BAUD_RATE;
-	commsParams[0] = commsParams[1] = 0;
+	commsParams[0] = 0;
+	commsParams[1] = 1;							// by default we require a checksum on data from the aux port, to guard against overrun errors
 
 	SerialUSB.begin(baudRates[0]);
 	Serial.begin(baudRates[1]);					// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
 
-#if __cplusplus >= 201103L
 	static_assert(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024, "NVData too large");
-#else
-	// We are relying on the compiler optimizing this out if the condition is false
-	// Watch out for the build warning "undefined reference to 'BadStaticAssert()' if this fails.
-	if (!(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024))
-	{
-		extern void BadStaticAssert();
-		BadStaticAssert();
-	}
-#endif
 
 	ResetNvData();
 
@@ -1006,7 +997,7 @@ void Platform::DiagnosticTest(int d)
 		debugCode = d;									// tell the Spin function to loop
 		break;
 
-	case DiagnosticTest::TestSerialBlock:				// write an arbitary message via debugPrintf()
+	case DiagnosticTest::TestSerialBlock:				// write an arbitrary message via debugPrintf()
 		debugPrintf("Diagnostic Test\n");
 		break;
 
@@ -1570,14 +1561,9 @@ void Platform::ResetChannel(size_t chan)
 
  */
 
-MassStorage::MassStorage(Platform* p) : combinedName(combinedNameBuff, ARRAY_SIZE(combinedNameBuff))
+MassStorage::MassStorage(Platform* p) : platform(p), combinedName(combinedNameBuff, ARRAY_SIZE(combinedNameBuff))
 {
-	platform = p;
-
 	memset(&fileSystem, 0, sizeof(FATFS));
-
-	filStruct = new FILINFO();
-	dirStruct = new DIR();
 	findDir = new DIR();
 }
 
@@ -1626,7 +1612,7 @@ void MassStorage::Init()
 					platform->AppendMessage(HOST_MESSAGE, "Card write protected\n");
 					break;
 				default:
-					platform->AppendMessage(HOST_MESSAGE, "Unknown (code %d)\m", err);
+					platform->AppendMessage(HOST_MESSAGE, "Unknown (code %d)\n", err);
 					break;
 			}
 			return;
@@ -1737,6 +1723,7 @@ bool MassStorage::FindFirst(const char *directory, FileInfo &file_info)
 		loc[len] = 0;
 	}
 
+	findDir->lfn = nullptr;
 	FRESULT res = f_opendir(findDir, loc);
 	if (res == FR_OK)
 	{
@@ -1780,6 +1767,7 @@ bool MassStorage::FindNext(FileInfo &file_info)
 	entry.lfname = file_info.fileName;
 	entry.lfsize = ARRAY_SIZE(file_info.fileName);
 
+	findDir->lfn = nullptr;
 	if (f_readdir(findDir, &entry) != FR_OK || entry.fname[0] == 0)
 	{
 		//f_closedir(findDir);
@@ -1864,13 +1852,17 @@ bool MassStorage::Rename(const char *oldFilename, const char *newFilename)
 // Check if the specified file exists
 bool MassStorage::FileExists(const char *file) const
 {
-	return (f_stat(file, filStruct) == FR_OK);
+ 	FILINFO fil;
+ 	fil.lfname = nullptr;
+	return (f_stat(file, &fil) == FR_OK);
 }
 
 // Check if the specified directory exists
 bool MassStorage::PathExists(const char *path) const
 {
-	return (f_opendir(dirStruct, path) == FR_OK);
+ 	DIR dir;
+ 	dir.lfn = nullptr;
+	return (f_opendir(&dir, path) == FR_OK);
 }
 
 bool MassStorage::PathExists(const char* directory, const char* subDirectory)

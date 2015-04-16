@@ -55,6 +55,9 @@ class RepRap
     //Tool* GetToolByDrive(int driveNumber);
     void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
 
+    void SetChamberHeater(int8_t heater);
+    int8_t GetChamberHeater() const;
+
     void AllowColdExtrude();
     void DenyColdExtrude();
     bool ColdExtrude();
@@ -83,7 +86,7 @@ class RepRap
     void GetConfigResponse(StringRef& response);
     void GetLegacyStatusResponse(StringRef &response, uint8_t type, int seq);
     void GetNameResponse(StringRef& response) const;
-    void GetFilesResponse(StringRef& response, const char* dir) const;
+    void GetFilesResponse(StringRef& response, const char* dir, bool flagsDirs) const;
 
     void Beep(int freq, int ms);
     void SetMessage(const char *msg);
@@ -116,6 +119,8 @@ class RepRap
     uint16_t activeExtruders;
     uint16_t activeHeaters;
     bool coldExtrude;
+
+    int8_t chamberHeater;
 
     uint16_t ticksInSpinState;
     Module spinningModule;
@@ -155,6 +160,9 @@ inline Tool* RepRap::GetCurrentTool() { return currentTool; }
 inline uint16_t RepRap::GetExtrudersInUse() const { return activeExtruders; }
 inline uint16_t RepRap::GetHeatersInUse() const { return activeHeaters; }
 
+inline void RepRap::SetChamberHeater(int8_t heater) { chamberHeater = heater; }
+inline int8_t RepRap::GetChamberHeater() const { return chamberHeater; }
+
 inline bool RepRap::ColdExtrude() { return coldExtrude; }
 inline void RepRap::AllowColdExtrude() { coldExtrude = true; }
 inline void RepRap::DenyColdExtrude() { coldExtrude = false; }
@@ -181,7 +189,7 @@ inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directio
 
 inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 {
-	if(toolList != NULL)
+	if (toolList != NULL)
 	{
 		toolList->FlagTemperatureFault(dudHeater);
 	}
@@ -190,7 +198,7 @@ inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 inline void RepRap::ClearTemperatureFault(int8_t wasDudHeater)
 {
 	reprap.GetHeat()->ResetFault(wasDudHeater);
-	if(toolList != NULL)
+	if (toolList != NULL)
 	{
 		toolList->ClearTemperatureFault(wasDudHeater);
 	}

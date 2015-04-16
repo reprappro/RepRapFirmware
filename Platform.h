@@ -354,8 +354,7 @@ private:
   Platform* platform;
   FATFS fileSystem;
 
-  FILINFO *filStruct;
-  DIR *dirStruct, *findDir;
+  DIR *findDir;
 
   char combinedNameBuff[FILENAME_LENGTH];
   StringRef combinedName;

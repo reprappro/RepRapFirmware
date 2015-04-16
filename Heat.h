@@ -42,6 +42,7 @@ class PID
     bool Active() const;							// Are we active?
     void SwitchOff();								// Not even standby - all heater power off
     bool SwitchedOff() const;						// Are we switched off?
+    bool FaultOccurred() const;						// Has a heater fault occurred?
     void ResetFault();								// Reset a fault condition - only call this if you know what you are doing
     float GetTemperature() const;					// Get the current temperature
     float GetAveragePWM() const;					// Return the running average PWM to the heater. Answer is a fraction in [0, 1].
@@ -117,56 +118,82 @@ inline bool PID::Active() const
 
 inline void PID::SetActiveTemperature(float t)
 {
-  SwitchOn();
-  activeTemperature = t;
+	if (t > BAD_HIGH_TEMPERATURE)
+	{
+		platform->Message(BOTH_ERROR_MESSAGE, "Temperature %.1f too high for heater %d!\n", t, heater);
+	}
+
+	SwitchOn();
+	activeTemperature = t;
 }
 
 inline float PID::GetActiveTemperature() const
 {
-  return activeTemperature;
+	return activeTemperature;
 }
 
 inline void PID::SetStandbyTemperature(float t)
 {
-  SwitchOn();
-  standbyTemperature = t;
+	if (t > BAD_HIGH_TEMPERATURE)
+	{
+		platform->Message(BOTH_ERROR_MESSAGE, "Temperature %.1f too high for heater %d!\n", t, heater);
+	}
+
+	SwitchOn();
+	standbyTemperature = t;
 }
 
 inline float PID::GetStandbyTemperature() const
 {
-  return standbyTemperature;
+	return standbyTemperature;
 }
 
 inline float PID::GetTemperature() const
 {
-  return (temperatureFault ? ABS_ZERO : temperature);
+	return temperature;
 }
 
 inline void PID::Activate()
 {
-  SwitchOn();
-  active = true;
-  if(!heatingUp)
-  {
-    timeSetHeating = platform->Time();
-  }
-  heatingUp = activeTemperature > temperature;
+	if (temperatureFault)
+	{
+		return;
+	}
+
+	SwitchOn();
+	active = true;
+	if (!heatingUp)
+	{
+		timeSetHeating = platform->Time();
+	}
+	heatingUp = activeTemperature > temperature;
 }
 
 inline void PID::Standby()
 {
-  SwitchOn();
-  active = false;
-  if(!heatingUp)
-  {
-    timeSetHeating = platform->Time();
-  }
-  heatingUp = standbyTemperature > temperature;
+	if (temperatureFault)
+	{
+		return;
+	}
+
+	SwitchOn();
+	active = false;
+	if (!heatingUp)
+	{
+		timeSetHeating = platform->Time();
+	}
+	heatingUp = standbyTemperature > temperature;
+}
+
+inline bool PID::FaultOccurred() const
+{
+	return temperatureFault;
 }
 
 inline void PID::ResetFault()
 {
 	temperatureFault = false;
+	timeSetHeating = platform->Time();		// otherwise we will get another timeout immediately
 	badTemperatureCount = 0;
 }
 
@@ -196,18 +223,25 @@ inline Heat::HeaterStatus Heat::GetStatus(int8_t heater) const
 {
 	if (heater < 0 || heater >= HEATERS)
 		return HS_off;
-	return (pids[heater]->temperatureFault ? HS_fault
-			: pids[heater]->SwitchedOff()) ? HS_off
-				: (pids[heater]->Active()) ? HS_active
-					: HS_standby;
+
+	if (pids[heater]->FaultOccurred())
+		return HS_fault;
+
+	if (pids[heater]->SwitchedOff())
+		return HS_off;
+
+	if (pids[heater]->Active())
+		return HS_active;
+
+	return HS_standby;
 }
 
 inline void Heat::SetActiveTemperature(int8_t heater, float t)
 {
-  if (heater >= 0 && heater < HEATERS)
-  {
-    pids[heater]->SetActiveTemperature(t);
-  }
+	if (heater >= 0 && heater < HEATERS)
+	{
+		pids[heater]->SetActiveTemperature(t);
+	}
 }
 
 inline float Heat::GetActiveTemperature(int8_t heater) const
@@ -217,28 +251,28 @@ inline float Heat::GetActiveTemperature(int8_t heater) const
 
 inline void Heat::SetStandbyTemperature(int8_t heater, float t)
 {
-  if (heater >= 0 && heater < HEATERS)
-  {
-    pids[heater]->SetStandbyTemperature(t);
-  }
+	if (heater >= 0 && heater < HEATERS)
+	{
+		pids[heater]->SetStandbyTemperature(t);
+	}
 }
 
 inline float Heat::GetStandbyTemperature(int8_t heater) const
 {
-  return (heater >= 0 && heater < HEATERS) ? pids[heater]->GetStandbyTemperature() : ABS_ZERO;
+	return (heater >= 0 && heater < HEATERS) ? pids[heater]->GetStandbyTemperature() : ABS_ZERO;
 }
 
 inline float Heat::GetTemperature(int8_t heater) const
 {
-  return (heater >= 0 && heater < HEATERS) ? pids[heater]->GetTemperature() : ABS_ZERO;
+	return (heater >= 0 && heater < HEATERS) ? pids[heater]->GetTemperature() : ABS_ZERO;
 }
 
 inline void Heat::Activate(int8_t heater)
 {
-  if (heater >= 0 && heater < HEATERS)
-  {
-    pids[heater]->Activate();
-  }
+	if (heater >= 0 && heater < HEATERS)
+	{
+		pids[heater]->Activate();
+	}
 }
 
 inline void Heat::SwitchOff(int8_t heater)
@@ -251,7 +285,7 @@ inline void Heat::SwitchOff(int8_t heater)
 
 inline void Heat::SwitchOffAll()
 {
-	for (int8_t heater = 0; heater < HEATERS; ++heater)
+	for(size_t heater = 0; heater < HEATERS; ++heater)
 	{
 		pids[heater]->SwitchOff();
 	}
@@ -259,19 +293,18 @@ inline void Heat::SwitchOffAll()
 
 inline void Heat::Standby(int8_t heater)
 {
-  if (heater >= 0 && heater < HEATERS)
-  {
-    pids[heater]->Standby();
-  }
+	if (heater >= 0 && heater < HEATERS)
+	{
+		pids[heater]->Standby();
+	}
 }
 
 inline void Heat::ResetFault(int8_t heater)
 {
-  if (heater >= 0 && heater < HEATERS)
-  {
-    pids[heater]->ResetFault();
-  }
+	if (heater >= 0 && heater < HEATERS)
+	{
+		pids[heater]->ResetFault();
+	}
 }
-
 
 #endif

@@ -165,108 +165,108 @@ RepRap reprap;
 RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noModule), ticksInSpinState(0),
 		resetting(false), gcodeReply(gcodeReplyBuffer, GCODE_REPLY_LENGTH)
 {
-  platform = new Platform();
-  network = new Network(platform);
-  webserver = new Webserver(platform, network);
-  gCodes = new GCodes(platform, webserver);
-  move = new Move(platform, gCodes);
-  heat = new Heat(platform, gCodes);
-  printMonitor = new PrintMonitor(platform, gCodes);
-  toolList = NULL;
+	platform = new Platform();
+	network = new Network(platform);
+	webserver = new Webserver(platform, network);
+	gCodes = new GCodes(platform, webserver);
+	move = new Move(platform, gCodes);
+	heat = new Heat(platform, gCodes);
+	printMonitor = new PrintMonitor(platform, gCodes);
+
+	toolList = NULL;
+	chamberHeater = -1;
 }
 
 void RepRap::Init()
 {
-  debug = false;
+	debug = false;
 
-  // zpl thinks it's a bad idea to count the bed as an active heater...
-  activeExtruders = activeHeaters = 0;
+	// zpl thinks it's a bad idea to count the bed as an active heater...
+	activeExtruders = activeHeaters = 0;
 
-  SetPassword(DEFAULT_PASSWORD);
-  SetName(DEFAULT_NAME);
+	SetPassword(DEFAULT_PASSWORD);
+	SetName(DEFAULT_NAME);
 
-  beepFrequency = beepDuration = 0;
-  message[0] = 0;
+	beepFrequency = beepDuration = 0;
+	message[0] = 0;
 
-  gcodeReply[0] = 0;
-  replySeq = webSeq = auxSeq = 0;
-  processingConfig = true;
+	gcodeReply[0] = 0;
+	replySeq = webSeq = auxSeq = 0;
+	processingConfig = true;
 
-  // All of the following init functions must execute reasonably quickly before the watchdog times us out
-  platform->Init();
-  gCodes->Init();
-  webserver->Init();
-  move->Init();
-  heat->Init();
-  printMonitor->Init();
-  currentTool = NULL;
+	// All of the following init functions must execute reasonably quickly before the watchdog times us out
+	platform->Init();
+	gCodes->Init();
+	webserver->Init();
+	move->Init();
+	heat->Init();
+	printMonitor->Init();
+	currentTool = NULL;
 
-  const uint32_t wdtTicks = 256;	// number of watchdog ticks @ 32768Hz/128 before the watchdog times out (max 4095)
-  WDT_Enable(WDT, (wdtTicks << WDT_MR_WDV_Pos) | (wdtTicks << WDT_MR_WDD_Pos) | WDT_MR_WDRSTEN);	// enable watchdog, reset the mcu if it times out
-  coldExtrude = false;
-  active = true;		// must do this before we start the network, else the watchdog may time out
+	coldExtrude = false;
+	active = true;		// must do this before we start the network, else the watchdog may time out
 
-  platform->Message(HOST_MESSAGE, "%s Version %s dated %s\n", NAME, VERSION, DATE);
+	platform->Message(HOST_MESSAGE, "%s Version %s dated %s\n", NAME, VERSION, DATE);
 
-  FileStore *startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
+	FileStore *startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
 
-  platform->AppendMessage(HOST_MESSAGE, "\n\nExecuting ");
-  if(startup != NULL)
-  {
-	  startup->Close();
-	  platform->AppendMessage(HOST_MESSAGE, "%s...\n\n", platform->GetConfigFile());
-	  scratchString.printf("M98 P%s\n", platform->GetConfigFile());
-  }
-  else
-  {
-	  platform->AppendMessage(HOST_MESSAGE, "%s (no configuration file found)...\n\n", platform->GetDefaultFile());
-	  scratchString.printf("M98 P%s\n", platform->GetDefaultFile());
-  }
+	platform->AppendMessage(HOST_MESSAGE, "\n\nExecuting ");
+	if(startup != NULL)
+	{
+		startup->Close();
+		platform->AppendMessage(HOST_MESSAGE, "%s...\n\n", platform->GetConfigFile());
+		scratchString.printf("M98 P%s\n", platform->GetConfigFile());
+	}
+	else
+	{
+		platform->AppendMessage(HOST_MESSAGE, "%s (no configuration file found)...\n\n", platform->GetDefaultFile());
+		scratchString.printf("M98 P%s\n", platform->GetDefaultFile());
+	}
 
-  // We inject an M98 into the serial input stream to run the start-up macro
+	// We inject an M98 into the serial input stream to run the start-up macro
 
-  platform->GetLine()->InjectString(scratchString.Pointer());
+	platform->GetLine()->InjectString(scratchString.Pointer());
 
-  bool runningTheFile = false;
-  while (true)
-  {
-	  Spin();
-	  if (gCodes->DoingFileMacro())
-	  {
-		  runningTheFile = true;
-	  }
-	  else if (runningTheFile)
-	  {
-		  break;
-	  }
-  }
-  processingConfig = false;
+	bool runningTheFile = false;
+	while (true)
+	{
+		Spin();
+		if (gCodes->DoingFileMacro())
+		{
+			runningTheFile = true;
+		}
+		else if (runningTheFile)
+		{
+			break;
+		}
+	}
+	processingConfig = false;
 
-  if(network->IsEnabled())
-  {
-	  platform->AppendMessage(HOST_MESSAGE, "\nStarting network...\n");
-	  network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
-  }
-  else
-  {
-	  platform->AppendMessage(HOST_MESSAGE, "\nNetwork disabled.\n");
-  }
+	if(network->IsEnabled())
+	{
+		platform->AppendMessage(HOST_MESSAGE, "\nStarting network...\n");
+		network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
+	}
+	else
+	{
+		platform->AppendMessage(HOST_MESSAGE, "\nNetwork disabled.\n");
+	}
 
-  platform->AppendMessage(HOST_MESSAGE, "\n%s is up and running.\n", NAME);
-  fastLoop = FLT_MAX;
-  slowLoop = 0.0;
-  lastTime = platform->Time();
+	platform->AppendMessage(HOST_MESSAGE, "\n%s is up and running.\n", NAME);
+	fastLoop = FLT_MAX;
+	slowLoop = 0.0;
+	lastTime = platform->Time();
 }
 
 void RepRap::Exit()
 {
-  active = false;
-  heat->Exit();
-  move->Exit();
-  gCodes->Exit();
-  webserver->Exit();
-  platform->Message(BOTH_MESSAGE, "RepRap class exited.\n");
-  platform->Exit();
+	active = false;
+	heat->Exit();
+	move->Exit();
+	gCodes->Exit();
+	webserver->Exit();
+	platform->Message(BOTH_MESSAGE, "RepRap class exited.\n");
+	platform->Exit();
 }
 
 void RepRap::Spin()
@@ -341,12 +341,12 @@ void RepRap::Timing()
 
 void RepRap::Diagnostics()
 {
-  platform->Diagnostics();				// this includes a call to our Timing() function
-  move->Diagnostics();
-  heat->Diagnostics();
-  gCodes->Diagnostics();
-  network->Diagnostics();
-  webserver->Diagnostics();
+	platform->Diagnostics();				// this includes a call to our Timing() function
+	move->Diagnostics();
+	heat->Diagnostics();
+	gCodes->Diagnostics();
+	network->Diagnostics();
+	webserver->Diagnostics();
 }
 
 // Turn off the heaters, disable the motors, and
@@ -603,28 +603,24 @@ void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float*
 
 void RepRap::Tick()
 {
-	if (active)
+	if (active && !resetting)
 	{
-		WDT_Restart(WDT);			// kick the watchdog
-		if (!resetting)
+		platform->Tick();
+		++ticksInSpinState;
+		if (ticksInSpinState >= 20000)	// if we stall for 20 seconds, save diagnostic data and reset
 		{
-			platform->Tick();
-			++ticksInSpinState;
-			if (ticksInSpinState >= 20000)	// if we stall for 20 seconds, save diagnostic data and reset
+			resetting = true;
+			for(size_t i = 0; i < HEATERS; i++)
 			{
-				resetting = true;
-				for(size_t i = 0; i < HEATERS; i++)
-				{
-					platform->SetHeater(i, 0.0);
-				}
-				for(size_t i = 0; i < DRIVES; i++)
-				{
-					platform->DisableDrive(i);
-					// We can't set motor currents to 0 here because that requires interrupts to be working, and we are in an ISR
-				}
-
-				platform->SoftwareReset(SoftwareResetReason::stuckInSpin);
+				platform->SetHeater(i, 0.0);
 			}
+			for(size_t i = 0; i < DRIVES; i++)
+			{
+				platform->DisableDrive(i);
+				// We can't set motor currents to 0 here because that requires interrupts to be working, and we are in an ISR
+			}
+
+			platform->SoftwareReset(SoftwareResetReason::stuckInSpin);
 		}
 	}
 }
@@ -783,6 +779,14 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		}
 #endif
 
+		/* Chamber */
+		if (chamberHeater != -1)
+		{
+			response.catf("\"chamber\":{\"current\":%.1f,", heat->GetTemperature(chamberHeater));
+			response.catf("\"active\":%.1f,", heat->GetActiveTemperature(chamberHeater));
+			response.catf("\"state\":%d},", static_cast<int>(heat->GetStatus(chamberHeater)));
+		}
+
 		/* Heads */
 		{
 			response.cat("\"heads\":{\"current\":");
@@ -914,7 +918,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		move->GetRawExtruderPositions(rawExtruderPos);
 		response.cat(",\"extrRaw\":");
 		ch = '[';
-		for (uint8_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
+		for (size_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
 		{
 			response.catf("%c%.1f", ch, rawExtruderPos[extruder]);
 			ch = ',';
@@ -1371,24 +1375,40 @@ void RepRap::GetNameResponse(StringRef& response) const
 }
 
 // Get the list of files in the specified directory in JSON format
-void RepRap::GetFilesResponse(StringRef& response, const char* dir) const
+void RepRap::GetFilesResponse(StringRef& response, const char* dir, bool flagsDirs) const
 {
 	response.copy("{\"dir\":");
 	EncodeString(response, dir, 3, false);
 	response.cat(",\"files\":[");
-	FileInfo file_info;
+
+	FileInfo fileInfo;
 	bool firstFile = true;
-	bool gotFile = platform->GetMassStorage()->FindFirst(dir, file_info);
-	while (gotFile && response.strlen() + strlen(file_info.fileName) + 6 < response.Length())
+	bool gotFile = platform->GetMassStorage()->FindFirst(dir, fileInfo);
+
+	char filename[FILENAME_LENGTH];
+	filename[0] = '*';
+	const char *fname;
+
+	while (gotFile && response.strlen() + strlen(fileInfo.fileName) + 6 < response.Length())
 	{
 		if (!firstFile)
 		{
-			response.catf(",");
+			response.cat(",");
 		}
-		EncodeString(response, file_info.fileName, 3, false);
+		if (flagsDirs && fileInfo.isDirectory)
+		{
+			strncpy(filename + sizeof(char), fileInfo.fileName, FILENAME_LENGTH - 1);
+			filename[FILENAME_LENGTH - 1] = 0;
+			fname = filename;
+		}
+		else
+		{
+			fname = fileInfo.fileName;
+		}
+		EncodeString(response, fname, 3, false);
 
 		firstFile = false;
-		gotFile = platform->GetMassStorage()->FindNext(file_info);
+		gotFile = platform->GetMassStorage()->FindNext(fileInfo);
 	}
 	response.cat("]}");
 }
@@ -1583,58 +1603,67 @@ void debugPrintf(const char* fmt, ...)
 
 bool StringEndsWith(const char* string, const char* ending)
 {
-  int j = strlen(string);
-  int k = strlen(ending);
-  if(k > j)
-    return false;
+	int j = strlen(string);
+	int k = strlen(ending);
+	if(k > j)
+	{
+		return false;
+	}
 
-  return(StringEquals(&string[j - k], ending));
+	return (StringEquals(&string[j - k], ending));
 }
 
 bool StringEquals(const char* s1, const char* s2)
 {
-  int i = 0;
-  while(s1[i] && s2[i])
-  {
-     if(tolower(s1[i]) != tolower(s2[i]))
-       return false;
-     i++;
-  }
+	int i = 0;
+	while(s1[i] && s2[i])
+	{
+		if(tolower(s1[i]) != tolower(s2[i]))
+		{
+			return false;
+		}
+		i++;
+	}
 
-  return !(s1[i] || s2[i]);
+	return !(s1[i] || s2[i]);
 }
 
 bool StringStartsWith(const char* string, const char* starting)
 {
-  int j = strlen(string);
-  int k = strlen(starting);
-  if(k > j)
-    return false;
+	int j = strlen(string);
+	int k = strlen(starting);
+	if(k > j)
+	{
+		return false;
+	}
 
-  for(int i = 0; i < k; i++)
-    if(string[i] != starting[i])
-      return false;
+	for(int i = 0; i < k; i++)
+		if(string[i] != starting[i])
+			return false;
 
-  return true;
+	return true;
 }
 
 int StringContains(const char* string, const char* match)
 {
-  int i = 0;
-  int count = 0;
+	int i = 0;
+	int count = 0;
 
-  while(string[i])
-  {
-    if(string[i++] == match[count])
-    {
-      count++;
-      if(!match[count])
-        return i;
-    } else
-    {
-      count = 0;
-    }
-  }
+	while(string[i])
+	{
+		if(string[i++] == match[count])
+		{
+			count++;
+			if(!match[count])
+			{
+				return i;
+			}
+		}
+		else
+		{
+			count = 0;
+		}
+	}
 
-  return -1;
+	return -1;
 }
