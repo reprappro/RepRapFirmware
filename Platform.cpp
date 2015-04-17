@@ -1156,22 +1156,15 @@ void Platform::SetDirection(size_t drive, bool direction)
 // Enable a drive. Must not be called from an ISR, or with interrupts disabled.
 void Platform::EnableDrive(size_t drive)
 {
-	if (drive < DRIVES)
+	if (drive < DRIVES && driveState[drive] != DriveStatus::enabled)
 	{
-		DriveStatus oldState = driveState[drive];
-		if (oldState != DriveStatus::enabled)
-		{
-			driveState[drive] = DriveStatus::enabled;
-			if (oldState == DriveStatus::idle)
-			{
-				UpdateMotorCurrent(drive);
-			}
+		driveState[drive] = DriveStatus::enabled;
+		UpdateMotorCurrent(drive);
 
-			const int pin = enablePins[drive];
-			if (pin >= 0)
-			{
-				digitalWrite(pin, ENABLE_DRIVE);
-			}
+		const int pin = enablePins[drive];
+		if (pin >= 0)
+		{
+			digitalWrite(pin, ENABLE_DRIVE);
 		}
 	}
 }
