@@ -1,0 +1,13 @@
+Custom hardware tree for the Duet platform (version 1.0.1)
+
+Set the private library path to this directory in the Arduino Eclipse plugin settings to compile RepRapFirmware.
+This tree is based upon the official "Arduino Due" platform files, however the following changes were made:
+
+- WString class is no longer present in the Arduino core. Use char arrays in conjunction with StringRef containers instead
+- EMAC RX buffers were increased to 128*32 for optimal network performance
+- UART classes were expanded by a "canWrite" method for better sending performance
+- Watchdog is enabled by default to avoid potential overheating in case a firmware crash occurs
+
+All of these files are licensed under the terms and conditions of the GPL.
+
+Many thanks to David Crocker aka dc42 for providing the initial Arduino core patches!
