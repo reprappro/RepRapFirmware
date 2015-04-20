@@ -1,0 +1,172 @@
+diff --git a/css/defaults.css b/css/defaults.css
+index a49466a..f834072 100644
+--- a/css/defaults.css
++++ b/css/defaults.css
+@@ -179,8 +179,7 @@ label {
+ 	margin-left: 0px !important;
+ 	padding-left: 3px !important;
+ 	padding-right: 3px !important;
+-	/*padding-top: 8px !important;*/
+-	padding-top: 15px !important;
++	padding-top: 8px !important;
+ }
+ @media (max-width: 767px) {
+ 	.navbar-brand {
+@@ -188,6 +187,10 @@ label {
+ 	}
+ }
+ 
++.navbar-brand > span {
++	vertical-align: middle;
++}
++
+ .navbar-default {
+ 	margin-bottom: 0px;
+ }
+@@ -911,6 +914,22 @@ label[for="dropdown_language"] {
+ 	padding-top: 5px;
+ }
+ 
++/* Help page */
++
++#page_help h2 {
++	margin-top: 0px;
++}
++
++#page_help h3 {
++	margin-top: 15px;
++}
++
++#ifm_irc {
++	height: 450px;
++	width: 100%;
++	border: 1px solid #bfbfbf;
++}
++
+ /* Modals */
+ 
+ #modal_message .modal-footer {
+diff --git a/js/interface.js b/js/interface.js
+index dd6723f..433b987 100644
+--- a/js/interface.js
++++ b/js/interface.js
+@@ -2014,8 +2014,6 @@ $("#input_temp_all_active, #input_temp_all_standby").keydown(function(e) {
+ 	}
+ });
+ 
+-$(".navbar-brand").click(function(e) { e.preventDefault(); });
+-
+ $(".navlink").click(function(e) {
+ 	$(this).blur();
+ 	showPage($(this).data("target"));
+@@ -3412,7 +3410,7 @@ function translatePage() {
+ 		var root = translationData.getElementsByTagName(settings.language).item(settings.language);
+ 		if (root != null) {
+ 			translateEntries(root, $("span, th, td, strong, dt, button"), "textContent");
+-			translateEntries(root, $("h1, h4, label, a"), "textContent");
++			translateEntries(root, $("h1, h2, h3, h4, label, a"), "textContent");
+ 			
+ 			translateEntries(root, $("input[type='text']"), "placeholder");
+ 			translateEntries(root, $("a, button, label, #chart_temp, input"), "title");
+diff --git a/language.xml b/language.xml
+index 22f70ce..26a0e09 100644
+--- a/language.xml
++++ b/language.xml
+@@ -124,6 +124,12 @@
+ 		<string t="Heaters:">Heizer:</string>
+ 		<string t="Drives:">Motoren:</string>
+ 		<string t="none">keine</string>
++		<string t="Documentation">Dokumentation</string>
++		<string t="Commisioning and Maintenance">Kommissionierung und Wartung</string>
++		<string t="Troubleshooting">Problemlösung</string>
++		<string t="Forums">Foren</string>
++		<string t="Multi-Material Instructions">Multi-Material Anleitungen</string>
++		<string t="Direct Support">Direkter Support</string>
+ 		
+ 		<!-- Panel Headings -->
+ 		<string t="Heater Temperatures">Temperaturübersicht</string>
+@@ -218,6 +224,7 @@
+ 		<string t="Spools">Spulen</string>
+ 		<string t="Maintenance">Wartung</string>
+ 		<string t="Settings">Einstellungen</string>
++		<string t="Help">Hilfe</string>
+ 		<string t="Configuration File">Konfigurationsdatei</string>
+ 		<string t="List Items">Listeneinträge</string>
+ 		
+@@ -276,6 +283,8 @@
+ 		<string t="Remove this tool">Dieses Tool entfernen</string>
+ 		<string t="Delete this temperature item">Diesen Temperatureintrag entfernen</string>
+ 		<string t="Delete this G-Code item">Diesen G-Code-Eintrag entfernen</string>
++		<string t="RepRapPro IRC Channel">RepRapPro IRC Kanal</string>
++		<string t="Quick Links">Weiterführende Links</string>
+ 		
+ 		<!-- Modal Dialogs -->
+ 		<string t="Error">Fehler</string>
+diff --git a/reprap.htm b/reprap.htm
+index 10c1898..d5c129f 100644
+--- a/reprap.htm
++++ b/reprap.htm
+@@ -43,8 +43,8 @@
+ 					</div>
+ 					<span class="label label-default label-status pull-right navbar-label visible-xs">Disconnected</span>
+ 					
+-					<a class="navbar-brand visible-xs">
+-						<!-- <img class="brand-sm" src="img/rrp_small.png"> -->
++					<a href="http://www.reprappro.com" target="_blank" class="navbar-brand visible-xs">
++						<img class="brand-sm" src="img/rrp_small.png">
+ 						<span class="machine-name">Duet Web Control</span>
+ 					</a>
+ 				</div>
+@@ -77,12 +77,10 @@
+ 					
+ 					<ul class="nav nav-justified hidden-xs">
+ 						<li>
+-							<a href="#" class="navbar-brand">
+-							<!--
++							<a href="http://www.reprappro.com" target="_blank" class="navbar-brand">
+ 								<img class="brand-sm" src="img/rrp_small.png">
+ 								<img class="brand-lg" src="img/rrp_large.png">
+ 								<span class="brand-lg">-</span>
+-							-->
+ 								<span class="machine-name">Duet Web Control</span>
+ 							</a>
+ 						</li>
+@@ -127,7 +125,7 @@
+ 										<li role="presentation" class="navitem navitem-spools"><a class="navlink" href="#" data-target="spools"><span class="glyphicon glyphicon-record"></span> Spools</a></li>
+ 										<li role="presentation" class="navitem navitem-maintenance hidden"><a class="navlink" href="#" data-target="maintenance"><span class="glyphicon glyphicon-wrench"></span> Maintenance</a></li>
+ 										<li role="presentation" class="navitem navitem-settings"><a class="navlink" href="#" data-target="settings"><span class="glyphicon glyphicon-cog"></span> Settings</a></li>
+-										<li role="presentation" class="navitem navitem-help hidden"><a class="navlink" href="#" data-target="help"><span class="glyphicon glyphicon-question-sign"></span> Help</a></li>
++										<li role="presentation" class="navitem navitem-help"><a class="navlink" href="#" data-target="help"><span class="glyphicon glyphicon-question-sign"></span> Help</a></li>
+ 									</ul>
+ 								</td>
+ 							</tr>
+@@ -460,7 +458,7 @@
+ 					</ul>
+ 					<ul class="nav nav-sidebar">
+ 						<li class="navitem navitem-settings"><a class="navlink" href="#" data-target="settings"><span class="glyphicon glyphicon-cog"></span> Settings</a></li>
+-						<li class="navitem navitem-help hidden"><a class="navlink" href="#" data-target="help"><span class="glyphicon glyphicon-question-sign"></span> Help</a></li>
++						<li class="navitem navitem-help"><a class="navlink" href="#" data-target="help"><span class="glyphicon glyphicon-question-sign"></span> Help</a></li>
+ 					</ul>
+ 				</div>
+ 				
+@@ -1408,7 +1406,19 @@
+ 					<div id="page_help" class="page">
+ 						<div class="row">
+ 							<div class="col-md-12">
+-								<!-- TODO -->
++								<h2 class="text-muted">RepRapPro IRC Channel</h2>
++								<iframe id="ifm_irc" src="https://kiwiirc.com/client/chat.freenode.net/?nick=duet-guest_?&theme=relaxed#reprappro">
++									<p>Your browser does not support iframes. Please click <a href="https://reprappro.com/support-channel/" target="_blank">here</a> instead.</p>
++								</iframe>
++								<h3 class="text-muted">Quick Links</h3>
++								<ul class="list-inline">
++									<li><a href="https://reprappro.com/documentation/" target="_blank"><span class="glyphicon glyphicon-star"></span> Documentation</a></li>
++									<li><a href="https://reprappro.com/documentation/commissioning-introduction/" target="_blank"><span class="glyphicon glyphicon-star"></span> Commisioning and Maintenance</a></li>
++									<li><a href="https://reprappro.com/documentation/troubleshooting-introduction/" target="_blank"><span class="glyphicon glyphicon-star"></span> Troubleshooting</a></li>
++									<li><a href="http://forums.reprap.org" target="_blank"><span class="glyphicon glyphicon-star"></span> Forums</a></li>
++									<li><a href="https://reprappro.com/documentation/multi-materials/" target="_blank"><span class="glyphicon glyphicon-star"></span> Multi-Material Instructions</a></li>
++									<li><a href="https://reprappro.com/support-page/" target="_blank"><span class="glyphicon glyphicon-star"></span> Direct Support</a></li>
++								</ul>
+ 							</div>
+ 						</div>
+ 					</div>
