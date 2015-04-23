@@ -290,6 +290,9 @@ environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.B
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.COM_PORT/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.COM_PORT/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.COM_PORT/value=/dev/ttyACM0
+environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.COM_PROGMR/delimiter=\:
+environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.COM_PROGMR/operation=replace
+environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.COM_PROGMR/value=Default
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.CPU\ Speed/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.CPU\ Speed/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.CPU\ Speed/value=
@@ -320,6 +323,9 @@ environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.S
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.USB\ Type/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.USB\ Type/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.USB\ Type/value=
+environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.WARNING_LEVEL/delimiter=\:
+environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.WARNING_LEVEL/operation=replace
+environment/project/it.baeyens.arduino.core.toolChain.release.674980254/JANTJE.WARNING_LEVEL/value=\ -w 
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/PATH/delimiter=\:
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/PATH/operation=replace
 environment/project/it.baeyens.arduino.core.toolChain.release.674980254/PATH/value=${A.COMPILER.PATH}${PathDelimiter}${A.BUILD.GENERIC.PATH}${PathDelimiter}${PATH}
