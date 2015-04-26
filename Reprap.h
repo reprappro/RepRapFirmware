@@ -169,21 +169,18 @@ inline void RepRap::DenyColdExtrude() { coldExtrude = false; }
 
 inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directions[]) const
 {
-	for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
+	for(size_t extruder=0; extruder < DRIVES - AXES; extruder++)
 	{
 		canDrive[extruder] = false;
 	}
 
-	Tool *tool = toolList;
-	while (tool)
+	if (currentTool != NULL)
 	{
-		for(size_t driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
+		for(size_t driveNum = 0; driveNum < currentTool->DriveCount(); driveNum++)
 		{
-			const int extruderDrive = tool->Drive(driveNum);
-			canDrive[extruderDrive] = tool->ToolCanDrive(directions[extruderDrive + AXES] == FORWARDS);
+			const int extruderDrive = currentTool->Drive(driveNum);
+			canDrive[extruderDrive] = currentTool->ToolCanDrive(directions[extruderDrive + AXES] == FORWARDS);
 		}
-
-		tool = tool->Next();
 	}
 }
 
