@@ -307,7 +307,6 @@ void Platform::InitZProbe()
 	zProbeOnFilter.Init(0);
 	zProbeOffFilter.Init(0);
 
-	// zpl-2015-01-15: Don't introduce new Z-probe types for different modulation pin configurations; use 'G31 R' instead
 	if (nvData.zProbeType >= 1)
 	{
 		zProbeModulationPin = (nvData.zProbeChannel == 1) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
@@ -830,56 +829,57 @@ void Platform::Tick()
 #endif
 	switch (tickState)
 	{
-	case 1:			// last conversion started was a thermistor
-	case 3:
-	{
-		ThermistorAveragingFilter& currentFilter = const_cast<ThermistorAveragingFilter&>(thermistorFilters[currentHeater]);
-		currentFilter.ProcessReading(GetAdcReading(heaterAdcChannels[currentHeater]));
-		StartAdcConversion(zProbeAdcChannel);
-		if (currentFilter.IsValid())
+		case 1:			// last conversion started was a thermistor
+		case 3:
 		{
-			uint32_t sum = currentFilter.GetSum();
-			if (sum < thermistorOverheatSums[currentHeater] || sum >= adDisconnectedReal * numThermistorReadingsAveraged)
+			ThermistorAveragingFilter& currentFilter = const_cast<ThermistorAveragingFilter&>(thermistorFilters[currentHeater]);
+			currentFilter.ProcessReading(GetAdcReading(heaterAdcChannels[currentHeater]));
+			StartAdcConversion(zProbeAdcChannel);
+			if (currentFilter.IsValid())
 			{
-				// We have an over-temperature or bad reading from this thermistor, so turn off the heater
-				// NB - the SetHeater function we call does floating point maths, but this is an exceptional situation so we allow it
-				SetHeater(currentHeater, 0.0);
-				errorCodeBits |= ErrorBadTemp;
+				uint32_t sum = currentFilter.GetSum();
+				if (sum < thermistorOverheatSums[currentHeater] || sum >= adDisconnectedReal * numThermistorReadingsAveraged)
+				{
+					// We have an over-temperature or bad reading from this thermistor, so turn off the heater
+					// NB - the SetHeater function we call does floating point maths, but this is an exceptional situation so we allow it
+					SetHeater(currentHeater, 0.0);
+					errorCodeBits |= ErrorBadTemp;
+				}
 			}
+			++currentHeater;
+			if (currentHeater == HEATERS)
+			{
+				currentHeater = 0;
+			}
+			++tickState;
+			break;
 		}
-		++currentHeater;
-		if (currentHeater == HEATERS)
-		{
-			currentHeater = 0;
-		}
-	}
-		++tickState;
-		break;
 
-	case 2:			// last conversion started was the Z probe, with IR LED on
-		const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
-		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
-		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
-		{
-			digitalWrite(zProbeModulationPin, LOW);		// turn off the IR emitter
-		}
-		++tickState;
-		break;
+		case 2:			// last conversion started was the Z probe, with IR LED on
+			const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
+			StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
+			if (currentZProbeType == 2)								// if using a modulated IR sensor
+			{
+				digitalWrite(zProbeModulationPin, LOW);				// turn off the IR emitter
+			}
+			++tickState;
+			break;
 
-	case 4:			// last conversion started was the Z probe, with IR LED off if modulation is enabled
-		const_cast<ZProbeAveragingFilter&>(zProbeOffFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
-		// no break
-	case 0:			// this is the state after initialisation, no conversion has been started
-	default:
-	{
-		StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
-		if (nvData.zProbeType == 2)								// if using a modulated IR sensor
+		case 4:			// last conversion started was the Z probe, with IR LED off if modulation is enabled
+			const_cast<ZProbeAveragingFilter&>(zProbeOffFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
+			// no break
+		case 0:			// this is the state after initialisation, no conversion has been started
+		default:
 		{
-			digitalWrite(zProbeModulationPin, HIGH);		// turn on the IR emitter
+			StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
+			currentZProbeType = nvData.zProbeType;
+			if (currentZProbeType <= 2)								// if using an IR sensor
+			{
+				digitalWrite(zProbeModulationPin, HIGH);			// turn on the IR emitter
+			}
+			tickState = 1;
+			break;
 		}
-	}
-		tickState = 1;
-		break;
 	}
 #ifdef TIME_TICK_ISR
 	uint32_t now2 = micros();
@@ -900,7 +900,7 @@ void Platform::Tick()
 /*static*/void Platform::StartAdcConversion(adc_channel_num_t chan)
 {
 	adc_enable_channel(ADC, chan);
-	adc_start(ADC );
+	adc_start(ADC);
 }
 
 // Convert an Arduino Due pin number to the corresponding ADC channel number
@@ -2289,7 +2289,6 @@ void Line::Write(char b, bool block)
 				iface.flush();
 			}
 
-			// FIXME: Remember to open an issue for the core patches on Arduino's GitHub site
 			if (outputNumChars == 0 && iface.canWrite() != 0)
 			{
 				// We can write the character directly into the output buffer
@@ -2349,7 +2348,6 @@ void Line::TryFlushOutput()
 	//while (SerialUSB.canWrite() == 0) {}
 	//end debug
 
-	// FIXME: Remember to open an issue for the core patches on Arduino's GitHub site
 	while (outputNumChars != 0 && iface.canWrite() != 0)
 	{
 		++inWrite;

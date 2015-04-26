@@ -17,10 +17,10 @@ M555 P2                             ; Set output to look like Marlin
 G21                                 ; Work in millimetres
 G90                                 ; Send absolute coordinates...
 M83                                 ; ...but relative extruder moves
-M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
+M906 X800 Y1000 Z800 E1000          ; Set motor currents (mA)
 ;M305 P0 R4700 H0 L0                 ; Set the heated bed thermistor series resistor to 4K7
 ;M305 P1 R4700 H0 L0                 ; Set the hot end thermistor series resistor to 4K7
-;M305 P2 H0 L0                       ; Put your own H and/or L values here to set the second nozzle thermistor ADC correction
+;M305 P2 R4700 H0 L0                 ; Set the second hot end thermistor series resistor to 4K7
 M569 P0 S1                          ; Reverse the X axis
 M92 E420:420                        ; Set extruder steps per mm
 M558 P1                             ; Use an unmodulated Z probe
@@ -29,7 +29,7 @@ M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
 M201 X500 Y500 Z15 E500             ; Accelerations (mm/s^2)
 M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
 M566 X200 Y200 Z30 E20              ; Minimum speeds mm/minute
-M208 X-8 S1                         ; Set axis minimum (adjust to make X=0 the edge of the bed)
+M208 X-24 S1                        ; Set axis minimum (adjust to make X=0 the edge of the bed)
 M208 X214 Y210                      ; Set axis maxima (adjust to suit your machine)
 M563 P0 D0 H1                       ; Define tool 0
 G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures

@@ -1592,11 +1592,6 @@ void GCodes::ManageTool(GCodeBuffer *gb, StringRef& reply)
 		platform->Message(BOTH_ERROR_MESSAGE, "Tool number must be positive!\n");
 		return;
 	}
-	if (reprap.GetTool(toolNumber) != NULL)
-	{
-		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool number %d already in use!\n", toolNumber);
-		return;
-	}
 
 	// Check drives
 	long drives[DRIVES - AXES];  // There can never be more than we have...
@@ -1632,6 +1627,10 @@ void GCodes::ManageTool(GCodeBuffer *gb, StringRef& reply)
 		{
 			Tool *tool = reprap.GetTool(toolNumber);
 			reprap.DeleteTool(tool);
+		}
+		else if (reprap.GetTool(toolNumber) != NULL)
+		{
+			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool number %d already in use!\n", toolNumber);
 		}
 		else
 		{
@@ -3475,7 +3474,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				case 2:
 				case 3:
 				case 4:
-					reprap.GetStatusResponse(reply, type - 2, false);
+					reprap.GetStatusResponse(reply, type - 1, false);
 					break;
 
 				case 5:
@@ -3954,6 +3953,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				{
 					platform->SetMotorCurrent(AXES + e, eVals[e]);
 				}
+				seen = true;
 			}
 
 			if (gb->Seen('I'))

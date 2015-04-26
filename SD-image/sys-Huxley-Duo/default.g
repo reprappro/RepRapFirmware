@@ -20,7 +20,7 @@ M83                                 ; ...but relative extruder moves
 M906 X600 Y600 Z600 E600            ; Set motor currents (mA)
 ;M305 P0 R4700 H0 L0                 ; Set the heated bed thermistor series resistor to 4K7
 ;M305 P1 R4700 H0 L0                 ; Set the hot end thermistor series resistor to 4K7
-;M305 P2 H0 L0                       ; Put your own H and/or L values here to set the second nozzle thermistor ADC correction
+;M305 P2 R4700 H0 L0                 ; Set the second hot end thermistor series resistor to 4K7
 M569 P0 S1                          ; Make X axis go forwards
 M569 P3 S0                          ; Make Z axis go backwards
 M92 E660:660                        ; Set extruder steps per mm

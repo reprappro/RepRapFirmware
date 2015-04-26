@@ -488,6 +488,7 @@ public:
 
 	void Init(uint16_t val) volatile
 	{
+		irqflags_t flags = cpu_irq_save();
 		sum = (uint32_t)val * (uint32_t)numAveraged;;
 		index = 0;
 		isValid = false;
@@ -495,6 +496,7 @@ public:
 		{
 			readings[i] = val;
 		}
+		cpu_irq_restore(flags);
 	}
 
 	// Call this to put a new reading into the filter
@@ -504,7 +506,7 @@ public:
 		sum = sum - readings[index] + r;
 		readings[index] = r;
 		++index;
-		if(index == numAveraged)
+		if (index == numAveraged)
 		{
 			index = 0;
 			isValid = true;
@@ -851,6 +853,7 @@ private:
   adc_channel_num_t zProbeAdcChannel;
   uint32_t thermistorOverheatSums[HEATERS];
   uint8_t tickState;
+  int currentZProbeType;
   uint8_t currentHeater;
   int debugCode;
 

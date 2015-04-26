@@ -85,7 +85,7 @@ void PrintMonitor::Spin()
 			// See if we can determine the first layer height (must be smaller than the nozzle diameter)
 			if (firstLayerHeight == 0.0)
 			{
-				if (liveCoords[Z_AXIS] < NOZZLE_DIAMETER && !gCodes->DoingFileMacro())
+				if (liveCoords[Z_AXIS] < NOZZLE_DIAMETER * 1.1 && !gCodes->DoingFileMacro())
 				{
 					firstLayerHeight = liveCoords[Z_AXIS];
 				}

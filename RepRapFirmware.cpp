@@ -307,14 +307,13 @@ void RepRap::Spin()
 
 	// Check if we need to display a cold extrusion warning
 
-	bool displayWarning = false;
 	for(Tool *t = toolList; t != NULL; t = t->Next())
 	{
-		displayWarning |= t->DisplayColdExtrudeWarning();
-	}
-	if (displayWarning)
-	{
-		platform->Message(BOTH_MESSAGE, "Warning: Tools can only be driven if their heater temperatures are high!\n");
+		if (t->DisplayColdExtrudeWarning())
+		{
+			platform->Message(BOTH_MESSAGE, "Warning: Tool %d was not driven because its heater temperatures was not high enough\n", t->Number());
+			break;
+		}
 	}
 
 	// Keep track of the loop time

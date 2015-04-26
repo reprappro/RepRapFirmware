@@ -865,7 +865,8 @@ inline void Move::HitLowStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 inline void Move::HitHighStop(int8_t drive, LookAhead* la, DDA* hitDDA)
 {
 	UpdateCurrentCoordinates(la, hitDDA);
-	la->SetDriveCoordinate(platform->AxisMaximum(drive), drive);
+	float hitPoint = (hitDDA->directions[drive] == FORWARDS) ? platform->AxisMaximum(drive) : platform->AxisMinimum(drive);
+	la->SetDriveCoordinate(hitPoint, drive);
 	gCodes->SetAxisIsHomed(drive);
 }
 
