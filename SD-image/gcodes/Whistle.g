@@ -10,7 +10,7 @@ M107
 M190 S57 ; set bed temperature
 G28 ; home all axes
 M83;
-G10 P0 S195 R160                       ; Set tool 0 operating and standby temperatures
+G10 P0 S185 R160                       ; Set tool 0 operating and standby temperatures
 T0
 
 G21 ; set units to millimeters

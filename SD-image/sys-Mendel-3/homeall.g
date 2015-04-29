@@ -7,7 +7,7 @@ G92 X0            ; set position to X=0
 G1 X3 F200        ; move axis away from X=0
 G1 X-5 F200 S1    ; home again, slower
 G92 X0            ; set position to X=0
-G1 X70 F2000      ; ADJUST the X value to put the nozzle on the edge of the bed
+G1 X65 F2000      ; ADJUST the X value to put the nozzle on the edge of the bed
 G92 X0            ; set position to X=0
 M558 P2           ; set probe to modulated mode
 G1 X30 F2000      ; move X, ADJUST the X value to get Z probe over target
