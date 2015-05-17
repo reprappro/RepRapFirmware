@@ -3,7 +3,6 @@ duet.vid.0=0x2341
 duet.pid.0=0x003e
 duet.vid.1=0x2A03
 duet.pid.1=0x003e
-duet.vid.0x2A03.warning=Uncertified
 duet.upload.tool=bossac
 duet.upload.protocol=sam-ba
 duet.upload.maximum_size=524288

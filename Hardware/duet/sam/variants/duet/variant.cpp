@@ -415,10 +415,6 @@ void init( void )
     while (true);
   }
 
-  // Duet enables the watchdog
-  const uint32_t wdtTicks = 256;	// number of watchdog ticks @ 32768Hz/128 before the watchdog times out (max 4095)
-  WDT_Enable(WDT, (wdtTicks << WDT_MR_WDV_Pos) | (wdtTicks << WDT_MR_WDD_Pos) | WDT_MR_WDRSTEN);	// enable watchdog, reset the mcu if it times out
-
   // Initialize C library
   __libc_init_array();
 

@@ -1,0 +1,43 @@
+{
+  "packages": [
+    {
+      "name": "RepRap",
+      "maintainer": "Christian Hammacher",
+      "websiteURL": "https://github.com/chrishamm/RepRapFirmware",
+      "email": "bmasterc@gmail.com",
+      "help": {
+        "online": "https://github.com/chrishamm/RepRapFirmware"
+      },
+      "platforms": [
+        {
+          "name": "Duet",
+          "architecture": "sam",
+          "version": "1.0.3",
+          "category": "RepRap",
+          "help": {
+            "online": "https://github.com/chrishamm/RepRapFirmware/tree/dev/Hardware"
+          },
+          "url": "https://github.com/chrishamm/RepRapFirmware/raw/dev/Hardware/Duet-1.0.3.zip",
+          "archiveFileName": "Duet-1.0.3.zip",
+          "checksum": "SHA-256:f4051fff728d28de2397aecfbfb646c332e7a58eb366d7a9fe84c8a68ee6700a",
+          "size": "17327870",
+          "boards": [
+            {"name": "Duet"}
+          ],
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "4.8.3-2014q1"
+            },
+            {
+              "packager": "arduino",
+              "name": "bossac",
+              "version": "1.3a-arduino"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

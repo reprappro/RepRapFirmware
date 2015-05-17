@@ -158,6 +158,14 @@ RepRap reprap;
 
 //*************************************************************************************************
 
+void watchdogSetup(void)
+{
+    // RepRapFirmware enables the watchdog by default
+    watchdogEnable(1000);
+}
+
+//*************************************************************************************************
+
 // RepRap member functions.
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
