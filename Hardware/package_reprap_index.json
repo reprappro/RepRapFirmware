@@ -19,8 +19,8 @@
           },
           "url": "https://github.com/chrishamm/RepRapFirmware/raw/dev/Hardware/Duet-1.0.3.zip",
           "archiveFileName": "Duet-1.0.3.zip",
-          "checksum": "SHA-256:f85728b898636f77e827de6d8ed063c7dff5a2737daaf5820040b8c50ade4cab",
-          "size": "17305036",
+          "checksum": "SHA-256:60998eee0569e2c8d2c90378f074d44a460e7257ec3bbb53d0e05abc5cbc9991",
+          "size": "17305085",
           "boards": [
             {"name": "Duet"}
           ],
