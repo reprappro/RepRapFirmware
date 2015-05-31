@@ -20,6 +20,7 @@ OUTPUT_DIR := $(PWD)/Release
 # Compiler options
 OPTIMIZATION := -O3
 
+
 # ================================ Prerequisites ====================================
 
 # Determine Arduino path
@@ -52,6 +53,7 @@ ifeq (,$(wildcard $(BOSSAC_PATH)))
 	$(warning Bossac not found! Uploading compiled binaries will not work.)
 endif
 
+
 # ================================ GCC Options ======================================
 
 CROSS_COMPILE := arm-none-eabi-
@@ -67,7 +69,7 @@ INCLUDES += $(DUET_BOARD_PATH)/system/libsam $(DUET_BOARD_PATH)/system/libsam/in
 CFLAGS += -c -g $(OPTIMIZATION) -w -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single=500 -Dprintf=iprintf -MMD -MP -std=gnu99
 CPPFLAGS += -c -g $(OPTIMIZATION) -w -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single=500 -fno-rtti -fno-exceptions -Dprintf=iprintf -MMD -MP -std=gnu++11
 
-DEVICE_FLAGS += -mcpu=cortex-m3 -DF_CPU=84000000L -DARDUINO=$(subst .,,$(ARDUINO_VERSION)) -DARDUINO_SAM_DUE -DARDUINO_ARCH_SAM -D__SAM3X8E__ -mthumb -DUSB_VID=0x2341 -DUSB_PID=0x003e -DUSBCON -DUSB_MANUFACTURER=\"Unknown\" -DUSB_PRODUCT=\"Duet\"
+DEVICE_FLAGS = -mcpu=cortex-m3 -DF_CPU=84000000L -DARDUINO=$(subst .,,$(ARDUINO_VERSION)) -DARDUINO_SAM_DUE -DARDUINO_ARCH_SAM -D__SAM3X8E__ -mthumb -DUSB_VID=0x2341 -DUSB_PID=0x003e -DUSBCON -DUSB_MANUFACTURER=\"Unknown\" -DUSB_PRODUCT=\"Duet\"
 
 CFLAGS += $(foreach dir,$(INCLUDES),-I$(dir))
 CPPFLAGS += $(foreach dir,$(INCLUDES),-I$(dir))
@@ -85,6 +87,7 @@ C_OBJS := $(foreach src,$(C_SOURCES),$(BUILD_PATH)/$(notdir $(src:.c=.c.o)))
 CPP_OBJS := $(foreach src,$(CPP_SOURCES),$(BUILD_PATH)/$(notdir $(src:.cpp=.cpp.o)))
 
 DEPS := $(C_OBJS:%.o=%.d) $(CPP_OBJS:%.o=%.d)
+
 
 # ================================= Target all ======================================
 .PHONY += all
@@ -112,12 +115,14 @@ $(BUILD_PATH):
 $(OUTPUT_DIR):
 	@mkdir -p $(OUTPUT_DIR)
 
+
 # ================================= Target clean ====================================
 .PHONY += clean
 clean:
 	@rm -rf $(BUILD_PATH) $(OUTPUT_DIR)
 	@rm -f $(PWD)/*.d
 	$(info Build directories removed.)
+
 
 # ================================= Target upload ===================================
 .PHONY += upload
