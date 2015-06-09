@@ -205,6 +205,7 @@ void RepRap::Init()
 	// All of the following init functions must execute reasonably quickly before the watchdog times us out
 	platform->Init();
 	gCodes->Init();
+	network->Init();
 	webserver->Init();
 	move->Init();
 	heat->Init();
@@ -219,7 +220,7 @@ void RepRap::Init()
 	FileStore *startup = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
 
 	platform->AppendMessage(HOST_MESSAGE, "\n\nExecuting ");
-	if(startup != NULL)
+	if (startup != NULL)
 	{
 		startup->Close();
 		platform->AppendMessage(HOST_MESSAGE, "%s...\n\n", platform->GetConfigFile());
@@ -250,10 +251,10 @@ void RepRap::Init()
 	}
 	processingConfig = false;
 
-	if(network->IsEnabled())
+	if (network->IsEnabled())
 	{
 		platform->AppendMessage(HOST_MESSAGE, "\nStarting network...\n");
-		network->Init(); // Need to do this here, as the configuration GCodes may set IP address etc.
+		network->Enable(); // Need to do this here, as the configuration GCodes may set IP address etc.
 	}
 	else
 	{
@@ -936,7 +937,7 @@ void RepRap::GetStatusResponse(StringRef& response, uint8_t type, bool forWebser
 		}
 
 		// Fraction of file printed
-		response.catf("],\"fractionPrinted\":%.1f", (gCodes->PrintingAFile()) ? (gCodes->FractionOfFilePrinted() * 100.0) : 0.0);
+		response.catf("],\"fractionPrinted\":%.1f", (printMonitor->IsPrinting()) ? (gCodes->FractionOfFilePrinted() * 100.0) : 0.0);
 
 		// First Layer Duration
 		response.catf(",\"firstLayerDuration\":%.1f", printMonitor->GetFirstLayerDuration());
@@ -1211,7 +1212,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 		// These are all returned in a single vector called "poll".
 		// This is a poor choice of format because we can't easily tell which is which unless we already know the number of heaters and extruders.
 		// RRP reversed the order at version 0.65 to send the positions before the heaters, but we haven't yet done that.
-		char c = (gc->PrintingAFile()) ? 'P' : 'I';
+		char c = (printMonitor->IsPrinting()) ? 'P' : 'I';
 		response.printf("{\"poll\":[\"%c\",", c); // Printing
 		for (size_t heater = 0; heater < HEATERS; heater++)
 		{
@@ -1262,7 +1263,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 				(gc->GetAxisIsHomed(2)) ? 1 : 0);
 	}
 
-	if (gc->PrintingAFile())
+	if (printMonitor->IsPrinting())
 	{
 		// Send the fraction printed
 		response.catf(",\"fraction_printed\":%.4f", max<float>(0.0, gc->FractionOfFilePrinted()));
@@ -1277,7 +1278,7 @@ void RepRap::GetLegacyStatusResponse(StringRef& response, uint8_t type, int seq)
 	}
 	else if (type == 2)
 	{
-		if (gCodes->PrintingAFile())
+		if (printMonitor->IsPrinting())
 		{
 			// Send estimated times left based on file progress, filament usage, and layers
 			response.catf(",\"timesLeft\":[%.1f,%.1f,%.1f]",
@@ -1491,7 +1492,7 @@ char RepRap::GetStatusCharacter() const
 		// Paused / Stopped
 		return 'S';
 	}
-	if (gCodes->PrintingAFile())
+	if (printMonitor->IsPrinting())
 	{
 		// Printing
 		return 'P';

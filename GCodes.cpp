@@ -120,7 +120,7 @@ void GCodes::Spin()
 	// Macro files are the most important. We must finish them in one go before we proceed
 	// with the other G-Codes, because at least one of them will call DoFileMacro() again.
 
-	if (doingFileMacro && !returningFromMacro)
+	if (doingFileMacro)
 	{
 		if (fileMacroGCode->Active())
 		{
@@ -153,9 +153,9 @@ void GCodes::Spin()
 						}
 					}
 
-					if (!fileMacroGCode->Active())
+					if (Pop())
 					{
-						fileBeingPrinted.Close();
+						fileStack[stackPointer + 1].Close();
 						returningFromMacro = true;
 					}
 
@@ -327,9 +327,9 @@ void GCodes::Spin()
 				{
 					fileGCode->SetFinished(ActOnCode(fileGCode));
 				}
-				if (!fileGCode->Active() && AllMovesAreFinishedAndMoveBufferIsLoaded())
+				if (!fileGCode->Active() && Pop())
 				{
-					fileBeingPrinted.Close();
+					fileStack[stackPointer + 1].Close();
 					reprap.GetPrintMonitor()->StoppedPrint();
 				}
 				break;
@@ -696,11 +696,6 @@ bool GCodes::DoFileMacro(const char* fileName)
 
 	if (returningFromMacro)
 	{
-		if (!Pop())
-		{
-			return false;
-		}
-
 		returningFromMacro = false;
 		return true;
 	}
@@ -1393,7 +1388,7 @@ void GCodes::QueueFileToPrint(const char* fileName)
 	if (f != NULL)
 	{
 		// Cancel current print if there is any
-		if (PrintingAFile())
+		if (reprap.GetPrintMonitor()->IsPrinting())
 		{
 			CancelPrint();
 		}
@@ -2299,7 +2294,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		// If Marlin is emulated and M1 is called during a live print, run M25 instead
 		if (code == 1 && gb == serialGCode && platform->Emulating() == marlin)
 		{
-			if (PrintingAFile() && reprap.GetMove()->IsRunning())
+			if (reprap.GetPrintMonitor()->IsPrinting() && reprap.GetMove()->IsRunning())
 			{
 				gb->Put("M25", 3);
 				return false;
@@ -2456,6 +2451,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			reply.copy("Cannot use M32/M23 in file macros!\n");
 			error = true;
 		}
+		else if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+		{
+			// Must be ready to use the stack...
+			result = false;
+		}
 		else
 		{
 			const char* filename = gb->GetUnprecedentedString();
@@ -2504,6 +2504,10 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		{
 			if (!isResuming)
 			{
+				if (!Push())
+				{
+					return false;
+				}
 				reprap.GetPrintMonitor()->StartedPrint();
 			}
 			isResuming = false;
@@ -2523,7 +2527,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	case 25: // Pause the print
 		if (!isPausing)
 		{
-			if (!PrintingAFile())
+			if (!reprap.GetPrintMonitor()->IsPrinting())
 			{
 				reply.copy("Cannot pause print, because no file is being printed!\n");
 				error = true;
@@ -2592,7 +2596,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		break;
 
 	case 27: // Report print status - Deprecated
-		if (PrintingAFile())
+		if (reprap.GetPrintMonitor()->IsPrinting())
 		{
 			reply.copy("SD printing.\n");
 		}
@@ -3453,6 +3457,28 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			return false;
 		break;
 
+	case 404: // Filament width and nozzle diameter
+		{
+			bool seen = false;
+
+			if (gb->Seen('N'))
+			{
+				platform->SetFilamentWidth(gb->GetFValue());
+				seen = true;
+			}
+			if (gb->Seen('D'))
+			{
+				platform->SetNozzleDiameter(gb->GetFValue());
+				seen = true;
+			}
+
+			if (!seen)
+			{
+				reply.printf("Filament width: %.2fmm, nozzle diameter: %.2fmm\n", platform->GetFilamentWidth(), platform->GetNozzleDiameter());
+			}
+		}
+		break;
+
 	case 408: // Report JSON status response
 		if (gb->Seen('S'))
 		{
@@ -3564,10 +3590,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 			if (!seen)
 			{
-				const byte *ip = platform->IPAddress();
-				reply.printf("Network is %s, IP address: %d.%d.%d.%d, HTTP port: %d\n ",
+				const byte *config_ip = platform->IPAddress();
+				const byte *actual_ip = reprap.GetNetwork()->IPAddress();
+				reply.printf("Network is %s, configured IP address: %d.%d.%d.%d, actual IP address: %d.%d.%d.%d, HTTP port: %d\n",
 						reprap.GetNetwork()->IsEnabled() ? "enabled" : "disabled",
-						ip[0], ip[1], ip[2], ip[3], reprap.GetNetwork()->GetHttpPort());
+						config_ip[0], config_ip[1], config_ip[2], config_ip[3], actual_ip[0], actual_ip[1], actual_ip[2], actual_ip[3],
+						reprap.GetNetwork()->GetHttpPort());
 			}
 
 		}
@@ -4175,7 +4203,11 @@ void GCodes::CancelPrint()
 	}
 	reprap.GetMove()->Cancel();
 
-	reprap.GetPrintMonitor()->StoppedPrint();
+	if (reprap.GetPrintMonitor()->IsPrinting())
+	{
+		Pop();
+		reprap.GetPrintMonitor()->StoppedPrint();
+	}
 }
 
 // Return true if all the heaters for the specified tool are at their set temperatures

@@ -44,11 +44,12 @@ class PrintMonitor
 		void Spin();
 		void Init();
 
-		void StartingPrint(const char *filename);		// called to indicate a file will be printed (see M23)
-		void StartedPrint();							// called whenever a new live print starts (see M24)
-		void StoppedPrint();							// called whenever a file print has stopped
+		bool IsPrinting() const;				// Is a file being printed?
+		void StartingPrint(const char *filename);		// Called to indicate a file will be printed (see M23)
+		void StartedPrint();							// Called whenever a new live print starts (see M24)
+		void StoppedPrint();							// Called whenever a file print has stopped
 
-	    bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info) const;
+		bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info) const;
 		void GetFileInfoResponse(StringRef& response, const char* filename) const;
 
 		float EstimateTimeLeft(PrintEstimationMethod method) const;
@@ -66,32 +67,34 @@ class PrintMonitor
 		GCodes *gCodes;
 		float longWait;
 
-	    bool fileInfoDetected;
-	    char fileBeingPrinted[FILENAME_LENGTH];
-	    GcodeFileInfo currentFileInfo;
+		bool fileInfoDetected;
+		char fileBeingPrinted[FILENAME_LENGTH];
+		GcodeFileInfo currentFileInfo;
 
-	    float printStartTime;
-	    unsigned int currentLayer;
-	    float warmUpDuration;
+		bool isPrinting;
+		float printStartTime;
+		unsigned int currentLayer;
+		float warmUpDuration;
 
-	    float firstLayerDuration;
-	    float firstLayerHeight;
-	    float firstLayerFilament;
-	    float firstLayerProgress;
+		float firstLayerDuration;
+		float firstLayerHeight;
+		float firstLayerFilament;
+		float firstLayerProgress;
 
-	    float lastLayerTime, lastLayerFilament;
-	    unsigned int numLayerSamples;
-	    float layerDurations[MAX_LAYER_SAMPLES];
-	    float filamentUsagePerLayer[MAX_LAYER_SAMPLES];
-	    float fileProgressPerLayer[MAX_LAYER_SAMPLES];
-	    float layerEstimatedTimeLeft;
+		float lastLayerTime, lastLayerFilament;
+		unsigned int numLayerSamples;
+		float layerDurations[MAX_LAYER_SAMPLES];
+		float filamentUsagePerLayer[MAX_LAYER_SAMPLES];
+		float fileProgressPerLayer[MAX_LAYER_SAMPLES];
+		float layerEstimatedTimeLeft;
 
-	    bool FindHeight(const char* buf, size_t len, float& height) const;
-	    bool FindLayerHeight(const char* buf, size_t len, float& layerHeight) const;
-	    unsigned int FindFilamentUsed(const char* buf, size_t len, float *filamentUsed, unsigned int maxFilaments) const;
+		bool FindHeight(const char* buf, size_t len, float& height) const;
+		bool FindLayerHeight(const char* buf, size_t len, float& layerHeight) const;
+		unsigned int FindFilamentUsed(const char* buf, size_t len, float *filamentUsed, unsigned int maxFilaments) const;
 };
 
 inline const char *PrintMonitor::GetPrintFilename() const { return fileBeingPrinted; }
+inline bool PrintMonitor::IsPrinting() const { return isPrinting; }
 inline unsigned int PrintMonitor::GetCurrentLayer() const { return currentLayer; }
 inline float PrintMonitor::GetCurrentLayerTime() const { return (lastLayerTime > 0.0) ? (platform->Time() - lastLayerTime) : 0.0; }
 inline float PrintMonitor::GetPrintDuration() const { return (printStartTime > 0.0) ? (platform->Time() - printStartTime) : 0.0; }

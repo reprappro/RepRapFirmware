@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.08f-zpl"
-#define DATE "2015-04-26"
+#define VERSION "1.09a-zpl"
+#define DATE "2015-06-08"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
@@ -85,6 +85,7 @@ enum Compatibility
 
 // Print estimation defaults
 #define NOZZLE_DIAMETER 0.5						// Thickness of the nozzle
+#define FILAMENT_WIDTH 1.75						// Width of the filament
 #define MAX_LAYER_SAMPLES 5						// Number of layer samples (except for first layer)
 #define ESTIMATION_MIN_FILAMENT_USAGE 0.025		// Minimum per cent for filament usage estimation
 #define FIRST_LAYER_SPEED_FACTOR 0.25			// First layer speed compared to others (only for layer-based estimation)

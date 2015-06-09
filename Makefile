@@ -20,6 +20,8 @@ OUTPUT_DIR := $(PWD)/Release
 # Compiler options
 OPTIMIZATION := -O3
 
+# Firmware port for 1200bps touch
+DUET_PORT := /dev/ttyACM0
 
 # ================================ Prerequisites ====================================
 
@@ -127,4 +129,8 @@ clean:
 # ================================= Target upload ===================================
 .PHONY += upload
 upload: $(OUTPUT_DIR)/RepRapFirmware.bin
-	$(BOSSAC_PATH) -e -w -v -b $(OUTPUT_DIR)/RepRapFirmware.bin
+	@echo "=> Rebooting hardware into bootloader mode..."
+	@stty -F $(DUET_PORT) 1200 -ixon -crtscts || true
+	@sleep 2
+	@echo "=> Flashing new firmware binary..."
+	@$(BOSSAC_PATH) -u -e -w -v -b $(OUTPUT_DIR)/RepRapFirmware.bin -R

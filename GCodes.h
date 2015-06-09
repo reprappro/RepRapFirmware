@@ -135,8 +135,7 @@ class GCodes
     bool GetProbeCoordinates(int count, float& x, float& y, float& z) const;	// Get pre-recorded probe coordinates
     const char* GetCurrentCoordinates() const;							// Get where we are as a string
     float FractionOfFilePrinted() const;								// Returns the current file-based progress or -1.0 if no file is being printed
-    bool PrintingAFile() const;											// Are we in the middle of printing a file?
-    bool DoingFileMacro() const;										// Or still busy processing a macro file?
+    bool DoingFileMacro() const;										// Are we busy processing a macro file?
     void Diagnostics();													// Send helpful information out
     bool HaveIncomingData() const;										// Is there something that we have to do?
     bool GetAxisIsHomed(uint8_t axis) const { return axisIsHomed[axis]; } // Is the axis at 0?
@@ -317,11 +316,6 @@ inline const char* GCodeBuffer::WritingFileDirectory() const
 inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 {
 	writingFileDirectory = wfd;
-}
-
-inline bool GCodes::PrintingAFile() const
-{
-	return (FractionOfFilePrinted() >= 0.0);
 }
 
 inline bool GCodes::DoingFileMacro() const

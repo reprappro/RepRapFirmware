@@ -72,6 +72,7 @@ Licence: GPL
 
 #define NUM_SERIAL_CHANNELS			(2)
 
+
 // DRIVES
 
 #define STEP_PINS {14, 25, 5, X2, 41, 39, X4, 49}
@@ -706,6 +707,12 @@ public:
   // AUX device
   void Beep(int freq, int ms);
 
+  // Hotend configuration
+  float GetFilamentWidth() const;
+  void SetFilamentWidth(float width);
+  float GetNozzleDiameter() const;
+  void SetNozzleDiameter(float diameter);
+
 //-------------------------------------------------------------------------------------------------------
   
 private:
@@ -863,6 +870,10 @@ private:
 
   char messageStringBuffer[messageStringLength];
   StringRef messageString;
+
+// Hotend configuration
+  float filamentWidth;
+  float nozzleDiameter;
 };
 
 // Small class to hold an open file and data relating to it.
@@ -1242,6 +1253,25 @@ inline void Platform::PopMessageIndent()
 	messageIndent -= 2;
 }
 
+inline float Platform::GetFilamentWidth() const
+{
+	return filamentWidth;
+}
+
+inline void Platform::SetFilamentWidth(float width)
+{
+	filamentWidth = width;
+}
+
+inline float Platform::GetNozzleDiameter() const
+{
+	return nozzleDiameter;
+}
+
+inline void Platform::SetNozzleDiameter(float diameter)
+{
+	nozzleDiameter = diameter;
+}
 
 //***************************************************************************************
 

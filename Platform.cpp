@@ -267,6 +267,11 @@ void Platform::Init()
 		pinModeDuet(coolingFanRpmPin, INPUT_PULLUP, 1500);
 	}
 
+	// Hotend configuration
+	nozzleDiameter = NOZZLE_DIAMETER;
+	filamentWidth = FILAMENT_WIDTH;
+
+
 	InitialiseInterrupts();
 
 	lastTime = Time();
@@ -337,7 +342,7 @@ int Platform::ZProbe() const
 			// Modulated IR sensor. We assume that zProbeOnFilter and zprobeOffFilter average the same number of readings.
 			// Because of noise, it is possible to get a negative reading, so allow for this.
 			return (int) (((int32_t) zProbeOnFilter.GetSum() - (int32_t) zProbeOffFilter.GetSum())
-					/ (4 * numZProbeReadingsAveraged));
+					/ (int)(4 * numZProbeReadingsAveraged));
 
 		default:
 			break;

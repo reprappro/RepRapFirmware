@@ -1108,10 +1108,10 @@ bool Webserver::HttpInterpreter::NeedMoreData()
 		ResetState();
 		return false;
 	}
-	else if (!IsAuthenticated())
+	else if (!IsAuthenticated() && (!numCommandWords || !StringEquals(commandWords[0], "connect")))
 	{
-		// It makes very little sense to allow unknown connections to block our HTTP reader.
-		// Especially because rr_connect requests don't take up more than one TCP MSS.
+		// It makes very little sense to allow unknown connections to block our HTTP reader, however
+		// connect requests may take up more than one TCP_MSS if a long cookie value is passed.
 		ResetState();
 		return false;
 	}
@@ -1925,7 +1925,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			else if (StringEquals(clientMessage, "PASV"))
 			{
 				/* get local IP address */
-				const byte *ip_address = platform->IPAddress();
+				const byte *ip_address = network->IPAddress();
 
 				/* open random port > 1023 */
 				rand();
