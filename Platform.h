@@ -213,6 +213,22 @@ static const int8_t Z_PROBE_MOD_PIN07 = X25;					// Digital pin number to turn t
 static const bool Z_PROBE_AXES[AXES] = { true, false, true };	// Axes for which the Z-probe is normally used
 static const unsigned int Z_PROBE_AVERAGE_READINGS = 8;			// We average this number of readings with IR on, and the same number with IR off
 
+
+// Inkjet (if any - no inkjet is flagged by INKJET_BITS negative)
+
+static const int8_t INKJET_BITS = -1;      // How many nozzles?
+static const int INKJET_FIRE_MICROSECONDS = 4; // How long to fire a nozzle
+static const int INKJET_DELAY_MICROSECONDS = 800; // How long to wait before the next bit
+
+// Inkjet control pins
+
+static const int8_t INKJET_SERIAL_OUT = -1;    // Serial bitpattern into the shift register
+static const int8_t INKJET_SHIFT_CLOCK = -1;   // Shift the register
+static const int8_t INKJET_STORAGE_CLOCK = -1; // Put the pattern in the output register
+static const int8_t INKJET_OUTPUT_ENABLE = -1; // Make the output visible
+static const int8_t INKJET_CLEAR = -1;         // Clear the register to 0
+
+
 /****************************************************************************************************/
 
 // File handling
@@ -715,6 +731,12 @@ class Platform
 		float GetNozzleDiameter() const;
 		void SetNozzleDiameter(float diameter);
 
+		// Fire the inkjet (if any) in the given pattern
+		// If there is no inkjet false is returned; if there is one this returns true
+		// So you can test for inkjet presence with if(platform->Inkjet(0))
+
+		bool Inkjet(int bitPattern);
+
 	private:
 		void ResetChannel(size_t chan); // re-initialise a serial channel
 
@@ -868,6 +890,17 @@ class Platform
 
 		float filamentWidth;
 		float nozzleDiameter;
+
+		// Inkjet
+
+		int8_t inkjetBits;
+		int inkjetFireMicroseconds;
+		int inkjetDelayMicroseconds;
+		int8_t inkjetSerialOut;
+		int8_t inkjetShiftClock;
+		int8_t inkjetStorageClock;
+		int8_t inkjetOutputEnable;
+		int8_t inkjetClear;
 };
 
 // Small class to hold an open file and data relating to it.
