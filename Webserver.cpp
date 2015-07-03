@@ -108,7 +108,7 @@ const float pasvPortTimeout = 10.0;	 					// seconds to wait for the FTP data po
 
 // Constructor and initialisation
 Webserver::Webserver(Platform* p, Network *n) : platform(p), network(n),
-		webserverActive(false), readingConnection(NULL)
+		webserverActive(false), readingConnection(nullptr)
 {
 	httpInterpreter = new HttpInterpreter(p, this, n);
 	ftpInterpreter = new FtpInterpreter(p, this, n);
@@ -118,7 +118,6 @@ Webserver::Webserver(Platform* p, Network *n) : platform(p), network(n),
 void Webserver::Init()
 {
 	// initialise the webserver class
-	gcodeReadIndex = gcodeWriteIndex = 0;
 	lastTime = platform->Time();
 	longWait = lastTime;
 	webserverActive = true;
@@ -151,7 +150,7 @@ void Webserver::Spin()
 
 		// See if we have new data to process
 		NetworkTransaction *req = network->GetTransaction(readingConnection);
-		if (req != NULL)
+		if (req != nullptr)
 		{
 			if (!req->LostConnection())
 			{
@@ -160,11 +159,11 @@ void Webserver::Spin()
 				uint16_t localPort = req->GetLocalPort();
 				switch (localPort)
 				{
-					case ftpPort:		/* FTP */
+					case FTP_PORT:		/* FTP */
 						interpreter = ftpInterpreter;
 						break;
 
-					case telnetPort:	/* Telnet */
+					case TELNET_PORT:	/* Telnet */
 						interpreter = telnetInterpreter;
 						break;
 
@@ -205,20 +204,20 @@ void Webserver::Spin()
 					if (!interpreter->DoFastUpload())
 					{
 						// Ensure this connection won't block everything if anything goes wrong
-						readingConnection = NULL;
+						readingConnection = nullptr;
 					}
 				}
 				// Check if we need to send data to a Telnet client
-				else if (interpreter == telnetInterpreter && telnetInterpreter->HasRemainingData())
+				else if (interpreter == telnetInterpreter && telnetInterpreter->HasDataToSend())
 				{
-					network->SendAndClose(NULL, true);
-					telnetInterpreter->RemainingDataSent();
+					telnetInterpreter->SendGCodeReply();
+					network->SendAndClose(nullptr, true);
 				}
 				// Process other messages
 				else
 				{
 					char c;
-					for (uint16_t i=0; i<500; i++)
+					for(uint16_t i=0; i<500; i++)
 					{
 						if (req->Read(c))
 						{
@@ -226,7 +225,7 @@ void Webserver::Spin()
 							// it from the ready transactions by either calling SendAndClose() or CloseRequest().
 							if (interpreter->CharFromClient(c))
 							{
-								readingConnection = NULL;
+								readingConnection = nullptr;
 								break;
 							}
 						}
@@ -235,7 +234,7 @@ void Webserver::Spin()
 							// We ran out of data before finding a complete request.
 							// This happens when the incoming message length exceeds the TCP MSS.
 							// Check if we need to process another packet on the same connection.
-							readingConnection = (interpreter->NeedMoreData()) ? req->GetConnection() : NULL;
+							readingConnection = (interpreter->NeedMoreData()) ? req->GetConnection() : nullptr;
 							network->CloseTransaction();
 							break;
 						}
@@ -244,7 +243,7 @@ void Webserver::Spin()
 			}
 			else
 			{
-				platform->Message(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
+				platform->MessageF(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
 				network->CloseTransaction();
 			}
 		}
@@ -259,152 +258,83 @@ void Webserver::Exit()
 	httpInterpreter->CancelUpload();
 	ftpInterpreter->CancelUpload();
 
-	platform->Message(BOTH_MESSAGE, "Webserver class exited.\n");
+	platform->Message(GENERIC_MESSAGE, "Webserver class exited.\n");
 	webserverActive = false;
 }
 
 void Webserver::Diagnostics()
 {
-	platform->AppendMessage(BOTH_MESSAGE, "Webserver Diagnostics:\n");
+	platform->Message(GENERIC_MESSAGE, "Webserver Diagnostics:\n");
 }
 
-// Process a null-terminated gcode
-// We intercept four G/M Codes so we can deal with file manipulation and emergencies.  That
-// way things don't get out of sync, and - as a file name can contain
-// a valid G code (!) - confusion is avoided.
-void Webserver::ProcessGcode(const char* gc)
+bool Webserver::GCodeAvailable(const WebSource source) const
 {
-	if (StringStartsWith(gc, "M112") && !isdigit(gc[4]))	// emergency stop
+	switch (source)
 	{
-		reprap.EmergencyStop();
-		gcodeReadIndex = gcodeWriteIndex;		// clear the buffer
-		reprap.GetGCodes()->Reset();
-	}
-	else if (StringStartsWith(gc, "M503") && !isdigit(gc[4]))	// echo config.g file
-	{
-		FileStore *configFile = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
-		if (configFile == NULL)
-		{
-			ResponseToWebInterface("Configuration file not found", true);
-		}
-		else
-		{
-			reprap.MessageToGCodeReply("");
+		case WebSource::HTTP:
+			return httpInterpreter->GCodeAvailable();
 
-			char c;
-			bool readingWhitespace = false;
-			while (configFile->Read(c))
-			{
-				if (!readingWhitespace || (c != ' ' && c != '\t'))
-				{
-					reprap.AppendCharToStatusResponse(c);
-				}
-				readingWhitespace = (c == ' ' || c == '\t');
-			}
-			configFile->Close();
+		case WebSource::Telnet:
+			return telnetInterpreter->GCodeAvailable();
+	}
 
-			telnetInterpreter->HandleGcodeReply(reprap.GetGcodeReply().Pointer());
-		}
-	}
-	else
-	{
-		StoreGcodeData(gc, strlen(gc) + 1);
-	}
+	return false;
 }
 
-// Feeding G Codes to the GCodes class
-bool Webserver::GCodeAvailable()
+char Webserver::ReadGCode(const WebSource source)
 {
-	return gcodeReadIndex != gcodeWriteIndex;
+	switch (source)
+	{
+		case WebSource::HTTP:
+			return httpInterpreter->ReadGCode();
+
+		case WebSource::Telnet:
+			return telnetInterpreter->ReadGCode();
+	}
+
+	return 0;
 }
 
-char Webserver::ReadGCode()
+void Webserver::HandleGCodeReply(const WebSource source, OutputBuffer *reply)
 {
-	char c;
-	if (gcodeReadIndex == gcodeWriteIndex)
+	switch (source)
 	{
-		c = 0;
-	}
-	else
-	{
-		c = gcodeBuffer[gcodeReadIndex];
-		gcodeReadIndex = (gcodeReadIndex + 1u) % gcodeBufferLength;
-	}
-	return c;
-}
+		case WebSource::HTTP:
+			httpInterpreter->HandleGCodeReply(reply);
+			break;
 
-// Process a received string of gcodes
-void Webserver::LoadGcodeBuffer(const char* gc)
-{
-	char gcodeTempBuf[GCODE_LENGTH];
-	uint16_t gtp = 0;
-	bool inComment = false;
-	for (;;)
-	{
-		char c = *gc++;
-		if (c == 0)
-		{
-			gcodeTempBuf[gtp] = 0;
-			ProcessGcode(gcodeTempBuf);
-			return;
-		}
-
-		if (c == '\n')
-		{
-			gcodeTempBuf[gtp] = 0;
-			ProcessGcode(gcodeTempBuf);
-			gtp = 0;
-			inComment = false;
-		}
-		else
-		{
-			if (c == ';')
-			{
-				inComment = true;
-			}
-
-			if (gtp == ARRAY_UPB(gcodeTempBuf))
-			{
-				// gcode is too long, we haven't room for another character and a null
-				if (c != ' ' && !inComment)
-				{
-					platform->Message(BOTH_ERROR_MESSAGE, "Webserver: GCode local buffer overflow.\n");
-					return;
-				}
-				// else we're either in a comment or the current character is a space.
-				// If we're in a comment, we'll silently truncate it.
-				// If the current character is a space, we'll wait until we see a non-comment character before reporting an error,
-				// in case the next character is end-of-line or the start of a comment.
-			}
-			else
-			{
-				gcodeTempBuf[gtp++] = c;
-			}
-		}
+		case WebSource::Telnet:
+			telnetInterpreter->HandleGCodeReply(reply);
+			break;
 	}
 }
 
-// Process a received string of gcodes
-void Webserver::StoreGcodeData(const char* data, size_t len)
+void Webserver::HandleGCodeReply(const WebSource source, const char *reply)
 {
-	if (len > GetGcodeBufferSpace())
+	switch (source)
 	{
-		platform->Message(BOTH_ERROR_MESSAGE, "GCode buffer overflow in Webserver!\n");
+		case WebSource::HTTP:
+			httpInterpreter->HandleGCodeReply(reply);
+			break;
+
+		case WebSource::Telnet:
+			telnetInterpreter->HandleGCodeReply(reply);
+			break;
 	}
-	else
+}
+
+uint16_t Webserver::GetGCodeBufferSpace(const WebSource source) const
+{
+	switch (source)
 	{
-		size_t remaining = gcodeBufferLength - gcodeWriteIndex;
-		if (len <= remaining)
-		{
-			memcpy(gcodeBuffer + gcodeWriteIndex, data, len);
-		}
-		else
-		{
-			memcpy(gcodeBuffer + gcodeWriteIndex, data, remaining);
-			memcpy(gcodeBuffer, data + remaining, len - remaining);
-		}
-		gcodeWriteIndex = (gcodeWriteIndex + len) % gcodeBufferLength;
+		case WebSource::HTTP:
+			return httpInterpreter->GetGCodeBufferSpace();
+
+		case WebSource::Telnet:
+			return telnetInterpreter->GetGCodeBufferSpace();
 	}
+
+	return 0;
 }
 
 // Handle immediate disconnects here (cs will be freed after this call)
@@ -419,11 +349,11 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 	ProtocolInterpreter *interpreter;
 	switch (localPort)
 	{
-		case ftpPort:		/* FTP */
+		case FTP_PORT:		/* FTP */
 			interpreter = ftpInterpreter;
 			break;
 
-		case telnetPort:	/* Telnet */
+		case TELNET_PORT:	/* Telnet */
 			interpreter = telnetInterpreter;
 			break;
 
@@ -439,63 +369,23 @@ void Webserver::ConnectionLost(const ConnectionState *cs)
 				break;
 			}
 
-			platform->Message(BOTH_ERROR_MESSAGE, "Webserver: Connection closed at local port %d, but no handler found!\n", localPort);
+			platform->MessageF(HOST_MESSAGE, "Error: Webserver should handle disconnect event at local port %d, but no handler was found!\n", localPort);
 			return;
 	}
 
 	if (reprap.Debug(moduleWebserver))
 	{
-		platform->Message(HOST_MESSAGE, "Webserver: ConnectionLost called with port %d\n", localPort);
+		platform->MessageF(HOST_MESSAGE, "Webserver: ConnectionLost called with port %d\n", localPort);
 	}
 	interpreter->ConnectionLost(remoteIP, remotePort, localPort);
 
 	// If our reading connection is lost, it will be no longer important which connection is read from first.
 	if (cs == readingConnection)
 	{
-		readingConnection = NULL;
+		readingConnection = nullptr;
 	}
 }
 
-void Webserver::ResponseToWebInterface(const char *s, bool error)
-{
-	if (!webserverActive)
-	{
-		return;
-	}
-
-	if (strlen(s) == 0 && !error)
-	{
-		reprap.MessageToGCodeReply(s);
-		telnetInterpreter->HandleGcodeReply("ok\r\n");
-	}
-	else
-	{
-		if (error)
-		{
-			reprap.MessageToGCodeReply("Error: ");
-			reprap.AppendMessageToGCodeReply(s);
-
-			telnetInterpreter->HandleGcodeReply("Error: ");
-			telnetInterpreter->HandleGcodeReply(s);
-		}
-		else
-		{
-			reprap.MessageToGCodeReply(s);
-			telnetInterpreter->HandleGcodeReply(s);
-		}
-	}
-}
-
-void Webserver::AppendResponseToWebInterface(const char *s)
-{
-	if (!webserverActive)
-	{
-		return;
-	}
-
-	reprap.AppendMessageToGCodeReply(s);
-	telnetInterpreter->HandleGcodeReply(s);
-}
 
 //********************************************************************************************
 //
@@ -507,7 +397,7 @@ ProtocolInterpreter::ProtocolInterpreter(Platform *p, Webserver *ws, Network *n)
 	: platform(p), webserver(ws), network(n)
 {
 	uploadState = notUploading;
-	uploadPointer = NULL;
+	uploadPointer = nullptr;
 	uploadLength = 0;
 	filenameBeingUploaded[0] = 0;
 }
@@ -517,7 +407,7 @@ bool ProtocolInterpreter::StartUpload(FileStore *file)
 {
 	CancelUpload();
 
-	if (file != NULL)
+	if (file != nullptr)
 	{
 		fileBeingUploaded.Set(file);
 		uploadState = uploadOK;
@@ -530,7 +420,7 @@ bool ProtocolInterpreter::StartUpload(FileStore *file)
 }
 
 // Process a received buffer of upload data
-bool ProtocolInterpreter::StoreUploadData(const char* data, unsigned int len)
+bool ProtocolInterpreter::StoreUploadData(const char* data, uint32_t len)
 {
 	if (uploadState == uploadOK)
 	{
@@ -574,7 +464,7 @@ void ProtocolInterpreter::CancelUpload()
 		}
 	}
 	filenameBeingUploaded[0] = 0;
-	uploadPointer = NULL;
+	uploadPointer = nullptr;
 	uploadLength = 0;
 	uploadState = notUploading;
 }
@@ -598,7 +488,7 @@ bool ProtocolInterpreter::DoFastUpload()
 	else if (req->DataLength() > 0)
 	{
 		platform->Message(HOST_MESSAGE, "Webserver: Closing invalid data connection\n");
-		network->SendAndClose(NULL);
+		network->SendAndClose(nullptr);
 		return false;
 	}
 
@@ -625,7 +515,7 @@ void ProtocolInterpreter::FinishUpload(uint32_t fileLength)
 		}
 	}
 
-	uploadPointer = NULL;
+	uploadPointer = nullptr;
 	uploadLength = 0;
 
 	if (uploadState == uploadOK && !fileBeingUploaded.Flush())
@@ -638,7 +528,7 @@ void ProtocolInterpreter::FinishUpload(uint32_t fileLength)
 	if (uploadState == uploadOK && fileLength != 0 && fileBeingUploaded.Length() != fileLength)
 	{
 		uploadState = uploadError;
-		platform->Message(HOST_MESSAGE, "Uploaded file size is different (%u vs. expected %u Bytes)!\n", fileBeingUploaded.Length(), fileLength);
+		platform->MessageF(HOST_MESSAGE, "Uploaded file size is different (%u vs. expected %u Bytes)!\n", fileBeingUploaded.Length(), fileLength);
 	}
 
 	// Close the file
@@ -669,8 +559,10 @@ void ProtocolInterpreter::FinishUpload(uint32_t fileLength)
 Webserver::HttpInterpreter::HttpInterpreter(Platform *p, Webserver *ws, Network *n)
 	: ProtocolInterpreter(p, ws, n), state(doingCommandWord)
 {
+	gcodeReadIndex = gcodeWriteIndex = 0;
+	gcodeReply = nullptr;
 	uploadingTextData = false;
-	numContinuationBytes = 0;
+	numContinuationBytes = seq = 0;
 }
 
 // File Uploads
@@ -729,7 +621,7 @@ bool Webserver::HttpInterpreter::StartUpload(FileStore *file)
 	return ProtocolInterpreter::StartUpload(file);
 }
 
-bool Webserver::HttpInterpreter::StoreUploadData(const char* data, unsigned int len)
+bool Webserver::HttpInterpreter::StoreUploadData(const char* data, uint32_t len)
 {
 	if (uploadState == uploadOK)
 	{
@@ -782,14 +674,14 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 {
 	if (StringEquals(nameOfFileToSend, "/"))
 	{
-		nameOfFileToSend = INDEX_PAGE;
+		nameOfFileToSend = INDEX_PAGE_FILE;
 	}
 	FileStore *fileToSend = platform->GetFileStore(platform->GetWebDir(), nameOfFileToSend, false);
-	if (fileToSend == NULL)
+	if (fileToSend == nullptr)
 	{
-		nameOfFileToSend = FOUR04_FILE;
+		nameOfFileToSend = FOUR04_PAGE_FILE;
 		fileToSend = platform->GetFileStore(platform->GetWebDir(), nameOfFileToSend, false);
-		if (fileToSend == NULL)
+		if (fileToSend == nullptr)
 		{
 			RejectMessage("not found", 404);
 			return;
@@ -832,7 +724,7 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 	}
 	req->Printf("Content-Type: %s\n", contentType);
 
-	if (zip && fileToSend != NULL)
+	if (zip && fileToSend != nullptr)
 	{
 		req->Write("Content-Encoding: gzip\n");
 		req->Printf("Content-Length: %lu", fileToSend->Length());
@@ -844,21 +736,58 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 
 void Webserver::HttpInterpreter::SendGCodeReply()
 {
+	// Only one client may receive the G-Code response. Go through all sessions
+	// and check if this is the client that is intended to receive it, or alternatively
+	// send it if only a single client is connected.
+	bool sendGCodeReply = false;
+	if (gcodeReply != nullptr)
+	{
+		uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
+		for(size_t i=0; i<numActiveSessions; i++)
+		{
+			if (sessions[i].ip == remoteIP)
+			{
+				sendGCodeReply = sessions[i].sendGCodeReply;
+				sessions[i].sendGCodeReply = false;
+			}
+		}
+		sendGCodeReply |= (numActiveSessions == 1);
+	}
+
 	NetworkTransaction *req = network->GetTransaction();
 	req->Write("HTTP/1.1 200 OK\n");
 	req->Write("Content-Type: text/plain\n");
-	req->Printf("Content-Length: %u\n", reprap.GetGcodeReply().strlen());
+	req->Printf("Content-Length: %u\n", sendGCodeReply ? gcodeReply->Length() : 0);
 	req->Write("Connection: close\n\n");
-	req->Write(reprap.GetGcodeReply());
-	network->SendAndClose(NULL);
+	if (sendGCodeReply)
+	{
+		req->Write(gcodeReply);
+		gcodeReply = nullptr;
+	}
+	network->SendAndClose(nullptr);
 }
 
 void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 {
+	// Try to authorize the user automatically to retain compatibility with the old web interface
+	if (!IsAuthenticated() && reprap.NoPasswordSet())
+	{
+		Authenticate();
+	}
+
 	// rr_reply is treated differently, because it (currently) responds as "text/plain"
 	if (IsAuthenticated() && StringEquals(command, "reply"))
 	{
 		SendGCodeReply();
+		return;
+	}
+
+	// We need a valid output buffer to process this request...
+	OutputBuffer *jsonResponse;
+	if (!reprap.AllocateOutput(jsonResponse))
+	{
+		// Should never happen
+		network->SendAndClose(nullptr, false);
 		return;
 	}
 
@@ -867,8 +796,6 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 	bool keepOpen = false;
 	bool mayKeepOpen;
 	bool found;
-	char jsonResponseBuffer[jsonReplyLength];
-	StringRef jsonResponse(jsonResponseBuffer, ARRAY_SIZE(jsonResponseBuffer));
 	if (numQualKeys == 0)
 	{
 		found = GetJsonResponse(command, jsonResponse, "", "", 0, mayKeepOpen);
@@ -878,18 +805,18 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 		found = GetJsonResponse(command, jsonResponse, qualifiers[0].key, qualifiers[0].value, qualifiers[1].key - qualifiers[0].value - 1, mayKeepOpen);
 	}
 
-	if (found)
+	if (!found)
 	{
-		jsonResponseBuffer[ARRAY_UPB(jsonResponseBuffer)] = 0;
-		if (reprap.Debug(moduleWebserver))
+		if (!IsAuthenticated())
 		{
-			platform->Message(HOST_MESSAGE, "JSON response: %s queued\n", jsonResponseBuffer);
+			// Send an error message and stop here
+			RejectMessage("Not authorized", 500);
+			return;
 		}
-	}
-	else
-	{
-		jsonResponseBuffer[0] = 0;
-		platform->Message(HOST_MESSAGE, "KnockOut request: %s not recognised\n", command);
+		else
+		{
+			platform->MessageF(HOST_MESSAGE, "KnockOut request: %s not recognised\n", command);
+		}
 	}
 
 	if (mayKeepOpen)
@@ -899,19 +826,20 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 		{
 			if (StringEquals(headers[i].key, "Connection"))
 			{
-// Comment out the following line to disable persistent connections
+				// Comment out the following line to disable persistent connections
 				keepOpen = StringEquals(headers[i].value, "keep-alive");
 				break;
 			}
 		}
 	}
+
 	req->Write("HTTP/1.1 200 OK\n");
 	req->Write("Content-Type: application/json\n");
-	req->Printf("Content-Length: %u\n", jsonResponse.strlen());
+	req->Printf("Content-Length: %u\n", (jsonResponse != nullptr) ? jsonResponse->Length() : 0);
 	req->Printf("Connection: %s\n\n", keepOpen ? "keep-alive" : "close");
 	req->Write(jsonResponse);
 
-	network->SendAndClose(NULL, keepOpen);
+	network->SendAndClose(nullptr, keepOpen);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -920,47 +848,40 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 
 // Get the Json response for this command.
 // 'value' is null-terminated, but we also pass its length in case it contains embedded nulls, which matters when uploading files.
-bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef& response, const char* key, const char* value, size_t valueLength, bool& keepOpen)
+bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuffer *&response, const char* key, const char* value, size_t valueLength, bool& keepOpen)
 {
 	keepOpen = false;	// assume we don't want to persist the connection
 	bool found = true;	// assume success
-
-	if (!IsAuthenticated() && reprap.NoPasswordSet())
-	{
-		// Try to allocate a new HTTP session even if this is no connect request,
-		// because we may need to know if a POST upload is in progress.
-		Authenticate();
-	}
 
 	if (StringEquals(request, "connect") && StringEquals(key, "password"))
 	{
 		if (IsAuthenticated())
 		{
 			// This IP is already authenticated, no need to check the password again
-			response.copy("{\"err\":0}");
+			response->copy("{\"err\":0}");
 		}
 		else if (reprap.CheckPassword(value))
 		{
 			if (Authenticate())
 			{
 				// This is only possible if we have at least one HTTP session left
-				response.copy("{\"err\":0}");
+				response->copy("{\"err\":0}");
 			}
 			else
 			{
 				// Otherwise report an error
-				response.copy("{\"err\":2}");
+				response->copy("{\"err\":2}");
 			}
 		}
 		else
 		{
 			// Wrong password
-			response.copy("{\"err\":1}");
+			response->copy("{\"err\":1}");
 		}
 	}
 	else if (!IsAuthenticated())
 	{
-		// Don't respond if this IP is not authenticated
+		// Return error message if the user could not be authenticated
 		found = false;
 	}
 	else
@@ -970,7 +891,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		if (StringEquals(request, "disconnect"))
 		{
 			RemoveAuthentication();
-			response.copy("{\"err\":0}");
+			response->copy("{\"err\":0}");
 		}
 		else if (StringEquals(request, "status"))
 		{
@@ -984,22 +905,34 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 					type = 1;
 				}
 
-				reprap.GetStatusResponse(response, type, true);
+				reprap.ReleaseOutput(response);
+				response = reprap.GetStatusResponse(type, true);
 			}
 			else
 			{
 				// Deprecated
-				reprap.GetLegacyStatusResponse(response, 1, 0);
+				reprap.ReleaseOutput(response);
+				response = reprap.GetLegacyStatusResponse(1, 0);
 			}
 		}
 		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
 		{
-			webserver->LoadGcodeBuffer(value);
-			response.printf("{\"buff\":%u}", webserver->GetGcodeBufferSpace());
+			uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
+			for(size_t i=0; i<numActiveSessions; i++)
+			{
+				if (sessions[i].ip == remoteIP)
+				{
+					sessions[i].sendGCodeReply = true;
+					break;
+				}
+			}
+
+			LoadGcodeBuffer(value);
+			response->printf("{\"buff\":%u}", GetGCodeBufferSpace());
 		}
 		else if (StringEquals(request, "upload"))
 		{
-			response.printf("{\"err\":%d}", (uploadState == uploadOK && uploadedBytes == postFileLength) ? 0 : 1);
+			response->printf("{\"err\":%d}", (uploadState == uploadOK && uploadedBytes == postFileLength) ? 0 : 1);
 		}
 		else if (StringEquals(request, "upload_begin") && StringEquals(key, "name"))
 		{
@@ -1023,7 +956,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		}
 		else if (StringEquals(request, "upload_end") && StringEquals(key, "size"))
 		{
-			uint32_t fileLength = strtoul(value, NULL, 10);
+			uint32_t fileLength = strtoul(value, nullptr, 10);
 			FinishUpload(fileLength);
 
 			GetJsonUploadResponse(response);
@@ -1032,22 +965,23 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 		else if (StringEquals(request, "upload_cancel"))
 		{
 			CancelUpload();
-			response.copy("{\"err\":0}");
+			response->copy("{\"err\":0}");
 		}
 		else if (StringEquals(request, "delete") && StringEquals(key, "name"))
 		{
 			bool ok = platform->GetMassStorage()->Delete("0:/", value);
-			response.printf("{\"err\":%d}", (ok) ? 0 : 1);
+			response->printf("{\"err\":%d}", (ok) ? 0 : 1);
 		}
 		else if (StringEquals(request, "files"))
 		{
-			// TODO: get rid of GetFilesResponse and write directly to NetworkTransaction!
 			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-			reprap.GetFilesResponse(response, dir, false);
+			reprap.ReleaseOutput(response);
+			response = reprap.GetFilesResponse(dir, false);
 		}
 		else if (StringEquals(request, "fileinfo"))
 		{
-			reprap.GetPrintMonitor()->GetFileInfoResponse(response, (StringEquals(key, "name")) ? value : NULL);
+			reprap.ReleaseOutput(response);
+			response = reprap.GetPrintMonitor()->GetFileInfoResponse((StringEquals(key, "name")) ? value : nullptr);
 		}
 		else if (StringEquals(request, "move"))
 		{
@@ -1055,26 +989,27 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 			{
 				if (StringEquals(key, "old") && StringEquals(qualifiers[1].key, "new"))
 				{
-					response.printf("{\"err\":%d}", platform->GetMassStorage()->Rename(value, qualifiers[1].value) ? 1 : 0);
+					response->printf("{\"err\":%d}", platform->GetMassStorage()->Rename(value, qualifiers[1].value) ? 1 : 0);
 				}
 				else
 				{
-					response.printf("{\"err\":1}");
+					response->printf("{\"err\":1}");
 				}
 			}
 			else
 			{
-				response.printf("{\"err\":1}");
+				response->printf("{\"err\":1}");
 			}
 		}
 		else if (StringEquals(request, "mkdir") && StringEquals(key, "dir"))
 		{
 			bool ok = (platform->GetMassStorage()->MakeDirectory(value));
-			response.printf("{\"err\":%d}", (ok) ? 0 : 1);
+			response->printf("{\"err\":%d}", (ok) ? 0 : 1);
 		}
 		else if (StringEquals(request, "config"))
 		{
-			reprap.GetConfigResponse(response);
+			reprap.ReleaseOutput(response);
+			response = reprap.GetConfigResponse();
 		}
 		else
 		{
@@ -1085,9 +1020,9 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, StringRef&
 	return found;
 }
 
-void Webserver::HttpInterpreter::GetJsonUploadResponse(StringRef& response)
+void Webserver::HttpInterpreter::GetJsonUploadResponse(OutputBuffer *response)
 {
-	response.printf("{\"ubuff\":%u,\"err\":%d}", webUploadBufferSize, (uploadState == uploadOK) ? 0 : 1);
+	response->printf("{\"ubuff\":%u,\"err\":%d}", webUploadBufferSize, (uploadState == uploadOK) ? 0 : 1);
 }
 
 void Webserver::HttpInterpreter::ResetState()
@@ -1135,7 +1070,7 @@ void Webserver::HttpInterpreter::ConnectionLost(uint32_t remoteIP, uint16_t remo
 			{
 				if (reprap.Debug(moduleWebserver))
 				{
-					platform->Message(HOST_MESSAGE, "POST upload for '%s' has been cancelled!\n", filenameBeingUploaded);
+					platform->MessageF(HOST_MESSAGE, "POST upload for '%s' has been cancelled!\n", filenameBeingUploaded);
 				}
 				CancelUpload(remoteIP);
 				break;
@@ -1167,310 +1102,310 @@ bool Webserver::HttpInterpreter::CharFromClient(char c)
 {
 	switch(state)
 	{
-	case doingCommandWord:
-		switch(c)
-		{
-		case '\n':
-			clientMessage[clientPointer++] = 0;
-			++numCommandWords;
-			numHeaderKeys = 0;
-			headers[0].key = clientMessage + clientPointer;
-			state = doingHeaderKey;
-			break;
-		case '\r':
-			break;
-		case ' ':
-		case '\t':
-			clientMessage[clientPointer++] = 0;
-			if (numCommandWords < maxCommandWords)
+		case doingCommandWord:
+			switch(c)
 			{
-				++numCommandWords;
-				commandWords[numCommandWords] = clientMessage + clientPointer;
-				if (numCommandWords == 1)
-				{
-					state = doingFilename;
-				}
+				case '\n':
+					clientMessage[clientPointer++] = 0;
+					++numCommandWords;
+					numHeaderKeys = 0;
+					headers[0].key = clientMessage + clientPointer;
+					state = doingHeaderKey;
+					break;
+				case '\r':
+					break;
+				case ' ':
+				case '\t':
+					clientMessage[clientPointer++] = 0;
+					if (numCommandWords < maxCommandWords)
+					{
+						++numCommandWords;
+						commandWords[numCommandWords] = clientMessage + clientPointer;
+						if (numCommandWords == 1)
+						{
+							state = doingFilename;
+						}
+					}
+					else
+					{
+						return RejectMessage("too many command words");
+					}
+					break;
+				default:
+					clientMessage[clientPointer++] = c;
+					break;
+			}
+			break;
+
+		case doingFilename:
+			switch(c)
+			{
+				case '\n':
+					clientMessage[clientPointer++] = 0;
+					++numCommandWords;
+					numQualKeys = 0;
+					numHeaderKeys = 0;
+					headers[0].key = clientMessage + clientPointer;
+					state = doingHeaderKey;
+					break;
+				case '?':
+					clientMessage[clientPointer++] = 0;
+					++numCommandWords;
+					numQualKeys = 0;
+					qualifiers[0].key = clientMessage + clientPointer;
+					state = doingQualifierKey;
+					break;
+				case '%':
+					state = doingFilenameEsc1;
+					break;
+				case '\r':
+					break;
+				case ' ':
+				case '\t':
+					clientMessage[clientPointer++] = 0;
+					if (numCommandWords < maxCommandWords)
+					{
+						++numCommandWords;
+						commandWords[numCommandWords] = clientMessage + clientPointer;
+						state = doingCommandWord;
+					}
+					else
+					{
+						return RejectMessage("too many command words");
+					}
+					break;
+				default:
+					clientMessage[clientPointer++] = c;
+					break;
+			}
+			break;
+
+		case doingQualifierKey:
+			switch(c)
+			{
+				case '=':
+					clientMessage[clientPointer++] = 0;
+					qualifiers[numQualKeys].value = clientMessage + clientPointer;
+					++numQualKeys;
+					state = doingQualifierValue;
+					break;
+				case '\n':	// key with no value
+				case ' ':
+				case '\t':
+				case '\r':
+				case '%':	// none of our keys needs escaping, so treat an escape within a key as an error
+				case '&':	// key with no value
+					return RejectMessage("bad qualifier key");
+				default:
+					clientMessage[clientPointer++] = c;
+					break;
+			}
+			break;
+
+		case doingQualifierValue:
+			switch(c)
+			{
+				case '\n':
+					clientMessage[clientPointer++] = 0;
+					qualifiers[numQualKeys].key = clientMessage + clientPointer;	// so that we can read the whole value even if it contains a null
+					numHeaderKeys = 0;
+					headers[0].key = clientMessage + clientPointer;
+					state = doingHeaderKey;
+					break;
+				case ' ':
+				case '\t':
+					clientMessage[clientPointer++] = 0;
+					qualifiers[numQualKeys].key = clientMessage + clientPointer;	// so that we can read the whole value even if it contains a null
+					++numCommandWords;
+					commandWords[numCommandWords] = clientMessage + clientPointer;
+					state = doingCommandWord;
+					break;
+				case '\r':
+					break;
+				case '%':
+					state = doingQualifierValueEsc1;
+					break;
+				case '&':
+					// Another variable is coming
+					clientMessage[clientPointer++] = 0;
+					qualifiers[numQualKeys].key = clientMessage + clientPointer;	// so that we can read the whole value even if it contains a null
+					if (numQualKeys < maxQualKeys)
+					{
+						state = doingQualifierKey;
+					}
+					else
+					{
+						return RejectMessage("too many keys in qualifier");
+					}
+					break;
+				case '+':
+					clientMessage[clientPointer++] = ' ';
+					break;
+				default:
+					clientMessage[clientPointer++] = c;
+					break;
+			}
+			break;
+
+		case doingFilenameEsc1:
+		case doingQualifierValueEsc1:
+			if (c >= '0' && c <= '9')
+			{
+				decodeChar = (c - '0') << 4;
+				state = (HttpState)(state + 1);
+			}
+			else if (c >= 'A' && c <= 'F')
+			{
+				decodeChar = (c - ('A' - 10)) << 4;
+				state = (HttpState)(state + 1);
 			}
 			else
 			{
-				return RejectMessage("too many command words");
+				return RejectMessage(badEscapeResponse);
 			}
 			break;
-		default:
-			clientMessage[clientPointer++] = c;
-			break;
-		}
-		break;
 
-	case doingFilename:
-		switch(c)
-		{
-		case '\n':
-			clientMessage[clientPointer++] = 0;
-			++numCommandWords;
-			numQualKeys = 0;
-			numHeaderKeys = 0;
-			headers[0].key = clientMessage + clientPointer;
-			state = doingHeaderKey;
-			break;
-		case '?':
-			clientMessage[clientPointer++] = 0;
-			++numCommandWords;
-			numQualKeys = 0;
-			qualifiers[0].key = clientMessage + clientPointer;
-			state = doingQualifierKey;
-			break;
-		case '%':
-			state = doingFilenameEsc1;
-			break;
-		case '\r':
-			break;
-		case ' ':
-		case '\t':
-			clientMessage[clientPointer++] = 0;
-			if (numCommandWords < maxCommandWords)
+		case doingFilenameEsc2:
+		case doingQualifierValueEsc2:
+			if (c >= '0' && c <= '9')
 			{
-				++numCommandWords;
-				commandWords[numCommandWords] = clientMessage + clientPointer;
-				state = doingCommandWord;
+				clientMessage[clientPointer++] = decodeChar | (c - '0');
+				state = (HttpState)(state - 2);
+			}
+			else if (c >= 'A' && c <= 'F')
+			{
+				clientMessage[clientPointer++] = decodeChar | c - ('A' - 10);
+				state = (HttpState)(state - 2);
 			}
 			else
 			{
-				return RejectMessage("too many command words");
+				return RejectMessage(badEscapeResponse);
 			}
 			break;
-		default:
-			clientMessage[clientPointer++] = c;
-			break;
-		}
-		break;
 
-	case doingQualifierKey:
-		switch(c)
-		{
-		case '=':
-			clientMessage[clientPointer++] = 0;
-			qualifiers[numQualKeys].value = clientMessage + clientPointer;
-			++numQualKeys;
-			state = doingQualifierValue;
-			break;
-		case '\n':	// key with no value
-		case ' ':
-		case '\t':
-		case '\r':
-		case '%':	// none of our keys needs escaping, so treat an escape within a key as an error
-		case '&':	// key with no value
-			return RejectMessage("bad qualifier key");
-		default:
-			clientMessage[clientPointer++] = c;
-			break;
-		}
-		break;
-
-	case doingQualifierValue:
-		switch(c)
-		{
-		case '\n':
-			clientMessage[clientPointer++] = 0;
-			qualifiers[numQualKeys].key = clientMessage + clientPointer;	// so that we can read the whole value even if it contains a null
-			numHeaderKeys = 0;
-			headers[0].key = clientMessage + clientPointer;
-			state = doingHeaderKey;
-			break;
-		case ' ':
-		case '\t':
-			clientMessage[clientPointer++] = 0;
-			qualifiers[numQualKeys].key = clientMessage + clientPointer;	// so that we can read the whole value even if it contains a null
-			++numCommandWords;
-			commandWords[numCommandWords] = clientMessage + clientPointer;
-			state = doingCommandWord;
-			break;
-		case '\r':
-			break;
-		case '%':
-			state = doingQualifierValueEsc1;
-			break;
-		case '&':
-			// Another variable is coming
-			clientMessage[clientPointer++] = 0;
-			qualifiers[numQualKeys].key = clientMessage + clientPointer;	// so that we can read the whole value even if it contains a null
-			if (numQualKeys < maxQualKeys)
+		case doingHeaderKey:
+			switch(c)
 			{
-				state = doingQualifierKey;
+				case '\n':
+					if (clientMessage + clientPointer == headers[numHeaderKeys].key)	// if the key hasn't started yet, then this is the blank line at the end
+					{
+						if (ProcessMessage())
+						{
+							ResetState();
+							return true;
+						}
+					}
+					else
+					{
+						return RejectMessage("unexpected newline");
+					}
+					break;
+				case '\r':
+					break;
+				case ':':
+					if (numHeaderKeys == maxHeaders - 1)
+					{
+						return RejectMessage("too many header key-value pairs");
+					}
+					clientMessage[clientPointer++] = 0;
+					headers[numHeaderKeys].value = clientMessage + clientPointer;
+					++numHeaderKeys;
+					state = expectingHeaderValue;
+					break;
+				default:
+					clientMessage[clientPointer++] = c;
+					break;
 			}
-			else
+			break;
+
+		case expectingHeaderValue:
+			if (c == ' ' || c == '\t')
 			{
-				return RejectMessage("too many keys in qualifier");
+				break;		// ignore spaces between header key and value
 			}
-			break;
-		case '+':
-			clientMessage[clientPointer++] = ' ';
-			break;
-		default:
-			clientMessage[clientPointer++] = c;
-			break;
-		}
-		break;
-
-	case doingFilenameEsc1:
-	case doingQualifierValueEsc1:
-		if (c >= '0' && c <= '9')
-		{
-			decodeChar = (c - '0') << 4;
-			state = (HttpState)(state + 1);
-		}
-		else if (c >= 'A' && c <= 'F')
-		{
-			decodeChar = (c - ('A' - 10)) << 4;
-			state = (HttpState)(state + 1);
-		}
-		else
-		{
-			return RejectMessage(badEscapeResponse);
-		}
-		break;
-
-	case doingFilenameEsc2:
-	case doingQualifierValueEsc2:
-		if (c >= '0' && c <= '9')
-		{
-			clientMessage[clientPointer++] = decodeChar | (c - '0');
-			state = (HttpState)(state - 2);
-		}
-		else if (c >= 'A' && c <= 'F')
-		{
-			clientMessage[clientPointer++] = decodeChar | c - ('A' - 10);
-			state = (HttpState)(state - 2);
-		}
-		else
-		{
-			return RejectMessage(badEscapeResponse);
-		}
-		break;
-
-	case doingHeaderKey:
-		switch(c)
-		{
-		case '\n':
-			if (clientMessage + clientPointer == headers[numHeaderKeys].key)	// if the key hasn't started yet, then this is the blank line at the end
-			{
-				if (ProcessMessage())
-				{
-					ResetState();
-					return true;
-				}
-			}
-			else
-			{
-				return RejectMessage("unexpected newline");
-			}
-			break;
-		case '\r':
-			break;
-		case ':':
-			if (numHeaderKeys == maxHeaders - 1)
-			{
-				return RejectMessage("too many header key-value pairs");
-			}
-			clientMessage[clientPointer++] = 0;
-			headers[numHeaderKeys].value = clientMessage + clientPointer;
-			++numHeaderKeys;
-			state = expectingHeaderValue;
-			break;
-		default:
-			clientMessage[clientPointer++] = c;
-			break;
-		}
-		break;
-
-	case expectingHeaderValue:
-		if (c == ' ' || c == '\t')
-		{
-			break;		// ignore spaces between header key and value
-		}
-		state = doingHeaderValue;
-		// no break
-
-	case doingHeaderValue:
-		if (c == '\n')
-		{
-			state = doingHeaderContinuation;
-		}
-		else if (c != '\r')
-		{
-			clientMessage[clientPointer++] = c;
-		}
-		break;
-
-	case doingHeaderContinuation:
-		switch(c)
-		{
-		case ' ':
-		case '\t':
-			// It's a continuation of the previous value
-			clientMessage[clientPointer++] = c;
 			state = doingHeaderValue;
-			break;
-		case '\n':
-			// It's the blank line
-			clientMessage[clientPointer] = 0;
-			if (ProcessMessage())
+			// no break
+
+		case doingHeaderValue:
+			if (c == '\n')
 			{
+				state = doingHeaderContinuation;
+			}
+			else if (c != '\r')
+			{
+				clientMessage[clientPointer++] = c;
+			}
+			break;
+
+		case doingHeaderContinuation:
+			switch(c)
+			{
+				case ' ':
+				case '\t':
+					// It's a continuation of the previous value
+					clientMessage[clientPointer++] = c;
+					state = doingHeaderValue;
+					break;
+				case '\n':
+					// It's the blank line
+					clientMessage[clientPointer] = 0;
+					if (ProcessMessage())
+					{
+						ResetState();
+						return true;
+					}
+					// no break
+				case '\r':
+					break;
+				default:
+					// It's a new key
+					if (clientPointer + 3 <= ARRAY_SIZE(clientMessage))
+					{
+						clientMessage[clientPointer++] = 0;
+						headers[numHeaderKeys].key = clientMessage + clientPointer;
+						clientMessage[clientPointer++] = c;
+						state = doingHeaderKey;
+					}
+					else
+					{
+						return RejectMessage(overflowResponse);
+					}
+					break;
+			}
+			break;
+
+		case doingPost:
+			clientMessage[clientPointer++] = c;
+			uploadedBytes++;
+
+			if (uploadedBytes == postFileLength)
+			{
+				StoreUploadData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
+				FinishUpload(postFileLength);
+
+				SendJsonResponse("upload");
+
+				// Reset state
+				uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
+				for(size_t i=0; i<numActiveSessions; i++)
+				{
+					if (sessions[i].ip == remoteIP && sessions[i].isPostUploading)
+					{
+						sessions[i].isPostUploading = false;
+						sessions[i].lastQueryTime = platform->Time();
+						break;
+					}
+				}
+				uploadState = notUploading;
 				ResetState();
+
 				return true;
 			}
-			// no break
-		case '\r':
+
 			break;
+
 		default:
-			// It's a new key
-			if (clientPointer + 3 <= ARRAY_SIZE(clientMessage))
-			{
-				clientMessage[clientPointer++] = 0;
-				headers[numHeaderKeys].key = clientMessage + clientPointer;
-				clientMessage[clientPointer++] = c;
-				state = doingHeaderKey;
-			}
-			else
-			{
-				return RejectMessage(overflowResponse);
-			}
 			break;
-		}
-		break;
-
-	case doingPost:
-		clientMessage[clientPointer++] = c;
-		uploadedBytes++;
-
-		if (uploadedBytes == postFileLength)
-		{
-			StoreUploadData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
-			FinishUpload(postFileLength);
-
-			SendJsonResponse("upload");
-
-			// Reset state
-			uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
-			for(unsigned int i=0; i<numActiveSessions; i++)
-			{
-				if (sessions[i].ip == remoteIP && sessions[i].isPostUploading)
-				{
-					sessions[i].isPostUploading = false;
-					sessions[i].lastQueryTime = platform->Time();
-					break;
-				}
-			}
-			uploadState = notUploading;
-			ResetState();
-
-			return true;
-		}
-
-		break;
-
-	default:
-		break;
 	}
 
 	if (clientPointer == ARRAY_SIZE(clientMessage))
@@ -1485,16 +1420,16 @@ bool Webserver::HttpInterpreter::CharFromClient(char c)
 bool Webserver::HttpInterpreter::ProcessMessage()
 {
 	if (reprap.Debug(moduleWebserver))
-    {
-    	platform->Message(HOST_MESSAGE, "HTTP requests with %d command words:", numCommandWords);
-    	for (unsigned int i = 0; i < numCommandWords; ++i)
-    	{
-    		platform->AppendMessage(HOST_MESSAGE, " %s", commandWords[i]);
-    	}
-    	platform->AppendMessage(HOST_MESSAGE, "\n");
-    }
+	{
+		platform->MessageF(HOST_MESSAGE, "HTTP requests with %d command words:", numCommandWords);
+		for (size_t i = 0; i < numCommandWords; ++i)
+		{
+			platform->MessageF(HOST_MESSAGE, " %s", commandWords[i]);
+		}
+		platform->Message(HOST_MESSAGE, "\n");
+	}
 
-    if (numCommandWords < 2)
+	if (numCommandWords < 2)
 	{
 		return RejectMessage("too few command words");
 	}
@@ -1515,7 +1450,7 @@ bool Webserver::HttpInterpreter::ProcessMessage()
 		}
 		return true;
 	}
-	else if (StringEquals(commandWords[0], "POST"))
+	else if (IsAuthenticated() && StringEquals(commandWords[0], "POST"))
 	{
 		bool isUploadRequest = (StringEquals(commandWords[1], KO_START "upload"));
 		isUploadRequest |= (commandWords[1][0] == '/' && StringEquals(commandWords[1] + 1, KO_START "upload"));
@@ -1587,18 +1522,18 @@ bool Webserver::HttpInterpreter::ProcessMessage()
 	}
 	else
 	{
-		return RejectMessage("Unknown message type");
+		return RejectMessage("Unknown message type or not authenticated");
 	}
 }
 
 // Reject the current message. Always returns true to indicate that we should stop reading the message.
 bool Webserver::HttpInterpreter::RejectMessage(const char* response, unsigned int code)
 {
-	platform->Message(HOST_MESSAGE, "Webserver: rejecting message with: %s\n", response);
+	platform->MessageF(HOST_MESSAGE, "Webserver: rejecting message with: %s\n", response);
 
 	NetworkTransaction *req = network->GetTransaction();
 	req->Printf("HTTP/1.1 %u %s\nConnection: close\n\n", code, response);
-	network->SendAndClose(NULL);
+	network->SendAndClose(nullptr);
 
 	ResetState();
 
@@ -1610,9 +1545,10 @@ bool Webserver::HttpInterpreter::Authenticate()
 {
 	if (numActiveSessions < maxSessions)
 	{
-		sessions[numActiveSessions].isPostUploading = false;
 		sessions[numActiveSessions].ip = network->GetTransaction()->GetRemoteIP();
 		sessions[numActiveSessions].lastQueryTime = platform->Time();
+		sessions[numActiveSessions].isPostUploading = false;
+		sessions[numActiveSessions].sendGCodeReply = false;
 		numActiveSessions++;
 		return true;
 	}
@@ -1648,7 +1584,7 @@ void Webserver::HttpInterpreter::UpdateAuthentication()
 void Webserver::HttpInterpreter::RemoveAuthentication()
 {
 	uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
-	for(size_t i=numActiveSessions - 1; i>=0; i--)
+	for(int i=numActiveSessions - 1; i>=0; i--)
 	{
 		if (sessions[i].ip == remoteIP)
 		{
@@ -1678,6 +1614,161 @@ void Webserver::HttpInterpreter::CheckSessions()
 	}
 }
 
+// Process a received string of gcodes
+void Webserver::HttpInterpreter::LoadGcodeBuffer(const char* gc)
+{
+	char gcodeTempBuf[GCODE_LENGTH];
+	uint16_t gtp = 0;
+	bool inComment = false;
+	for (;;)
+	{
+		char c = *gc++;
+		if (c == 0)
+		{
+			gcodeTempBuf[gtp] = 0;
+			ProcessGcode(gcodeTempBuf);
+			return;
+		}
+
+		if (c == '\n')
+		{
+			gcodeTempBuf[gtp] = 0;
+			ProcessGcode(gcodeTempBuf);
+			gtp = 0;
+			inComment = false;
+		}
+		else
+		{
+			if (c == ';')
+			{
+				inComment = true;
+			}
+
+			if (gtp == ARRAY_UPB(gcodeTempBuf))
+			{
+				// gcode is too long, we haven't room for another character and a null
+				if (c != ' ' && !inComment)
+				{
+					platform->Message(HOST_MESSAGE, "Error: GCode local buffer overflow in HTTP webserver.\n");
+					return;
+				}
+				// else we're either in a comment or the current character is a space.
+				// If we're in a comment, we'll silently truncate it.
+				// If the current character is a space, we'll wait until we see a non-comment character before reporting an error,
+				// in case the next character is end-of-line or the start of a comment.
+			}
+			else
+			{
+				gcodeTempBuf[gtp++] = c;
+			}
+		}
+	}
+}
+
+// Process a null-terminated gcode
+// We intercept one M Codes so we can deal with emergencies.  That
+// way things don't get out of sync, and - as a file name can contain
+// a valid G code (!) - confusion is avoided.
+void Webserver::HttpInterpreter::ProcessGcode(const char* gc)
+{
+	if (StringStartsWith(gc, "M112") && !isdigit(gc[4]))	// emergency stop
+	{
+		reprap.EmergencyStop();
+		gcodeReadIndex = gcodeWriteIndex;					// clear the buffer
+		reprap.GetGCodes()->Reset();
+	}
+	else
+	{
+		StoreGcodeData(gc, strlen(gc) + 1);
+	}
+}
+
+// Process a received string of gcodes
+void Webserver::HttpInterpreter::StoreGcodeData(const char* data, uint16_t len)
+{
+	if (len > GetGCodeBufferSpace())
+	{
+		platform->Message(HOST_MESSAGE, "Error: GCode buffer overflow in HTTP Webserver!\n");
+	}
+	else
+	{
+		uint16_t remaining = gcodeBufferLength - gcodeWriteIndex;
+		if (len <= remaining)
+		{
+			memcpy(gcodeBuffer + gcodeWriteIndex, data, len);
+		}
+		else
+		{
+			memcpy(gcodeBuffer + gcodeWriteIndex, data, remaining);
+			memcpy(gcodeBuffer, data + remaining, len - remaining);
+		}
+		gcodeWriteIndex = (gcodeWriteIndex + len) % gcodeBufferLength;
+	}
+}
+
+// Feeding G Codes to the GCodes class
+char Webserver::HttpInterpreter::ReadGCode()
+{
+	char c;
+	if (gcodeReadIndex == gcodeWriteIndex)
+	{
+		c = 0;
+	}
+	else
+	{
+		c = gcodeBuffer[gcodeReadIndex];
+		gcodeReadIndex = (gcodeReadIndex + 1u) % gcodeBufferLength;
+	}
+	return c;
+}
+
+// Handle a G Code reply from the GCodes class
+void Webserver::HttpInterpreter::HandleGCodeReply(OutputBuffer *reply)
+{
+	if (reply != nullptr)
+	{
+		if (numActiveSessions > 0)
+		{
+			if (gcodeReply == nullptr)
+			{
+				gcodeReply = reply;
+				seq++;
+			}
+			else
+			{
+				gcodeReply->Append(reply);
+			}
+		}
+		else
+		{
+			// Don't use buffers that may never get released...
+			// TODO: Maybe add a G-Code to override this behaviour?
+			while (reply != nullptr)
+			{
+				reply = reprap.ReleaseOutput(reply);
+			}
+		}
+	}
+}
+
+void Webserver::HttpInterpreter::HandleGCodeReply(const char *reply)
+{
+	if (numActiveSessions > 0)
+	{
+		if (gcodeReply == nullptr)
+		{
+			if (!reprap.AllocateOutput(gcodeReply))
+			{
+				// No more space available. Should never happen
+				return;
+			}
+			seq++;
+		}
+
+		gcodeReply->cat(reply);
+	}
+}
+
 
 //********************************************************************************************
 //
@@ -1703,9 +1794,9 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 	switch (state)
 	{
 		case waitingForPasvPort:
-			if (req->GetLocalPort() == ftpPort)
+			if (req->GetLocalPort() == FTP_PORT)
 			{
-				network->SendAndClose(NULL);
+				network->SendAndClose(nullptr);
 				return;
 			}
 
@@ -1717,10 +1808,10 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 		default:
 			// I (zpl) wanted to allow only one active FTP session, but some FTP programs
 			// like FileZilla open a second connection for transfers for some reason.
-			if (req->GetLocalPort() == ftpPort)
+			if (req->GetLocalPort() == FTP_PORT)
 			{
 				req->Write("220 RepRapPro Ormerod\r\n");
-				network->SendAndClose(NULL, true);
+				network->SendAndClose(nullptr, true);
 
 				ResetState();
 			}
@@ -1731,7 +1822,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 
 void Webserver::FtpInterpreter::ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort)
 {
-	if (localPort != ftpPort)
+	if (localPort != FTP_PORT)
 	{
 		// Close the data port
 		network->CloseDataPort();
@@ -1786,7 +1877,7 @@ bool Webserver::FtpInterpreter::CharFromClient(char c)
 
 			if (reprap.Debug(moduleWebserver))
 			{
-				platform->Message(HOST_MESSAGE, "FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
+				platform->MessageF(HOST_MESSAGE, "FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
 			}
 
 			if (clientPointer > 1) // only process a new line if we actually received data
@@ -1953,7 +2044,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 				bool ok;
 				if (filename[0] == '/')
 				{
-					ok = platform->GetMassStorage()->Delete(NULL, filename);
+					ok = platform->GetMassStorage()->Delete(nullptr, filename);
 				}
 				else
 				{
@@ -1977,7 +2068,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 				bool ok;
 				if (filename[0] == '/')
 				{
-					ok = platform->GetMassStorage()->Delete(NULL, filename);
+					ok = platform->GetMassStorage()->Delete(nullptr, filename);
 				}
 				else
 				{
@@ -2109,31 +2200,32 @@ void Webserver::FtpInterpreter::ProcessLine()
 				strncpy(ftpResponse, "150 Here comes the directory listing.\r\n", ftpResponseLength);
 				NetworkTransaction *ftp_req = network->GetTransaction();
 				ftp_req->Write(ftpResponse);
-				network->SendAndClose(NULL, true);
+				network->SendAndClose(nullptr, true);
 
 				// send file list via data port
 				if (network->AcquireDataTransaction())
 				{
-					FileInfo file_info;
-					if (platform->GetMassStorage()->FindFirst(currentDir, file_info))
+					FileInfo fileInfo;
+					if (platform->GetMassStorage()->FindFirst(currentDir, fileInfo))
 					{
 						NetworkTransaction *data_req = network->GetTransaction();
-						char line[300];
+						char line[ftpFileListLineLength];
 
 						do {
 							// Example for a typical UNIX-like file list:
 							// "drwxr-xr-x    2 ftp      ftp             0 Apr 11 2013 bin\r\n"
-							char dirChar = (file_info.isDirectory) ? 'd' : '-';
+							char dirChar = (fileInfo.isDirectory) ? 'd' : '-';
+							const uint8_t month = (fileInfo.month == 0) ? 1 : fileInfo.month; // without this check FileZilla won't display incomplete uploads properly
 							snprintf(line, ARRAY_SIZE(line), "%crw-rw-rw- 1 ftp ftp %13d %s %02d %04d %s\r\n",
-									dirChar, file_info.size, platform->GetMassStorage()->GetMonthName(file_info.month),
-									file_info.day, file_info.year, file_info.fileName);
+									dirChar, fileInfo.size, platform->GetMassStorage()->GetMonthName(month),
+									fileInfo.day, fileInfo.year, fileInfo.fileName);
 
 							// Fortunately we don't need to bother with output buffer chunks any more...
 							data_req->Write(line);
-						} while (platform->GetMassStorage()->FindNext(file_info));
+						} while (platform->GetMassStorage()->FindNext(fileInfo));
 					}
 
-					network->SendAndClose(NULL);
+					network->SendAndClose(nullptr);
 					state = doingPasvIO;
 				}
 				else
@@ -2151,7 +2243,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 				ReadFilename(4);
 				if (filename[0] == '/')
 				{
-					file = platform->GetFileStore(NULL, filename, true);
+					file = platform->GetFileStore(nullptr, filename, true);
 				}
 				else
 				{
@@ -2181,14 +2273,14 @@ void Webserver::FtpInterpreter::ProcessLine()
 				ReadFilename(4);
 				if (filename[0] == '/')
 				{
-					fs = platform->GetFileStore(NULL, filename, false);
+					fs = platform->GetFileStore(nullptr, filename, false);
 				}
 				else
 				{
 					fs = platform->GetFileStore(currentDir, filename, false);
 				}
 
-				if (fs == NULL)
+				if (fs == nullptr)
 				{
 					SendReply(550, "Failed to open file.");
 				}
@@ -2252,7 +2344,7 @@ void Webserver::FtpInterpreter::SendReply(int code, const char *message, bool ke
 {
 	NetworkTransaction *req = network->GetTransaction();
 	req->Printf("%d %s\r\n", code, message);
-	network->SendAndClose(NULL, keepConnection);
+	network->SendAndClose(nullptr, keepConnection);
 }
 
 void Webserver::FtpInterpreter::SendFeatures()
@@ -2261,10 +2353,10 @@ void Webserver::FtpInterpreter::SendFeatures()
 	req->Write("211-Features:\r\n");
 	req->Write("PASV\r\n");		// support PASV mode
 	req->Write("211 End\r\n");
-	network->SendAndClose(NULL, true);
+	network->SendAndClose(nullptr, true);
 }
 
-void Webserver::FtpInterpreter::ReadFilename(int start)
+void Webserver::FtpInterpreter::ReadFilename(uint16_t start)
 {
 	int filenameLength = 0;
 	bool readingPath = false;
@@ -2349,7 +2441,7 @@ void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 		}
 
 		/* Verify path and change it */
-		if (platform->GetMassStorage()->PathExists(combinedPath))
+		if (platform->GetMassStorage()->DirectoryExists(combinedPath))
 		{
 			strncpy(currentDir, combinedPath, FILENAME_LENGTH);
 			SendReply(250, "Directory successfully changed.");
@@ -2375,6 +2467,8 @@ void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws, Network *n)
 	: ProtocolInterpreter(p, ws, n)
 {
+	gcodeReadIndex = gcodeWriteIndex = 0;
+	gcodeReply = nullptr;
 	ResetState();
 }
 
@@ -2384,7 +2478,7 @@ void Webserver::TelnetInterpreter::ConnectionEstablished()
 	req->Write("RepRapPro Ormerod Telnet Interface\r\n\r\n");
 	req->Write("Please enter your password:\r\n");
 	req->Write("> ");
-	network->SendAndClose(NULL, true);
+	network->SendAndClose(nullptr, true);
 }
 
 void Webserver::TelnetInterpreter::ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort)
@@ -2438,7 +2532,6 @@ void Webserver::TelnetInterpreter::ResetState()
 {
 	state = authenticating;
 	clientPointer = 0;
-	sendPending = false;
 }
 
 void Webserver::TelnetInterpreter::ProcessLine()
@@ -2454,12 +2547,12 @@ void Webserver::TelnetInterpreter::ProcessLine()
 				state = authenticated;
 
 				req->Write("Log in successful!\r\n");
-				network->SendAndClose(NULL, true);
+				network->SendAndClose(nullptr, true);
 			}
 			else
 			{
 				req->Write("Invalid password.\r\n> ");
-				network->SendAndClose(NULL, true);
+				network->SendAndClose(nullptr, true);
 			}
 			break;
 
@@ -2468,16 +2561,16 @@ void Webserver::TelnetInterpreter::ProcessLine()
 			if (StringEquals(clientMessage, "exit") || StringEquals(clientMessage, "quit"))
 			{
 				req->Write("Goodbye.\r\n");
-				network->SendAndClose(NULL);
+				network->SendAndClose(nullptr);
 			}
 			// All other commands are processed by the Webserver
 			else
 			{
-				webserver->ProcessGcode(clientMessage);
-				if (sendPending)
+				ProcessGcode(clientMessage);
+				if (HasDataToSend())
 				{
-					sendPending = false;
-					network->SendAndClose(NULL, true);
+					SendGCodeReply();
+					network->SendAndClose(nullptr, true);
 				}
 				else
 				{
@@ -2488,24 +2581,194 @@ void Webserver::TelnetInterpreter::ProcessLine()
 	}
 }
 
-void Webserver::TelnetInterpreter::HandleGcodeReply(const char *reply)
+// Process a received string of gcodes
+void Webserver::TelnetInterpreter::LoadGcodeBuffer(const char* gc)
 {
-	if (state >= authenticated && network->AcquireTelnetTransaction())
+	char gcodeTempBuf[GCODE_LENGTH];
+	uint16_t gtp = 0;
+	bool inComment = false;
+	for (;;)
 	{
-		NetworkTransaction *req = network->GetTransaction();
-
-		// Whenever a new line is read, we also need to send a carriage return
-		while (*reply != 0)
+		char c = *gc++;
+		if (c == 0)
 		{
-			if (*reply == '\n')
-			{
-				req->Write('\r');
-			}
-			req->Write(*reply);
-			reply++;
+			gcodeTempBuf[gtp] = 0;
+			ProcessGcode(gcodeTempBuf);
+			return;
 		}
 
-		// We must not send the message here, because then we'd have to deal with LWIP internals
-		sendPending = true;
+		if (c == '\n')
+		{
+			gcodeTempBuf[gtp] = 0;
+			ProcessGcode(gcodeTempBuf);
+			gtp = 0;
+			inComment = false;
+		}
+		else
+		{
+			if (c == ';')
+			{
+				inComment = true;
+			}
+
+			if (gtp == ARRAY_UPB(gcodeTempBuf))
+			{
+				// gcode is too long, we haven't room for another character and a null
+				if (c != ' ' && !inComment)
+				{
+					platform->Message(HOST_MESSAGE, "Error: GCode local buffer overflow in Telnet webserver.\n");
+					return;
+				}
+				// else we're either in a comment or the current character is a space.
+				// If we're in a comment, we'll silently truncate it.
+				// If the current character is a space, we'll wait until we see a non-comment character before reporting an error,
+				// in case the next character is end-of-line or the start of a comment.
+			}
+			else
+			{
+				gcodeTempBuf[gtp++] = c;
+			}
+		}
 	}
 }
+
+// Process a null-terminated gcode
+// We intercept one M Codes so we can deal with emergencies.  That
+// way things don't get out of sync, and - as a file name can contain
+// a valid G code (!) - confusion is avoided.
+void Webserver::TelnetInterpreter::ProcessGcode(const char* gc)
+{
+	if (StringStartsWith(gc, "M112") && !isdigit(gc[4]))	// emergency stop
+	{
+		reprap.EmergencyStop();
+		gcodeReadIndex = gcodeWriteIndex;					// clear the buffer
+		reprap.GetGCodes()->Reset();
+	}
+	else
+	{
+		StoreGcodeData(gc, strlen(gc) + 1);
+	}
+}
+
+// Process a received string of gcodes
+void Webserver::TelnetInterpreter::StoreGcodeData(const char* data, uint16_t len)
+{
+	if (len > GetGCodeBufferSpace())
+	{
+		platform->Message(HOST_MESSAGE, "Error: GCode buffer overflow in Telnet Webserver!\n");
+	}
+	else
+	{
+		uint16_t remaining = gcodeBufferLength - gcodeWriteIndex;
+		if (len <= remaining)
+		{
+			memcpy(gcodeBuffer + gcodeWriteIndex, data, len);
+		}
+		else
+		{
+			memcpy(gcodeBuffer + gcodeWriteIndex, data, remaining);
+			memcpy(gcodeBuffer, data + remaining, len - remaining);
+		}
+		gcodeWriteIndex = (gcodeWriteIndex + len) % gcodeBufferLength;
+	}
+}
+
+// Feeding G Codes to the GCodes class
+char Webserver::TelnetInterpreter::ReadGCode()
+{
+	char c;
+	if (gcodeReadIndex == gcodeWriteIndex)
+	{
+		c = 0;
+	}
+	else
+	{
+		c = gcodeBuffer[gcodeReadIndex];
+		gcodeReadIndex = (gcodeReadIndex + 1u) % gcodeBufferLength;
+	}
+	return c;
+}
+
+// Handle a G-Code reply from the GCodes class; replace \n with \r\n
+void Webserver::TelnetInterpreter::HandleGCodeReply(OutputBuffer *reply)
+{
+	if (reply != nullptr && state >= authenticated && network->AcquireTelnetTransaction())
+	{
+		// We need a valid OutputBuffer to start the conversion
+		if (gcodeReply == nullptr && !reprap.AllocateOutput(gcodeReply))
+		{
+			// We cannot acquire a new buffer. Release everything and stop here
+			while (reply != nullptr)
+			{
+				reply = reprap.ReleaseOutput(reply);
+			}
+			return;
+		}
+
+		// Write entire content to new output buffers, but this time with \r\n instead of \n
+		do {
+			const char *data = reply->Data();
+			for(uint16_t i=0; i<reply->DataLength(); i++)
+			{
+				if (*data == '\n' && !gcodeReply->cat('\r'))
+				{
+					// No more space available, stop here. Should never happen
+					return;
+				}
+				if (!gcodeReply->cat(*data))
+				{
+					// No more space available, stop here. Should never happen
+					return;
+				}
+				data++;
+			}
+			reply = reprap.ReleaseOutput(reply);
+		} while (reply != nullptr);
+	}
+	else
+	{
+		// Don't use buffers that may never get released...
+		// TODO: Maybe add a G-Code to override this behaviour?
+		while (reply != nullptr)
+		{
+			reply = reprap.ReleaseOutput(reply);
+		}
+	}
+}
+
+void Webserver::TelnetInterpreter::HandleGCodeReply(const char *reply)
+{
+	if (reply != nullptr && state >= authenticated && network->AcquireTelnetTransaction())
+	{
+		// We need a valid OutputBuffer to start the conversion
+		if (gcodeReply == nullptr && !reprap.AllocateOutput(gcodeReply))
+		{
+			// Should never happen
+			return;
+		}
+
+		// Write entire content to new output buffers, but this time with \r\n instead of \n
+		while (*reply)
+		{
+			if (*reply == '\n' && !gcodeReply->cat('\r'))
+			{
+				// No more space available, stop here. Should never happen
+				return;
+			}
+			if (!gcodeReply->cat(*reply))
+			{
+				// No more space available, stop here. Should never happen
+				return;
+			}
+			reply++;
+		};
+	}
+}
+
+void Webserver::TelnetInterpreter::SendGCodeReply()
+{
+	reprap.GetNetwork()->GetTransaction()->Write(gcodeReply);
+	gcodeReply = nullptr;
+}
+
+// vim: ts=4:sw=4

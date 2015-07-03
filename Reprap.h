@@ -23,126 +23,110 @@ Licence: GPL
 
 class RepRap
 {    
-  public:
-      
-    RepRap();
-    void EmergencyStop();
-    void Init();
-    void Spin();
-    void Exit();
-    void Interrupt();
-    void Diagnostics();
-    void Timing();
+	public:
 
-    bool Debug(Module module) const;
-    void SetDebug(Module m, bool enable);
-    void SetDebug(bool enable);
-    void PrintDebug();
-    Module GetSpinningModule() const;
+		RepRap();
+		void EmergencyStop();
+		void Init();
+		void Spin();
+		void Exit();
+		void Interrupt();
+		void Diagnostics();
+		void Timing();
 
-    const char *GetName() const;
-    void SetName(const char* nm);
-    bool NoPasswordSet() const;
-    bool CheckPassword(const char* pw) const;
-    void SetPassword(const char* pw);
+		bool Debug(Module module) const;
+		void SetDebug(Module m, bool enable);
+		void SetDebug(bool enable);
+		void PrintDebug();
+		Module GetSpinningModule() const;
 
-    void AddTool(Tool* t);
-    void DeleteTool(Tool* t);
-    void SelectTool(int toolNumber);
-    void StandbyTool(int toolNumber);
-    Tool* GetCurrentTool();
-    Tool* GetTool(int toolNumber);
-    //Tool* GetToolByDrive(int driveNumber);
-    void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+		const char *GetName() const;
+		void SetName(const char* nm);
+		bool NoPasswordSet() const;
+		bool CheckPassword(const char* pw) const;
+		void SetPassword(const char* pw);
 
-    void SetChamberHeater(int8_t heater);
-    int8_t GetChamberHeater() const;
+		void AddTool(Tool* t);
+		void DeleteTool(Tool* t);
+		void SelectTool(int toolNumber);
+		void StandbyTool(int toolNumber);
+		Tool* GetCurrentTool();
+		Tool* GetTool(int toolNumber);
+		//Tool* GetToolByDrive(int driveNumber);
+		void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
 
-    void AllowColdExtrude();
-    void DenyColdExtrude();
-    bool ColdExtrude();
+		void GetExtruderCapabilities(bool canDrive[], const bool directions[]) const;
+		void PrintTool(int toolNumber, StringRef& reply);
+		void FlagTemperatureFault(int8_t dudHeater);
+		void ClearTemperatureFault(int8_t wasDudHeater);
 
-    void GetExtruderCapabilities(bool canDrive[], const bool directions[]) const;
-    void PrintTool(int toolNumber, StringRef& reply);
-    void FlagTemperatureFault(int8_t dudHeater);
-    void ClearTemperatureFault(int8_t wasDudHeater);
+		Platform* GetPlatform() const;
+		Move* GetMove() const;
+		Heat* GetHeat() const;
+		GCodes* GetGCodes() const;
+		Network* GetNetwork() const;
+		Webserver* GetWebserver() const;
+		PrintMonitor* GetPrintMonitor() const;
 
-    Platform* GetPlatform() const;
-    Move* GetMove() const;
-    Heat* GetHeat() const;
-    GCodes* GetGCodes() const;
-    Network* GetNetwork() const;
-    Webserver* GetWebserver() const;
-    PrintMonitor* GetPrintMonitor() const;
+		void Tick();
+		uint16_t GetTicksInSpinState() const;
+		bool IsStopped() const;
 
-    void Tick();
-    uint16_t GetTicksInSpinState() const;
-    bool IsStopped() const;
+		uint16_t GetExtrudersInUse() const;
+		uint16_t GetHeatersInUse() const;
 
-    uint16_t GetExtrudersInUse() const;
-    uint16_t GetHeatersInUse() const;
+		// Allocate an unused OutputBuffer instance. Returns true on success or false if no instance could be allocated.
+		bool AllocateOutput(OutputBuffer *&buf);
 
-    void GetStatusResponse(StringRef& response, uint8_t type, bool forWebserver);
-    void GetConfigResponse(StringRef& response);
-    void GetLegacyStatusResponse(StringRef &response, uint8_t type, int seq);
-    void GetNameResponse(StringRef& response) const;
-    void GetFilesResponse(StringRef& response, const char* dir, bool flagsDirs) const;
+		// Release one OutputBuffer instance. Returns the next item from the chain or nullptr if this was the last instance.
+		OutputBuffer *ReleaseOutput(OutputBuffer *buf);
 
-    void Beep(int freq, int ms);
-    void SetMessage(const char *msg);
-    
-    void MessageToGCodeReply(const char *message);
-    void AppendMessageToGCodeReply(const char *message);
-    void AppendCharToStatusResponse(const char c);
+		OutputBuffer *GetStatusResponse(uint8_t type, bool forWebserver);
+		OutputBuffer *GetConfigResponse();
+		OutputBuffer *GetLegacyStatusResponse(uint8_t type, int seq);
+		OutputBuffer *GetNameResponse();
+		OutputBuffer *GetFilesResponse(const char* dir, bool flagsDirs);
 
-    const StringRef& GetGcodeReply();
+		void Beep(int freq, int ms);
+		void SetMessage(const char *msg);
 
-    static void CopyParameterText(const char* src, char *dst, size_t length);
+		static void CopyParameterText(const char* src, char *dst, size_t length);
 
-  private:
+	private:
 
-    static void EncodeString(StringRef& response, const char* src, size_t spaceToLeave, bool allowControlChars);
-  
-    char GetStatusCharacter() const;
-    unsigned int GetReplySeq() const;
+		char GetStatusCharacter() const;
 
-    Platform* platform;
-    Network* network;
-    Move* move;
-    Heat* heat;
-    GCodes* gCodes;
-    Webserver* webserver;
-    PrintMonitor* printMonitor;
+		Platform* platform;
+		Network* network;
+		Move* move;
+		Heat* heat;
+		GCodes* gCodes;
+		Webserver* webserver;
+		PrintMonitor* printMonitor;
 
-    Tool* toolList;
-    Tool* currentTool;
-    uint16_t activeExtruders;
-    uint16_t activeHeaters;
-    bool coldExtrude;
+		Tool* toolList;
+		Tool* currentTool;
+		uint16_t activeExtruders;
+		uint16_t activeHeaters;
 
-    int8_t chamberHeater;
+		uint16_t ticksInSpinState;
+		Module spinningModule;
+		float fastLoop, slowLoop;
+		float lastTime;
 
-    uint16_t ticksInSpinState;
-    Module spinningModule;
-    float fastLoop, slowLoop;
-    float lastTime;
+		uint16_t debug;
+		bool stopped;
+		bool active;
+		bool resetting;
+		bool processingConfig;
 
-    uint16_t debug;
-    bool stopped;
-    bool active;
-    bool resetting;
-    bool processingConfig;
+		char password[SHORT_STRING_LENGTH + 1];
+		char myName[SHORT_STRING_LENGTH + 1];
 
-    char password[SHORT_STRING_LENGTH + 1];
-    char myName[SHORT_STRING_LENGTH + 1];
+		int beepFrequency, beepDuration;
+		char message[SHORT_STRING_LENGTH + 1];
 
-    int beepFrequency, beepDuration;
-    char message[SHORT_STRING_LENGTH + 1];
-
-    char gcodeReplyBuffer[GCODE_REPLY_LENGTH];
-    StringRef gcodeReply;
-    unsigned int replySeq;							// The current reply sequence number
-    unsigned int webSeq, auxSeq;					// The last-known reply sequence number for web and AUX
+		OutputBuffer *freeOutputBuffers;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }
@@ -160,13 +144,6 @@ inline Tool* RepRap::GetCurrentTool() { return currentTool; }
 inline uint16_t RepRap::GetExtrudersInUse() const { return activeExtruders; }
 inline uint16_t RepRap::GetHeatersInUse() const { return activeHeaters; }
 
-inline void RepRap::SetChamberHeater(int8_t heater) { chamberHeater = heater; }
-inline int8_t RepRap::GetChamberHeater() const { return chamberHeater; }
-
-inline bool RepRap::ColdExtrude() { return coldExtrude; }
-inline void RepRap::AllowColdExtrude() { coldExtrude = true; }
-inline void RepRap::DenyColdExtrude() { coldExtrude = false; }
-
 inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directions[]) const
 {
 	for(size_t extruder=0; extruder < DRIVES - AXES; extruder++)
@@ -174,7 +151,7 @@ inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directio
 		canDrive[extruder] = false;
 	}
 
-	if (currentTool != NULL)
+	if (currentTool != nullptr)
 	{
 		for(size_t driveNum = 0; driveNum < currentTool->DriveCount(); driveNum++)
 		{
@@ -186,7 +163,7 @@ inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directio
 
 inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 {
-	if (toolList != NULL)
+	if (toolList != nullptr)
 	{
 		toolList->FlagTemperatureFault(dudHeater);
 	}
@@ -195,7 +172,7 @@ inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 inline void RepRap::ClearTemperatureFault(int8_t wasDudHeater)
 {
 	reprap.GetHeat()->ResetFault(wasDudHeater);
-	if (toolList != NULL)
+	if (toolList != nullptr)
 	{
 		toolList->ClearTemperatureFault(wasDudHeater);
 	}
@@ -205,9 +182,6 @@ inline void RepRap::Interrupt() { move->Interrupt(); }
 inline bool RepRap::IsStopped() const { return stopped; }
 inline uint16_t RepRap::GetTicksInSpinState() const { return ticksInSpinState; }
 
-inline const StringRef& RepRap::GetGcodeReply() { webSeq = replySeq; return gcodeReply; }
-inline unsigned int RepRap::GetReplySeq() const { return replySeq; }
-
 #endif
 
-
+// vim: ts=4:sw=4

@@ -28,7 +28,7 @@ Licence: GPL
 Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 {
 	myNumber = toolNumber;
-	next = NULL;
+	next = nullptr;
 	active = false;
 	driveCount = dCount;
 	heaterCount = hCount;
@@ -41,15 +41,16 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 		offset[axis] = 0.0;
 	}
 
-	if(driveCount > 0)
+	if (driveCount > 0)
 	{
-		if(driveCount > DRIVES - AXES)
+		if (driveCount > DRIVES - AXES)
 		{
-			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool creation: attempt to use more drives than there are in the RepRap...");
+			reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Error: Tool creation: Attempt to use more drives than there are in the RepRap...");
 			driveCount = 0;
 			heaterCount = 0;
 			return;
 		}
+
 		drives = new int[driveCount];
 		mix = new float[driveCount];
 		float r = 1.0/(float)driveCount;
@@ -65,11 +66,12 @@ Tool::Tool(int toolNumber, long d[], int dCount, long h[], int hCount)
 	{
 		if (heaterCount > HEATERS)
 		{
-			reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Tool creation: attempt to use more heaters than there are in the RepRap...");
+			reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Error: Tool creation: Attempt to use more heaters than there are in the RepRap...");
 			driveCount = 0;
 			heaterCount = 0;
 			return;
 		}
+
 		heaters = new int[heaterCount];
 		activeTemperatures = new float[heaterCount];
 		standbyTemperatures = new float[heaterCount];
@@ -115,11 +117,11 @@ float Tool::MaxFeedrate() const
 {
 	if(driveCount <= 0)
 	{
-		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Attempt to get maximum feedrate for a tool with no drives.\n");
+		reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Error: Attempt to get maximum feedrate for a tool with no drives.\n");
 		return 1.0;
 	}
 	float result = 0.0;
-	for(int8_t d = 0; d < driveCount; d++)
+	for(size_t d = 0; d < driveCount; d++)
 	{
 		float mf = reprap.GetPlatform()->MaxFeedrate(drives[d] + AXES);
 		if(mf > result)
@@ -134,7 +136,7 @@ float Tool::InstantDv() const
 {
 	if (driveCount <= 0)
 	{
-		reprap.GetPlatform()->Message(BOTH_ERROR_MESSAGE, "Attempt to get InstantDv for a tool with no drives.\n");
+		reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Error: Attempt to get InstantDv for a tool with no drives.\n");
 		return 1.0;
 	}
 
@@ -157,12 +159,12 @@ void Tool::AddTool(Tool* tool)
 {
 	Tool* t = this;
 	Tool* last;
-	while(t != NULL)
+	while (t != nullptr)
 	{
 		last = t;
 		t = t->Next();
 	}
-	tool->next = NULL; // Defensive...
+	tool->next = nullptr; // Defensive...
 	last->next = tool;
 }
 
@@ -174,7 +176,7 @@ void Tool::AddTool(Tool* tool)
 void Tool::FlagTemperatureFault(int8_t heater)
 {
 	Tool* n = this;
-	while(n != NULL)
+	while (n != nullptr)
 	{
 		n->SetTemperatureFault(heater);
 		n = n->Next();
@@ -184,7 +186,7 @@ void Tool::FlagTemperatureFault(int8_t heater)
 void Tool::ClearTemperatureFault(int8_t heater)
 {
 	Tool* n = this;
-	while(n != NULL)
+	while (n != nullptr)
 	{
 		n->ResetTemperatureFault(heater);
 		n = n->Next();
@@ -220,7 +222,7 @@ bool Tool::AllHeatersAtHighTemperature(bool forExtrusion) const
 	for(size_t heater = 0; heater < heaterCount; heater++)
 	{
 		const float temperature = reprap.GetHeat()->GetTemperature(heaters[heater]);
-		if(temperature < HOT_ENOUGH_TO_EXTRUDE && forExtrusion)
+		if (temperature < HOT_ENOUGH_TO_EXTRUDE && forExtrusion)
 		{
 			return false;
 		}
@@ -237,7 +239,7 @@ void Tool::Activate(Tool* currentlyActive)
 	if (active)
 		return;
 
-	if (currentlyActive != NULL && currentlyActive != this)
+	if (currentlyActive != nullptr && currentlyActive != this)
 	{
 		currentlyActive->Standby();
 	}
@@ -307,7 +309,7 @@ bool Tool::ToolCanDrive(bool extrude)
 	if (heaterFault)
 		return false;
 
-	if (reprap.ColdExtrude() || AllHeatersAtHighTemperature(extrude))
+	if (reprap.GetHeat()->ColdExtrude() || AllHeatersAtHighTemperature(extrude))
 		return true;
 
 	displayColdExtrudeWarning = true;
@@ -340,3 +342,5 @@ bool Tool::DisplayColdExtrudeWarning()
 	displayColdExtrudeWarning = false;
 	return result;
 }
+
+// vim: ts=4:sw=4

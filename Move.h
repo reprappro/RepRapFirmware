@@ -30,9 +30,9 @@ Licence: GPL
 
 enum MovementProfile
 {
-  moving = 0,  // Ordinary trapezoidal-velocity-profile movement
-  noFlat = 1,  // Triangular profile movement
-  change = 2   // To make this movement, the initial and/or final velocities must change
+	moving = 0,  // Ordinary trapezoidal-velocity-profile movement
+	noFlat = 1,  // Triangular profile movement
+	change = 2   // To make this movement, the initial and/or final velocities must change
 };
 
 // The possible states of a movement in the look-ahead ring as the look-ahead is
@@ -40,10 +40,10 @@ enum MovementProfile
 
 enum MovementState
 {
-  unprocessed = 0,
-  vCosineSet = 1,
-  complete = 2,
-  released = 4
+	unprocessed = 0,
+	vCosineSet = 1,
+	complete = 2,
+	released = 4
 };
 
 
@@ -71,55 +71,57 @@ enum MoveStatus
  */
 class LookAhead
 {  
-	friend class Move;
-	friend class DDA;
+	public:
 
-protected:
+		friend class Move;
+		friend class DDA;
 
-	LookAhead(Move* m, Platform* p, LookAhead* n);
-	void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
-			float maxSpeed, float acceleration, EndstopChecks ce,
-			const float extrDiffs[]);
-	LookAhead* Next() const;											// Next one in the ring
-	LookAhead* Previous() const;										// Previous one in the ring
-	const long* MachineCoordinates() const;								// Endpoints of a move in machine coordinates
-	float MachineToEndPoint(int8_t drive) const;						// Convert a move endpoint to real mm coordinates
-	static float MachineToEndPoint(int8_t drive, long coord);			// Convert any number to a real coordinate
-	static long EndPointToMachine(int8_t drive, float coord);			// Convert real mm to a machine coordinate
-	float FeedRate() const;												// How fast is the set speed for this move
-	float MinSpeed() const;												// What is the slowest that this move can be
-	float MaxSpeed() const;												// What is the fastest this move can be
-	float Acceleration() const;											// What is the acceleration available for this move
-	float V() const;													// The speed at the end of the move
-	float RawExtruderDiff(uint8_t extruder) const;
-	void SetV(float vv);												// Set the end speed
-	void SetFeedRate(float f);											// Set the desired feedrate
-	int8_t Processed() const;											// Where we are in the look-ahead prediction sequence
-	void SetProcessed(MovementState ms);								// Set where we are the the look ahead processing
-	void SetDriveCoordinate(float a, int8_t drive);						// Force an end point
-	void SetRawExtruderDiff(uint8_t extruder, float value);
-	EndstopChecks EndStopsToCheck() const;								// Which endstops we are checking on this move
-	void Release();														// This move has been processed and executed
-	void PrintMove();													// Print diagnostics
-	void MoveAborted(float done);
+	protected:
 
-private:
+		LookAhead(Move* m, Platform* p, LookAhead* n);
+		void Init(long ep[], float requsestedFeedRate, float minSpeed, 		// Set up this move
+				float maxSpeed, float acceleration, EndstopChecks ce,
+				const float extrDiffs[]);
+		LookAhead* Next() const;											// Next one in the ring
+		LookAhead* Previous() const;										// Previous one in the ring
+		const long* MachineCoordinates() const;								// Endpoints of a move in machine coordinates
+		float MachineToEndPoint(int8_t drive) const;						// Convert a move endpoint to real mm coordinates
+		static float MachineToEndPoint(int8_t drive, long coord);			// Convert any number to a real coordinate
+		static long EndPointToMachine(int8_t drive, float coord);			// Convert real mm to a machine coordinate
+		float FeedRate() const;												// How fast is the set speed for this move
+		float MinSpeed() const;												// What is the slowest that this move can be
+		float MaxSpeed() const;												// What is the fastest this move can be
+		float Acceleration() const;											// What is the acceleration available for this move
+		float V() const;													// The speed at the end of the move
+		float RawExtruderDiff(uint8_t extruder) const;
+		void SetV(float vv);												// Set the end speed
+		void SetFeedRate(float f);											// Set the desired feedrate
+		int8_t Processed() const;											// Where we are in the look-ahead prediction sequence
+		void SetProcessed(MovementState ms);								// Set where we are the the look ahead processing
+		void SetDriveCoordinate(float a, int8_t drive);						// Force an end point
+		void SetRawExtruderDiff(uint8_t extruder, float value);
+		EndstopChecks EndStopsToCheck() const;								// Which endstops we are checking on this move
+		void Release();														// This move has been processed and executed
+		void PrintMove();													// Print diagnostics
+		void MoveAborted(float done);
 
-	Move* move;						// The main movement control class
-	Platform* platform;				// The RepRap machine
-	LookAhead* next;				// Next entry in the ring
-	LookAhead* previous;			// Previous entry in the ring
-	long endPoint[DRIVES+1];  		// Machine coordinates of the endpoint.  Should never use the +1, but safety first
-	float Cosine();					// The angle between the previous move and this one
-	EndstopChecks endStopsToCheck;	// Endstops to check for this move
-    float cosine;					// Store for the cosine value - the function uses lazy evaluation
-    float v;        				// The feedrate we can actually do
-    float requestedFeedrate; 		// The requested feedrate
-    float minSpeed;					// The slowest that this move may run at
-    float maxSpeed;					// The fastest this move may run at
-    float acceleration;				// The fastest acceleration allowed
-    float rawExDiff[DRIVES - AXES];	// The original (relative) E difference
-    volatile int8_t processed;		// The stage in the look ahead process that this move is at.
+	private:
+
+		Move* move;						// The main movement control class
+		Platform* platform;				// The RepRap machine
+		LookAhead* next;				// Next entry in the ring
+		LookAhead* previous;			// Previous entry in the ring
+		long endPoint[DRIVES+1];  		// Machine coordinates of the endpoint.  Should never use the +1, but safety first
+		float Cosine();					// The angle between the previous move and this one
+		EndstopChecks endStopsToCheck;	// Endstops to check for this move
+		float cosine;					// Store for the cosine value - the function uses lazy evaluation
+		float v;        				// The feedrate we can actually do
+		float requestedFeedrate; 		// The requested feedrate
+		float minSpeed;					// The slowest that this move may run at
+		float maxSpeed;					// The fastest this move may run at
+		float acceleration;				// The fastest acceleration allowed
+		float rawExDiff[DRIVES - AXES];	// The original (relative) E difference
+		volatile int8_t processed;		// The stage in the look ahead process that this move is at.
 };
 
 /**
@@ -128,46 +130,48 @@ private:
  */
 class DDA
 {
-	friend class Move;
-	friend class LookAhead;
+	public:
 
-protected:
+		friend class Move;
+		friend class LookAhead;
 
-	DDA(Move* m, Platform* p, DDA* n);
-	MovementProfile Init(LookAhead* lookAhead, float& u, float& v);				// Set up the DDA.  Also used experimentally in look ahead.
-	void Start();																// Start executing the DDA.  I.e. move the move.
-	void Step();																// Take one step of the DDA.  Called by timed interrupt.
-	void Release();																// Called when the DDA is complete
-	bool Active() const;
-	DDA* Next();																// Next entry in the ring
-	float InstantDv() const;
+	protected:
 
-private:
+		DDA(Move* m, Platform* p, DDA* n);
+		MovementProfile Init(LookAhead* lookAhead, float& u, float& v);				// Set up the DDA.  Also used experimentally in look ahead.
+		void Start();																// Start executing the DDA.  I.e. move the move.
+		void Step();																// Take one step of the DDA.  Called by timed interrupt.
+		void Release();																// Called when the DDA is complete
+		bool Active() const;
+		DDA* Next();																// Next entry in the ring
+		float InstantDv() const;
 
-	MovementProfile AccelerationCalculation(float& u, float& v, 	// Compute acceleration profiles
-			MovementProfile result);
+	private:
 
-	Move* move;								// The main movement control class
-	Platform* platform;						// The RepRap machine
-	DDA* next;								// The next one in the ring
-	LookAhead* myLookAheadEntry;			// The look-ahead entry corresponding to this DDA
-	long counter[DRIVES];					// Step counters
-	long delta[DRIVES];						// How far to move each drive
-	bool directions[DRIVES];				// Forwards or backwards?
-	long totalSteps;						// Total number of steps for this move
-	long stepCount;							// How many steps we have already taken
-	EndstopChecks endStopsToCheck;			// Endstops to check for this move
-    float timeStep;							// The current timestep (seconds)
-    float velocity;							// The current velocity
-    long stopAStep;							// The stepcount at which we stop accelerating
-    long startDStep;						// The stepcount at which we start decelerating
-    float distance;							// How long is the move in real distance
-    float acceleration;						// The acceleration to use
-    float instantDv;						// The lowest possible velocity
-    float feedRate;
-    bool eMoveAllowed[DRIVES-AXES];			// Which extruder is allowed to move?
-    bool isDecelerating;					// Is the DDA is trying to slow down while pausing?
-    volatile bool active;					// Is the DDA running?
+		MovementProfile AccelerationCalculation(float& u, float& v, 	// Compute acceleration profiles
+				MovementProfile result);
+
+		Move* move;								// The main movement control class
+		Platform* platform;						// The RepRap machine
+		DDA* next;								// The next one in the ring
+		LookAhead* myLookAheadEntry;			// The look-ahead entry corresponding to this DDA
+		long counter[DRIVES];					// Step counters
+		long delta[DRIVES];						// How far to move each drive
+		bool directions[DRIVES];				// Forwards or backwards?
+		long totalSteps;						// Total number of steps for this move
+		long stepCount;							// How many steps we have already taken
+		EndstopChecks endStopsToCheck;			// Endstops to check for this move
+		float timeStep;							// The current timestep (seconds)
+		float velocity;							// The current velocity
+		long stopAStep;							// The stepcount at which we stop accelerating
+		long startDStep;						// The stepcount at which we start decelerating
+		float distance;							// How long is the move in real distance
+		float acceleration;						// The acceleration to use
+		float instantDv;						// The lowest possible velocity
+		float feedRate;
+		bool eMoveAllowed[DRIVES-AXES];			// Which extruder is allowed to move?
+		bool isDecelerating;					// Is the DDA is trying to slow down while pausing?
+		volatile bool active;					// Is the DDA running?
 };
 
 /**
@@ -175,182 +179,184 @@ private:
  */
 class Move
 {
-    friend class DDA;
+	public:
 
-  public:
-  
-    Move(Platform* p, GCodes* g);
-    void Init();								// Start me up
-    void Spin();								// Called in a tight loop to keep the class going
-    void Exit();								// Shut down
+		friend class DDA;
 
-    bool IsRunning() const;						// Are we running any moves?
-    bool Pause();								// Pause any moves in progress
-    bool IsPaused() const;						// Are all the moves paused?
-    bool IsPausing() const;						// Are we still waiting for the last move to finish?
-    bool IsResuming() const;					// Are we resuming a paused print?
-    bool IsCancelled() const;					// Are we busy destroying look-ahead entries?
-    bool Resume();								// Resume paused moves
-    void Cancel();								// Cancel any pending moves
+	public:
 
-    bool GetCurrentUserPosition(float m[]) const; 	// Return the current position in transformed coords if possible. Returns false otherwise
-    void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
-    bool GetPauseCoordinates(float m[]) const;	// Gives the coordinates at which the print was paused and returns true on success
-    void GetRawExtruderPositions(float e[]) const;	// Get the original extruder positions without the extusion multiplier applied
-    void ResetExtruderPositions();				// Resets the extruder positions to zero
-    void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
-    void InterruptTime();						// Test function - not used
-    bool AllMovesAreFinished();					// Is the look-ahead ring empty?  Stops more moves being added as well.
-    void AddMoreMoves();						// Allow moves to be added after a call to AllMovesAreFinished()
-    void DoLookAhead();							// Run the look-ahead procedure
-    void HitLowStop(int8_t drive,				// What to do when a low endstop is hit
-    		LookAhead* la, DDA* hitDDA);
-    void HitHighStop(int8_t drive, 				// What to do when a high endstop is hit
-    		LookAhead* la, DDA* hitDDA);
-    bool NoLiveMovement() const;				// Is a move running, or are there any queued if we're still running?
-    void SetPositions(float move[]);			// Force the coordinates to be these
-    void SetLiveCoordinates(float coords[]);	// Force the live coordinates (see above) to be these
-    void SetXBedProbePoint(int index, float x);	// Record the X coordinate of a probe point
-    void SetYBedProbePoint(int index, float y);	// Record the Y coordinate of a probe point
-    void SetZBedProbePoint(int index, float z);	// Record the Z coordinate of a probe point
-    float XBedProbePoint(int index) const;		// Get the X coordinate of a probe point
-    float YBedProbePoint(int index) const;		// Get the Y coordinate of a probe point
-    float ZBedProbePoint(int index) const;		// Get the Z coordinate of a probe point
-    int NumberOfProbePoints() const;			// How many points to probe have been set? 0 if incomplete
-    int NumberOfXYProbePoints() const;			// How many XY coordinates of probe points have been set (Zs may not have been probed yet)
-    bool AllProbeCoordinatesSet(int index) const;	// XY, and Z all set for this one?
-    bool XYProbeCoordinatesSet(int index) const;	// Just XY set for this one?
-    void SetZProbing(bool probing);				// Set the Z probe live
-    void SetProbedBedEquation(StringRef& reply);	// When we have a full set of probed points, work out the bed's equation
-    float SecondDegreeTransformZ(float x, float y) const; // Used for second degree bed equation
-    float GetLastProbedZ() const;				// What was the Z when the probe last fired?
-    void SetAxisCompensation(int8_t axis, float tangent); // Set an axis-pair compensation angle
-    float AxisCompensation(int8_t axis);		// The tangent value
-    void SetIdentityTransform();				// Cancel the bed equation; does not reset axis angle compensation
-    void Transform(float move[]) const;			// Take a position and apply the bed and the axis-angle compensations
-    void InverseTransform(float move[]) const;	// Go from a transformed point back to user coordinates77
-    void Diagnostics();							// Report useful stuff
-    void UpdateCurrentCoordinates(LookAhead* la,	// Turn a DDA value back into a real world coordinate
-    		DDA* runningDDA);
-    float Normalise(float v[], int8_t dimensions);  // Normalise a vector to unit length
-    void Absolute(float v[], int8_t dimensions);	// Put a vector in the positive hyperquadrant
-    float Magnitude(const float v[], int8_t dimensions);  // Return the length of a vector
-    void Scale(float v[], float scale,				// Multiply a vector by a scalar
-    		int8_t dimensions);
-    float VectorBoxIntersection(const float v[],	// Compute the length that a vector would have to have to...
-    		const float box[], int8_t dimensions);	// ...just touch the surface of a hyperbox.
-    float GetExtrusionFactor(uint8_t extruder) const;
-    void SetExtrusionFactor(uint8_t extruder, float factor);
-    float GetSpeedFactor() const;					// Factor by which we changed the speed factor since the last move
-    void SetSpeedFactor(float factor);
+		Move(Platform* p, GCodes* g);
+		void Init();								// Start me up
+		void Spin();								// Called in a tight loop to keep the class going
+		void Exit();								// Shut down
 
-  private:
+		bool IsRunning() const;						// Are we running any moves?
+		bool Pause();								// Pause any moves in progress
+		bool IsPaused() const;						// Are all the moves paused?
+		bool IsPausing() const;						// Are we still waiting for the last move to finish?
+		bool IsResuming() const;					// Are we resuming a paused print?
+		bool IsCancelled() const;					// Are we busy destroying look-ahead entries?
+		bool Resume();								// Resume paused moves
+		void Cancel();								// Cancel any pending moves
 
-    void BedTransform(float move[]) const;			    // Take a position and apply the bed compensations
-    bool GetCurrentMachinePosition(float m[]) const;	// Get the current position in untransformed coords if possible. Return false otherwise
-    void InverseBedTransform(float move[]) const;	    // Go from a bed-transformed point back to user coordinates
-    void AxisTransform(float move[]) const;			    // Take a position and apply the axis-angle compensations
-    void InverseAxisTransform(float move[]) const;	    // Go from an axis transformed point back to user coordinates
-    void BarycentricCoordinates(int8_t p0, int8_t p1,   // Compute the barycentric coordinates of a point in a triangle
-    		int8_t p2, float x, float y, float& l1,     // (see http://en.wikipedia.org/wiki/Barycentric_coordinate_system).
-    		float& l2, float& l3) const;
-    float TriangleZ(float x, float y) const;			// Interpolate onto a triangular grid
-    bool DDARingAdd(LookAhead* lookAhead);				// Add a processed look-ahead entry to the DDA ring
-    DDA* DDARingGet();									// Get the next DDA ring entry to be run
-    bool DDARingEmpty() const;							// Anything there?
-    bool DDARingFull() const;							// Any more room?
-    bool GetDDARingLock();								// Lock the ring so only this function may access it
-    void ReleaseDDARingLock();							// Release the DDA ring lock
-    bool LookAheadRingEmpty() const;					// Anything there?
-    bool LookAheadRingFull() const;						// Any more room?
-    bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
-            float minSpeed, float maxSpeed,
-            float acceleration, EndstopChecks ce,
-            const float extrDiffs[]);
-    LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
-    void LiveMachineCoordinates(long m[]) const;		// Same as LiveCoordinates, but returns machine coordinates and no feedrate
-    bool SetUpIsolatedMove(long ep[], float requestedFeedRate,	// Set up a single look-ahead entry for only one move
-    		float minSpeed, float maxSpeed, float acceleration,
-			EndstopChecks ce);
-    bool SetUpIsolatedMove(float to[], float feedRate,
-    		bool axesOnly);
-    bool SplitNextMove();								// Split the next move to improve 5-point bed compensation
+		bool GetCurrentUserPosition(float m[]) const; 	// Return the current position in transformed coords if possible. Returns false otherwise
+		void LiveCoordinates(float m[]) const;		// Gives the last point at the end of the last complete DDA transformed to user coords
+		bool GetPauseCoordinates(float m[]) const;	// Gives the coordinates at which the print was paused and returns true on success
+		void GetRawExtruderPositions(float e[]) const;	// Get the original extruder positions without the extusion multiplier applied
+		void ResetExtruderPositions();				// Resets the extruder positions to zero
+		void Interrupt();							// The hardware's (i.e. platform's)  interrupt should call this.
+		void InterruptTime();						// Test function - not used
+		bool AllMovesAreFinished();					// Is the look-ahead ring empty?  Stops more moves being added as well.
+		void AddMoreMoves();						// Allow moves to be added after a call to AllMovesAreFinished()
+		void DoLookAhead();							// Run the look-ahead procedure
+		void HitLowStop(int8_t drive,				// What to do when a low endstop is hit
+				LookAhead* la, DDA* hitDDA);
+		void HitHighStop(int8_t drive, 				// What to do when a high endstop is hit
+				LookAhead* la, DDA* hitDDA);
+		bool NoLiveMovement() const;				// Is a move running, or are there any queued if we're still running?
+		void SetPositions(float move[]);			// Force the coordinates to be these
+		void SetLiveCoordinates(float coords[]);	// Force the live coordinates (see above) to be these
+		void SetXBedProbePoint(int index, float x);	// Record the X coordinate of a probe point
+		void SetYBedProbePoint(int index, float y);	// Record the Y coordinate of a probe point
+		void SetZBedProbePoint(int index, float z);	// Record the Z coordinate of a probe point
+		float XBedProbePoint(int index) const;		// Get the X coordinate of a probe point
+		float YBedProbePoint(int index) const;		// Get the Y coordinate of a probe point
+		float ZBedProbePoint(int index) const;		// Get the Z coordinate of a probe point
+		int NumberOfProbePoints() const;			// How many points to probe have been set? 0 if incomplete
+		int NumberOfXYProbePoints() const;			// How many XY coordinates of probe points have been set (Zs may not have been probed yet)
+		bool AllProbeCoordinatesSet(int index) const;	// XY, and Z all set for this one?
+		bool XYProbeCoordinatesSet(int index) const;	// Just XY set for this one?
+		void SetZProbing(bool probing);				// Set the Z probe live
+		void SetProbedBedEquation(StringRef& reply);	// When we have a full set of probed points, work out the bed's equation
+		float SecondDegreeTransformZ(float x, float y) const; // Used for second degree bed equation
+		float GetLastProbedZ() const;				// What was the Z when the probe last fired?
+		void SetAxisCompensation(int8_t axis, float tangent); // Set an axis-pair compensation angle
+		float AxisCompensation(int8_t axis);		// The tangent value
+		void SetIdentityTransform();				// Cancel the bed equation; does not reset axis angle compensation
+		void Transform(float move[]) const;			// Take a position and apply the bed and the axis-angle compensations
+		void InverseTransform(float move[]) const;	// Go from a transformed point back to user coordinates77
+		void Diagnostics();							// Report useful stuff
+		void UpdateCurrentCoordinates(LookAhead* la,	// Turn a DDA value back into a real world coordinate
+				DDA* runningDDA);
+		float Normalise(float v[], int8_t dimensions);  // Normalise a vector to unit length
+		void Absolute(float v[], int8_t dimensions);	// Put a vector in the positive hyperquadrant
+		float Magnitude(const float v[], int8_t dimensions);  // Return the length of a vector
+		void Scale(float v[], float scale,				// Multiply a vector by a scalar
+				int8_t dimensions);
+		float VectorBoxIntersection(const float v[],	// Compute the length that a vector would have to have to...
+				const float box[], int8_t dimensions);	// ...just touch the surface of a hyperbox.
+		float GetExtrusionFactor(uint8_t extruder) const;
+		void SetExtrusionFactor(uint8_t extruder, float factor);
+		float GetSpeedFactor() const;					// Factor by which we changed the speed factor since the last move
+		void SetSpeedFactor(float factor);
 
-    Platform* platform;									// The RepRap machine
-    GCodes* gCodes;										// The G Codes processing class
-    
-    // These implement the DDA ring
-    
-    DDA* dda;
-    DDA* ddaRingAddPointer;
-    DDA* ddaRingGetPointer;
-    DDA* ddaIsolatedMove;
-    bool readIsolatedMove;
-    volatile bool ddaRingLocked;
-    
-    // These implement the look-ahead ring
+	private:
 
-    LookAhead* lookAheadRingAddPointer;
-    LookAhead* lookAheadRingGetPointer;
-    LookAhead* lastRingMove;
-    LookAhead* isolatedMove;
-    bool isolatedMoveAvailable;
-    DDA* lookAheadDDA;
-    int lookAheadRingCount;
+		void BedTransform(float move[]) const;			    // Take a position and apply the bed compensations
+		bool GetCurrentMachinePosition(float m[]) const;	// Get the current position in untransformed coords if possible. Return false otherwise
+		void InverseBedTransform(float move[]) const;	    // Go from a bed-transformed point back to user coordinates
+		void AxisTransform(float move[]) const;			    // Take a position and apply the axis-angle compensations
+		void InverseAxisTransform(float move[]) const;	    // Go from an axis transformed point back to user coordinates
+		void BarycentricCoordinates(int8_t p0, int8_t p1,   // Compute the barycentric coordinates of a point in a triangle
+				int8_t p2, float x, float y, float& l1,     // (see http://en.wikipedia.org/wiki/Barycentric_coordinate_system).
+				float& l2, float& l3) const;
+		float TriangleZ(float x, float y) const;			// Interpolate onto a triangular grid
+		bool DDARingAdd(LookAhead* lookAhead);				// Add a processed look-ahead entry to the DDA ring
+		DDA* DDARingGet();									// Get the next DDA ring entry to be run
+		bool DDARingEmpty() const;							// Anything there?
+		bool DDARingFull() const;							// Any more room?
+		bool GetDDARingLock();								// Lock the ring so only this function may access it
+		void ReleaseDDARingLock();							// Release the DDA ring lock
+		bool LookAheadRingEmpty() const;					// Anything there?
+		bool LookAheadRingFull() const;						// Any more room?
+		bool LookAheadRingAdd(long ep[], float requestedFeedRate, 	// Add an entry to the look-ahead ring for processing
+				float minSpeed, float maxSpeed,
+				float acceleration, EndstopChecks ce,
+				const float extrDiffs[]);
+		LookAhead* LookAheadRingGet();						// Get the next entry from the look-ahead ring
+		void LiveMachineCoordinates(long m[]) const;		// Same as LiveCoordinates, but returns machine coordinates and no feedrate
+		bool SetUpIsolatedMove(long ep[], float requestedFeedRate,	// Set up a single look-ahead entry for only one move
+				float minSpeed, float maxSpeed, float acceleration,
+				EndstopChecks ce);
+		bool SetUpIsolatedMove(float to[], float feedRate,
+				bool axesOnly);
+		bool SplitNextMove();								// Split the next move to improve 5-point bed compensation
 
-    bool addNoMoreMoves;							// If true, allow no more moves to be added to the look-ahead
-    bool active;									// Are we live and running?
-    float currentFeedrate;                          // Err... the current feed rate...
-    volatile float liveCoordinates[DRIVES + 1];		// The last endpoint that the machine moved to
-    float pauseCoordinates[DRIVES + 1];				// The endpoint we were at when the machine was paused
-    volatile float rawExtruderPos[DRIVES - AXES];	// The raw and unmodified extruder positions
-    float rawEDistances[DRIVES - AXES];				// The raw and untransformed E distances of the next move
-    float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
-    bool doingSplitMove;							// We need to split the move into two for five-point bed compensation
-    float splitMove[DRIVES];						// The endpoint of the next move to be split up into two moves
-    float normalisedDirectionVector[DRIVES];		// Used to hold a unit-length vector in the direction of motion
-    long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
-    float xBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
-    float yBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The Y coordinates of the points on the bed at which to probe
-    float zBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The Z coordinates of the points on the bed at which to probe
-    float baryXBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The X coordinates of the triangle corner points
-    float baryYBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The Y coordinates of the triangle corner points
-    float baryZBedProbePoints[NUMBER_OF_PROBE_POINTS];	// The Z coordinates of the triangle corner points
-    uint8_t probePointSet[NUMBER_OF_PROBE_POINTS];	// Has the XY of this point been set?  Has the Z been probed?
-    float aX, aY, aC; 								// Bed plane explicit equation z' = z + aX*x + aY*y + aC
-    float tanXY, tanYZ, tanXZ; 						// Axis compensation - 90 degrees + angle gives angle between axes
-    bool identityBedTransform;						// Is the bed transform in operation?
-    float xRectangle, yRectangle;					// The side lengths of the rectangle used for second-degree bed compensation
-    volatile float lastZHit;						// The last Z value hit by the probe
-    bool zProbing;									// Are we bed probing as well as moving?
-    float longWait;									// A long time for things that need to be done occasionally
+		Platform* platform;									// The RepRap machine
+		GCodes* gCodes;										// The G Codes processing class
 
-    // Additional Move information
+		// These implement the DDA ring
 
-    float extrusionFactors[DRIVES - AXES];			// Extrusion factors (normally 1.0)
-    float speedFactor;								// Speed factor, changed feedrates are multiplied by this
+		DDA* dda;
+		DDA* ddaRingAddPointer;
+		DDA* ddaRingGetPointer;
+		DDA* ddaIsolatedMove;
+		bool readIsolatedMove;
+		volatile bool ddaRingLocked;
 
-    bool isResuming;
-    volatile MoveStatus state;
+		// These implement the look-ahead ring
+
+		LookAhead* lookAheadRingAddPointer;
+		LookAhead* lookAheadRingGetPointer;
+		LookAhead* lastRingMove;
+		LookAhead* isolatedMove;
+		bool isolatedMoveAvailable;
+		DDA* lookAheadDDA;
+		int lookAheadRingCount;
+
+		bool addNoMoreMoves;							// If true, allow no more moves to be added to the look-ahead
+		bool active;									// Are we live and running?
+		float currentFeedrate;                          // Err... the current feed rate...
+		volatile float liveCoordinates[DRIVES + 1];		// The last endpoint that the machine moved to
+		float pauseCoordinates[DRIVES + 1];				// The endpoint we were at when the machine was paused
+		volatile float rawExtruderPos[DRIVES - AXES];	// The raw and unmodified extruder positions
+		float rawEDistances[DRIVES - AXES];				// The raw and untransformed E distances of the next move
+		float nextMove[DRIVES + 1];  					// The endpoint of the next move to processExtra entry is for feedrate
+		bool doingSplitMove;							// We need to split the move into two for five-point bed compensation
+		float splitMove[DRIVES];						// The endpoint of the next move to be split up into two moves
+		float normalisedDirectionVector[DRIVES];		// Used to hold a unit-length vector in the direction of motion
+		long nextMachineEndPoints[DRIVES+1];			// The next endpoint in machine coordinates (i.e. steps)
+		float xBedProbePoints[MAX_PROBE_POINTS];	// The X coordinates of the points on the bed at which to probe
+		float yBedProbePoints[MAX_PROBE_POINTS];	// The Y coordinates of the points on the bed at which to probe
+		float zBedProbePoints[MAX_PROBE_POINTS];	// The Z coordinates of the points on the bed at which to probe
+		float baryXBedProbePoints[MAX_PROBE_POINTS];	// The X coordinates of the triangle corner points
+		float baryYBedProbePoints[MAX_PROBE_POINTS];	// The Y coordinates of the triangle corner points
+		float baryZBedProbePoints[MAX_PROBE_POINTS];	// The Z coordinates of the triangle corner points
+		uint8_t probePointSet[MAX_PROBE_POINTS];	// Has the XY of this point been set?  Has the Z been probed?
+		float aX, aY, aC; 								// Bed plane explicit equation z' = z + aX*x + aY*y + aC
+		float tanXY, tanYZ, tanXZ; 						// Axis compensation - 90 degrees + angle gives angle between axes
+		bool identityBedTransform;						// Is the bed transform in operation?
+		float xRectangle, yRectangle;					// The side lengths of the rectangle used for second-degree bed compensation
+		volatile float lastZHit;						// The last Z value hit by the probe
+		bool zProbing;									// Are we bed probing as well as moving?
+		float longWait;									// A long time for things that need to be done occasionally
+
+		// Additional Move information
+
+		float extrusionFactors[DRIVES - AXES];			// Extrusion factors (normally 1.0)
+		float speedFactor;								// Speed factor, changed feedrates are multiplied by this
+
+		bool isResuming;
+		volatile MoveStatus state;
 };
 
 //********************************************************************************************************
 
 inline LookAhead* LookAhead::Next() const
 {
-  return next;
+	return next;
 }
 
 inline LookAhead* LookAhead::Previous() const
 {
-  return previous;
+	return previous;
 }
 
 inline float LookAhead::MachineToEndPoint(int8_t drive) const
 {
-	if(drive >= DRIVES)
+	if (drive >= DRIVES)
 	{
-		platform->Message(BOTH_MESSAGE, "MachineToEndPoint() called for feedrate!\n");
+		platform->Message(GENERIC_MESSAGE, "MachineToEndPoint() called for feedrate!\n");
 		return 0.0;
 	}
 	return ((float)(endPoint[drive]))/platform->DriveStepsPerUnit(drive);
@@ -378,12 +384,12 @@ inline float LookAhead::Acceleration() const
 
 inline void LookAhead::SetV(float vv)
 {
-  v = vv;
+	v = vv;
 }
 
 inline float LookAhead::V() const
 {
-  return v;
+	return v;
 }
 
 inline void LookAhead::SetFeedRate(float f)
@@ -393,31 +399,31 @@ inline void LookAhead::SetFeedRate(float f)
 
 inline int8_t LookAhead::Processed() const
 {
-  return processed;
+	return processed;
 }
 
 inline void LookAhead::SetProcessed(MovementState ms)
 {
-  if(ms == unprocessed)
-    processed = unprocessed;
-  else
-    processed |= ms;
+	if(ms == unprocessed)
+		processed = unprocessed;
+	else
+		processed |= ms;
 }
 
 inline void LookAhead::Release()
 {
-  processed = released;
+	processed = released;
 }
 
 inline EndstopChecks LookAhead::EndStopsToCheck() const
 {
-  return endStopsToCheck;
+	return endStopsToCheck;
 }
 
 // This is called from the step ISR. Any variables it modifies that are also read by code outside the ISR should be declared 'volatile'.
 inline void LookAhead::SetDriveCoordinate(float a, int8_t drive)
 {
-  endPoint[drive] = EndPointToMachine(drive, a);
+	endPoint[drive] = EndPointToMachine(drive, a);
 }
 
 inline const long* LookAhead::MachineCoordinates() const
@@ -429,17 +435,17 @@ inline const long* LookAhead::MachineCoordinates() const
 
 inline bool DDA::Active() const
 {
-  return active;
+	return active;
 }
 
 inline DDA* DDA::Next()
 {
-  return next;
+	return next;
 }
 
 inline float DDA::InstantDv() const
 {
-  return instantDv;
+	return instantDv;
 }
 
 
@@ -582,19 +588,19 @@ inline void Move::Cancel()
 
 inline bool Move::DDARingEmpty() const
 {
-  return ddaRingGetPointer == ddaRingAddPointer;
+	return ddaRingGetPointer == ddaRingAddPointer;
 }
 
 inline bool Move::NoLiveMovement() const
 {
-	return	(dda == NULL) &&
+	return	(dda == nullptr) &&
 			(state != paused || !isolatedMoveAvailable) &&
 			(state != running || DDARingEmpty());
 }
 
 inline void Move::LiveMachineCoordinates(long m[]) const
 {
-	for(uint8_t drive=0; drive<DRIVES; drive++)
+	for(size_t drive=0; drive<DRIVES; drive++)
 	{
 		m[drive] = LookAhead::EndPointToMachine(drive, liveCoordinates[drive]);
 	}
@@ -604,39 +610,39 @@ inline void Move::LiveMachineCoordinates(long m[]) const
 
 inline bool Move::DDARingFull() const
 {
-  return ddaRingAddPointer->Next()->Next() == ddaRingGetPointer;
+	return ddaRingAddPointer->Next()->Next() == ddaRingGetPointer;
 }
 
 inline bool Move::LookAheadRingEmpty() const
 {
-  return lookAheadRingCount == 0;
+	return lookAheadRingCount == 0;
 }
 
 // Leave a gap of 2 as the last Get result may still be being processed
 
 inline bool Move::LookAheadRingFull() const
 {
-  if(!(lookAheadRingAddPointer->Processed() & released))
-    return true;
-  return lookAheadRingAddPointer->Next()->Next() == lookAheadRingGetPointer;  // probably not needed; just return the bool in the if above
+	if(!(lookAheadRingAddPointer->Processed() & released))
+		return true;
+	return lookAheadRingAddPointer->Next()->Next() == lookAheadRingGetPointer;  // probably not needed; just return the bool in the if above
 }
 
 inline bool Move::GetDDARingLock()
 {
-  if(ddaRingLocked)
-    return false;
-  ddaRingLocked = true;
-  return true;
+	if(ddaRingLocked)
+		return false;
+	ddaRingLocked = true;
+	return true;
 }
 
 inline void Move::ReleaseDDARingLock()
 {
-  ddaRingLocked = false;
+	ddaRingLocked = false;
 }
 
 inline void Move::LiveCoordinates(float m[]) const
 {
-	for(int8_t drive = 0; drive <= DRIVES; drive++)
+	for(size_t drive = 0; drive <= DRIVES; drive++)
 	{
 		m[drive] = liveCoordinates[drive];
 	}
@@ -648,7 +654,7 @@ inline bool Move::GetPauseCoordinates(float m[]) const
 	if (!IsPaused())
 		return false;
 
-	for(uint8_t drive = 0; drive < DRIVES; drive++)
+	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
 		m[drive] = pauseCoordinates[drive];
 	}
@@ -659,7 +665,7 @@ inline bool Move::GetPauseCoordinates(float m[]) const
 
 inline void Move::GetRawExtruderPositions(float e[]) const
 {
-	for(uint8_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+	for(size_t extruder = 0; extruder < DRIVES - AXES; extruder++)
 	{
 		e[extruder] = rawExtruderPos[extruder];
 	}
@@ -669,7 +675,7 @@ inline void Move::GetRawExtruderPositions(float e[]) const
 // These are the actual numbers that we want to be the coordinates, so don't transform them.
 inline void Move::SetLiveCoordinates(float coords[])
 {
-	for(int8_t drive = 0; drive <= DRIVES; drive++)
+	for(size_t drive = 0; drive <= DRIVES; drive++)
 	{
 		liveCoordinates[drive] = coords[drive];
 	}
@@ -679,7 +685,7 @@ inline void Move::SetLiveCoordinates(float coords[])
 
 inline void Move::ResetExtruderPositions()
 {
-	for(uint8_t drive = AXES; drive < DRIVES; drive++)
+	for(size_t drive = AXES; drive < DRIVES; drive++)
 	{
 		liveCoordinates[drive] = 0.0;
 		rawExtruderPos[drive - AXES] = 0.0;
@@ -694,20 +700,20 @@ inline void Move::ResetExtruderPositions()
 
 inline bool Move::AllMovesAreFinished()
 {
-  addNoMoreMoves = true;
-  return (IsPausing() || IsPaused() || LookAheadRingEmpty()) && NoLiveMovement();
+	addNoMoreMoves = true;
+	return (IsPausing() || IsPaused() || LookAheadRingEmpty()) && NoLiveMovement();
 }
 
 inline void Move::AddMoreMoves()
 {
-  addNoMoreMoves = false;
+	addNoMoreMoves = false;
 }
 
 inline void Move::SetXBedProbePoint(int index, float x)
 {
-	if(index < 0 || index >= NUMBER_OF_PROBE_POINTS)
+	if(index < 0 || index >= MAX_PROBE_POINTS)
 	{
-		platform->Message(BOTH_MESSAGE, "Z probe point X index out of range.\n");
+		platform->Message(GENERIC_MESSAGE, "Z probe point X index out of range.\n");
 		return;
 	}
 	xBedProbePoints[index] = x;
@@ -716,9 +722,9 @@ inline void Move::SetXBedProbePoint(int index, float x)
 
 inline void Move::SetYBedProbePoint(int index, float y)
 {
-	if(index < 0 || index >= NUMBER_OF_PROBE_POINTS)
+	if(index < 0 || index >= MAX_PROBE_POINTS)
 	{
-		platform->Message(BOTH_MESSAGE, "Z probe point Y index out of range.\n");
+		platform->Message(GENERIC_MESSAGE, "Z probe point Y index out of range.\n");
 		return;
 	}
 	yBedProbePoints[index] = y;
@@ -727,9 +733,9 @@ inline void Move::SetYBedProbePoint(int index, float y)
 
 inline void Move::SetZBedProbePoint(int index, float z)
 {
-	if(index < 0 || index >= NUMBER_OF_PROBE_POINTS)
+	if(index < 0 || index >= MAX_PROBE_POINTS)
 	{
-		platform->Message(BOTH_MESSAGE, "Z probe point Z index out of range.\n");
+		platform->Message(GENERIC_MESSAGE, "Z probe point Z index out of range.\n");
 		return;
 	}
 	zBedProbePoints[index] = z;
@@ -785,22 +791,22 @@ inline bool Move::XYProbeCoordinatesSet(int index) const
 
 inline int Move::NumberOfProbePoints() const
 {
-	for(int i = 0; i < NUMBER_OF_PROBE_POINTS; i++)
+	for(size_t i = 0; i < MAX_PROBE_POINTS; i++)
 	{
 		if(!AllProbeCoordinatesSet(i))
 			return i;
 	}
-	return NUMBER_OF_PROBE_POINTS;
+	return MAX_PROBE_POINTS;
 }
 
 inline int Move::NumberOfXYProbePoints() const
 {
-	for(int i = 0; i < NUMBER_OF_PROBE_POINTS; i++)
+	for(size_t i = 0; i < MAX_PROBE_POINTS; i++)
 	{
 		if(!XYProbeCoordinatesSet(i))
 			return i;
 	}
-	return NUMBER_OF_PROBE_POINTS;
+	return MAX_PROBE_POINTS;
 }
 
 /*
@@ -890,7 +896,7 @@ inline float Move::AxisCompensation(int8_t axis)
 			return tanXZ;
 
 		default:
-			platform->Message(BOTH_MESSAGE, "Axis compensation requested for non-existent axis.");
+			platform->Message(GENERIC_MESSAGE, "Axis compensation requested for non-existent axis.\n");
 	}
 	return 0.0;
 }
@@ -916,3 +922,5 @@ inline void Move::SetSpeedFactor(float factor)
 }
 
 #endif
+
+// vim: ts=4:sw=4
