@@ -73,9 +73,9 @@ static uint16_t httpPort = HTTP_PORT;
 extern "C" void RepRapNetworkMessage(const char* s)
 {
 #ifdef LWIP_DEBUG
-       reprap.GetPlatform()->Message(DEBUG_MESSAGE, s);
+	reprap.GetPlatform()->Message(DEBUG_MESSAGE, s);
 #else
-       reprap.GetPlatform()->Message(HOST_MESSAGE, s);
+	reprap.GetPlatform()->Message(HOST_MESSAGE, s);
 #endif
 }
 
@@ -106,7 +106,7 @@ static void emac_read_packet(uint32_t ul_status)
 	// Because the LWIP stack can become corrupted if we work with it in parallel,
 	// we may have to wait for the next Spin() call to read the next packet.
 
-	if (LockLWIP())
+	if (ethernet_is_ready() && LockLWIP())
 	{
 		do {
 			// read all queued packets from the RX buffer
@@ -350,13 +350,15 @@ void Network::Spin()
 
 		if (readingData)
 		{
-			readingData = false;
-
 			do {
 				// read all queued packets from the RX buffer
 			} while (ethernet_read());
 
-			ethernet_set_rx_callback(&emac_read_packet);
+			if (ethernet_is_ready())
+			{
+				readingData = false;
+				ethernet_set_rx_callback(&emac_read_packet);
+			}
 		}
 
 		// See if we can send anything
