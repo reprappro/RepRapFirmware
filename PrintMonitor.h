@@ -44,13 +44,13 @@ class PrintMonitor
 		void Spin();
 		void Init();
 
-		bool IsPrinting() const;				// Is a file being printed?
+		bool IsPrinting() const;						// Is a file being printed?
 		void StartingPrint(const char *filename);		// Called to indicate a file will be printed (see M23)
 		void StartedPrint();							// Called whenever a new live print starts (see M24)
 		void StoppedPrint();							// Called whenever a file print has stopped
 
 		bool GetFileInfo(const char *directory, const char *fileName, GcodeFileInfo& info) const;
-		void GetFileInfoResponse(StringRef& response, const char* filename) const;
+		OutputBuffer *GetFileInfoResponse(const char* filename) const;
 
 		float EstimateTimeLeft(PrintEstimationMethod method) const;
 
@@ -103,3 +103,5 @@ inline float PrintMonitor::GetFirstLayerDuration() const { return firstLayerDura
 inline float PrintMonitor::GetFirstLayerHeight() const { return firstLayerHeight; }
 
 #endif /* PRINTMONITOR_H */
+
+// vim: ts=4:sw=4
