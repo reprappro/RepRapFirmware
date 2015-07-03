@@ -3,7 +3,7 @@
 RepRapFirmware - Configuration
 
 This is where all machine-independent configuration and other definitions are set up.  Nothing that
-depends on any particular RepRap, RepRap component, or RepRap controller should go in here.  Define
+depends on any particular RepRap, RepRap component, or RepRap controller  should go in here. Define
 machine-dependent things in Platform.h
 
 -----------------------------------------------------------------------------------------------------
@@ -24,9 +24,12 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.08"
-#define DATE "2015-03-09"
-#define LAST_AUTHOR "reprappro"
+#define VERSION "1.09a-zpl"
+#define DATE "2015-06-08"
+#define AUTHORS "reprappro, dc42, zpl"
+
+// Comment out the following line if you don't want to build the firmware with Flash save support
+#define FLASH_SAVE_ENABLED
 
 // Other firmware that we might switch to be compatible with.
 
@@ -42,49 +45,69 @@ enum Compatibility
 
 // Some numbers...
 
-#define ABS_ZERO (-273.15)  // Celsius
+#define ABS_ZERO (-273.15)  					// Celsius
+#define NEARLY_ABS_ZERO (-273)					// Celsius
 
 #define INCH_TO_MM (25.4)
 
-#define HEAT_SAMPLE_TIME (0.5) // Seconds
+#define HEAT_SAMPLE_TIME (0.5)					// Seconds
+#define HEAT_PWM_AVERAGE_TIME (5.0)				// Seconds
 
-#define HEAT_PWM_AVERAGE_TIME (5.0) // Seconds
+#define TEMPERATURE_CLOSE_ENOUGH (2.5) 			// Celsius
+#define TEMPERATURE_LOW_SO_DONT_CARE (40.0)		// Celsius
+#define HOT_ENOUGH_TO_EXTRUDE (160.0)       	// Celsius
+#define HOT_ENOUGH_TO_RETRACT (90.0)			// Celsius
+#define TIME_TO_HOT (150.0)						// Seconds
 
-#define INV_HEAT_PWM_AVERAGE_COUNT (HEAT_SAMPLE_TIME/HEAT_PWM_AVERAGE_TIME)
+#define DEFAULT_IDLE_CURRENT_FACTOR (0.3)		// Proportion of normal motor current that we use for idle hold
 
-#define TEMPERATURE_CLOSE_ENOUGH (3.0) 		// Celsius
-#define TEMPERATURE_LOW_SO_DONT_CARE (40.0)	// Celsius
-#define HOT_ENOUGH_TO_EXTRUDE (170.0)       // Celsius
-#define TIME_TO_HOT (120.0)					// Seconds
-
-// If temperatures fall outside this range, something
-// nasty has happened.
+// If temperatures fall outside this range, something nasty has happened.
 
 #define MAX_BAD_TEMPERATURE_COUNT 6
-#define BAD_LOW_TEMPERATURE -15.0
+#define BAD_LOW_TEMPERATURE -10.0
 #define BAD_HIGH_TEMPERATURE 300.0
 
-#define STANDBY_INTERRUPT_RATE 2.0e-4 // Seconds
+#define STANDBY_INTERRUPT_RATE 2.0e-4			// Seconds
 
-#define NUMBER_OF_PROBE_POINTS 5	  // Maximum number of probe points
-#define Z_DIVE 8.0  				  // Height from which to probe the bed (mm)
-#define TRIANGLE_0 -0.001			  // Slightly less than 0 for point-in-triangle tests
+#define NUMBER_OF_PROBE_POINTS 5				// Maximum number of probe points
+#define Z_DIVE 5.0								// Height from which to probe the bed (mm)
+#define TRIANGLE_0 -0.001						// Slightly less than 0 for point-in-triangle tests
 
 #define SILLY_Z_VALUE -9999.0
+
+// String lengths
+
+#define STRING_LENGTH 1024
+#define SHORT_STRING_LENGTH 40
+
+#define FILENAME_LENGTH 100
+#define GCODE_REPLY_LENGTH 2048
+
+// Print estimation defaults
+#define NOZZLE_DIAMETER 0.5						// Thickness of the nozzle
+#define FILAMENT_WIDTH 1.75						// Width of the filament
+#define MAX_LAYER_SAMPLES 5						// Number of layer samples (except for first layer)
+#define ESTIMATION_MIN_FILAMENT_USAGE 0.025		// Minimum per cent for filament usage estimation
+#define FIRST_LAYER_SPEED_FACTOR 0.25			// First layer speed compared to others (only for layer-based estimation)
 
 // Webserver stuff
 
 #define DEFAULT_PASSWORD "reprap"
 #define DEFAULT_NAME "My RepRap 1"
 #define INDEX_PAGE "reprap.htm"
-#define MESSAGE_FILE "messages.txt"
 #define FOUR04_FILE "html404.htm"
-#define CONFIG_FILE "config.g"         // The file that sets the machine's parameters
+#define CONFIG_FILE "config.g"					// The file that sets the machine's parameters
+#define DEFAULT_FILE "default.g"				// If the config file isn't found
 #define HOME_X_G "homex.g"
 #define HOME_Y_G "homey.g"
 #define HOME_Z_G "homez.g"
 #define HOME_ALL_G "homeall.g"
+#define HOME_DELTA_G "homedelta.g"
 #define SET_BED_EQUATION "bed.g"
+#define PAUSE_G "pause.g"
+#define RESUME_G "resume.g"
+#define STOP_G "stop.g"
+#define SLEEP_G "sleep.g"
 
 #define WEB_DEBUG_TRUE 9
 #define WEB_DEBUG_FALSE 8
@@ -106,5 +129,5 @@ enum Compatibility
 #define WEB_ERROR_MESSAGE 'E'					// Type byte of message that is to be sent to the web - flags an error
 #define BOTH_MESSAGE 'B'						// Type byte of message that is to be sent to the web & host
 #define BOTH_ERROR_MESSAGE 'A'					// Type byte of message that is to be sent to the web & host - flags an error
-
+#define DEBUG_MESSAGE 'D'						// Type byte of debug message to send in blocking mode to USB
 #endif

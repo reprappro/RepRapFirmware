@@ -31,80 +31,81 @@ class Tool
 public:
 
 	Tool(int toolNumber, long d[], int dCount, long h[], int hCount);
-	void Init(long d[], int dCount, long h[], int hCount);
-	int DriveCount();
-	int Drive(int driveNumber);
-	bool ToolCanDrive();
-	int HeaterCount();
-	int Heater(int heaterNumber);
-	int Number();
-	void SetTemperatureVariables(float* standby, float* active);
-	void GetTemperatureVariables(float* standby, float* active);
-	void SetOffsets(float* off);
-	void GetOffsets(float* off);
+	const float *GetOffset() const;
+	void SetOffset(const float offs[AXES]);
+	int DriveCount() const;
+	int Drive(int driveNumber) const;
+	bool ToolCanDrive(bool extrude);
+	int HeaterCount() const;
+	int Heater(int heaterNumber) const;
+	int Number() const;
+	void SetVariables(float* standby, float* active);
+	void GetVariables(float* standby, float* active) const;
 	void DefineMix(float* m);
-	const float* GetMix() const;
+	float* GetMix() const;
 	void TurnMixingOn();
 	void TurnMixingOff();
-	bool Mixing();
-	float MaxFeedrate();
-	float InstantDv();
-	void Print(char* reply);
+	bool Mixing() const;
+	float MaxFeedrate() const;
+	float InstantDv() const;
+	void Print(StringRef& reply);
 
 	friend class RepRap;
 
 protected:
 
-	Tool* Next();
+	Tool* Next() const;
 	void Activate(Tool* currentlyActive);
 	void Standby();
-	void AddTool(Tool* t);
+	void AddTool(Tool* tool);
 	void FlagTemperatureFault(int8_t dudHeater);
 	void ClearTemperatureFault(int8_t wasDudHeater);
-	void PrintInternal(char* reply, int bufferSize);
+	void UpdateExtruderAndHeaterCount(uint16_t &extruders, uint16_t &heaters) const;
+	bool DisplayColdExtrudeWarning();
 
 private:
 
 	void SetTemperatureFault(int8_t dudHeater);
 	void ResetTemperatureFault(int8_t wasDudHeater);
-	bool AllHeatersAtHighTemperature();
+	bool AllHeatersAtHighTemperature(bool forExtrusion) const;
 	int myNumber;
-	int drives[DRIVES - AXES];
-	float mix[DRIVES - AXES];
+	int* drives;
+	float* mix;
 	bool mixing;
 	int driveCount;
-	int heaters[HEATERS];
-	float activeTemperatures[HEATERS];
-	float standbyTemperatures[HEATERS];
-	float offsets[AXES];
+	int* heaters;
+	float* activeTemperatures;
+	float* standbyTemperatures;
 	int heaterCount;
 	Tool* next;
 	bool active;
 	bool heaterFault;
+	float offset[AXES];
+
+    volatile bool displayColdExtrudeWarning;
 };
 
-
-inline int Tool::Drive(int driveNumber)
+inline int Tool::Drive(int driveNumber) const
 {
 	return drives[driveNumber];
 }
 
-inline int Tool::HeaterCount()
+inline int Tool::HeaterCount() const
 {
 	return heaterCount;
 }
 
-inline int Tool::Heater(int heaterNumber)
+inline int Tool::Heater(int heaterNumber) const
 {
 	return heaters[heaterNumber];
 }
 
-inline Tool* Tool::Next()
+inline Tool* Tool::Next() const
 {
 	return next;
 }
 
-inline int Tool::Number()
+inline int Tool::Number() const
 {
 	return myNumber;
 }
@@ -112,10 +113,12 @@ inline int Tool::Number()
 inline void Tool::DefineMix(float* m)
 {
 	for(int8_t drive = 0; drive < driveCount; drive++)
+	{
 		mix[drive] = m[drive];
+	}
 }
 
-inline const float* Tool::GetMix() const
+inline float* Tool::GetMix() const
 {
 	return mix;
 }
@@ -130,16 +133,27 @@ inline void Tool::TurnMixingOff()
 	mixing = false;
 }
 
-inline bool Tool::Mixing()
+inline bool Tool::Mixing() const
 {
 	return mixing;
 }
 
-inline int Tool::DriveCount()
+inline int Tool::DriveCount() const
 {
 	return driveCount;
 }
 
+inline const float *Tool::GetOffset() const
+{
+	return offset;
+}
 
+inline void Tool::SetOffset(const float offs[AXES])
+{
+	for(size_t i = 0; i < AXES; ++i)
+	{
+		offset[i] = offs[i];
+	}
+}
 
 #endif /* TOOL_H_ */
