@@ -74,6 +74,7 @@ extern void RepRapNetworkMessage(const char*);
 
 /* Global variable containing MAC Config (hw addr, IP, GW, ...) */
 struct netif gs_net_if;
+static bool net_if_ready = false;
 
 struct netif* ethernet_get_configuration()
 {
@@ -209,6 +210,14 @@ void start_ethernet(const unsigned char ipAddress[], const unsigned char netMask
 	ethernet_configure_interface(ipAddress, netMask, gateWay);
 }
 
+/** \brief Check if the ethernet interface has been configured completely and if
+ * an IP has been assigned to it.
+ *
+ */
+bool ethernet_is_ready()
+{
+	return net_if_ready;
+}
 
 //*************************************************************************************************************
 /**
@@ -226,6 +235,7 @@ void ethernet_status_callback(struct netif *netif)
 		strncat(c_mess, "\n\n", sizeof(c_mess) - 1);
 		RepRapNetworkMessage(c_mess);
 		netif->flags |= NETIF_FLAG_LINK_UP;
+		net_if_ready = true;
 	}
 	else
 	{
