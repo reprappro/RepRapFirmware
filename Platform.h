@@ -216,17 +216,17 @@ static const unsigned int Z_PROBE_AVERAGE_READINGS = 8;			// We average this num
 
 // Inkjet (if any - no inkjet is flagged by INKJET_BITS negative)
 
-static const int8_t INKJET_BITS = -1;      // How many nozzles?
-static const int INKJET_FIRE_MICROSECONDS = 4; // How long to fire a nozzle
+static const int8_t INKJET_BITS = 12;      // How many nozzles?
+static const int INKJET_FIRE_MICROSECONDS = 5; // How long to fire a nozzle
 static const int INKJET_DELAY_MICROSECONDS = 800; // How long to wait before the next bit
 
 // Inkjet control pins
 
-static const int8_t INKJET_SERIAL_OUT = -1;    // Serial bitpattern into the shift register
-static const int8_t INKJET_SHIFT_CLOCK = -1;   // Shift the register
-static const int8_t INKJET_STORAGE_CLOCK = -1; // Put the pattern in the output register
-static const int8_t INKJET_OUTPUT_ENABLE = -1; // Make the output visible
-static const int8_t INKJET_CLEAR = -1;         // Clear the register to 0
+static const int8_t INKJET_SERIAL_OUT = 65;    // Serial bitpattern into the shift register
+static const int8_t INKJET_SHIFT_CLOCK = 20;   // Shift the register
+static const int8_t INKJET_STORAGE_CLOCK = 67; // Put the pattern in the output register
+static const int8_t INKJET_OUTPUT_ENABLE = 66; // Make the output visible
+static const int8_t INKJET_CLEAR = 36;         // Clear the register to 0
 
 
 /****************************************************************************************************/
