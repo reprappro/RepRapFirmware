@@ -1680,27 +1680,29 @@ bool Platform::Inkjet(int bitPattern)
 
     for(int8_t i = 0; i < inkjetBits; i++)
 	{
-            digitalWrite(inkjetSerialOut, bitPattern & 1); //Write data to shift register
-            
-            for(int8_t j = 0; j <= i; j++)
+			if(bitPattern & 1)
 			{
-				digitalWrite(inkjetShiftClock, HIGH);
-				digitalWrite(inkjetShiftClock,LOW);
-                digitalWrite(inkjetSerialOut,0);
-            }
-
-			digitalWrite(inkjetStorageClock, HIGH); //Transfers data from shift register to output register
-			digitalWrite(inkjetStorageClock,LOW);
+        		digitalWrite(inkjetSerialOut, 1); //Write data to shift register
             
-			digitalWrite(inkjetOutputEnable, LOW);  // Fire the droplet out
-			delayMicroseconds(inkjetFireMicroseconds);
-			digitalWrite(inkjetOutputEnable,HIGH);
+        		for(int8_t j = 0; j <= i; j++)
+				{
+					digitalWrite(inkjetShiftClock, HIGH);
+					digitalWrite(inkjetShiftClock,LOW);
+            		digitalWrite(inkjetSerialOut,0);
+        		}
 
-			digitalWrite(inkjetClear, LOW);         // Clear to 0
-			digitalWrite(inkjetClear,HIGH);
+				digitalWrite(inkjetStorageClock, HIGH); //Transfers data from shift register to output register
+				digitalWrite(inkjetStorageClock,LOW);
             
-			// if(bitPattern & 1) // Good idea?
+				digitalWrite(inkjetOutputEnable, LOW);  // Fire the droplet out
+				delayMicroseconds(inkjetFireMicroseconds);
+				digitalWrite(inkjetOutputEnable,HIGH);
+
+				digitalWrite(inkjetClear, LOW);         // Clear to 0
+				digitalWrite(inkjetClear,HIGH);
+            
         		delayMicroseconds(inkjetDelayMicroseconds); // Wait for the next bit
+			}
 
 			bitPattern >>= 1; // Put the next bit in the units column
 	}
