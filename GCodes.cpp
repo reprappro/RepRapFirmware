@@ -4248,6 +4248,14 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			break;
 
+		case 578: // Fire Inkjet bits
+			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+				return false;
+			if(gb->Seen('S')) // Need to handle the 'P' parameter too; see http://reprap.org/wiki/G-code#M578:_Fire_inkjet_bits
+				platform->Inkjet(gb->GetIValue());
+			result = true;
+			break;
+
 		case 906: // Set/report Motor currents
 			{
 				bool seen = false;

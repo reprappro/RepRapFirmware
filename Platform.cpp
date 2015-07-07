@@ -261,6 +261,36 @@ void Platform::Init()
 	nozzleDiameter = NOZZLE_DIAMETER;
 	filamentWidth = FILAMENT_WIDTH;
 
+	// Inkjet
+
+	inkjetBits = INKJET_BITS;
+	if (inkjetBits >= 0)
+	{
+		inkjetFireMicroseconds = INKJET_FIRE_MICROSECONDS;
+		inkjetDelayMicroseconds = INKJET_DELAY_MICROSECONDS;
+
+		inkjetSerialOut = INKJET_SERIAL_OUT;
+		pinMode(inkjetSerialOut, OUTPUT);
+		digitalWrite(inkjetSerialOut, 0);
+
+		inkjetShiftClock = INKJET_SHIFT_CLOCK;
+		pinMode(inkjetShiftClock, OUTPUT);
+		digitalWrite(inkjetShiftClock, LOW);
+
+		inkjetStorageClock = INKJET_STORAGE_CLOCK;
+		pinMode(inkjetStorageClock, OUTPUT);
+		digitalWrite(inkjetStorageClock, LOW);
+
+		inkjetOutputEnable = INKJET_OUTPUT_ENABLE;
+		pinMode(inkjetOutputEnable, OUTPUT);
+		digitalWrite(inkjetOutputEnable, HIGH);
+
+		inkjetClear = INKJET_CLEAR;
+		pinMode(inkjetClear, OUTPUT);
+		digitalWrite(inkjetClear, HIGH);
+	}
+
+	// Get the show on the road...
 
 	InitialiseInterrupts();
 
@@ -1635,6 +1665,49 @@ void Platform::ResetChannel(size_t chan)
 		default:
 			break;
 	}
+}
+
+// Fire the inkjet (if any) in the given pattern
+// If there is no inkjet, false is returned; if there is one this returns true
+// So you can test for inkjet presence with if(platform->Inkjet(0))
+
+bool Platform::Inkjet(int bitPattern)
+{
+	if (inkjetBits < 0)
+		return false;
+	if (!bitPattern)
+		return true;
+
+	for(size_t i = 0; i < inkjetBits; i)
+	{
+		if (bitPattern & 1)
+		{
+			digitalWrite(inkjetSerialOut, 1);			// Write data to shift register
+
+			for(size_t j = 0; j <= i; j++)
+			{
+				digitalWrite(inkjetShiftClock, HIGH);
+				digitalWrite(inkjetShiftClock, LOW);
+				digitalWrite(inkjetSerialOut, 0);
+			}
+
+			digitalWrite(inkjetStorageClock, HIGH);		// Transfers data from shift register to output register
+			digitalWrite(inkjetStorageClock, LOW);
+
+			digitalWrite(inkjetOutputEnable, LOW);		// Fire the droplet out
+			delayMicroseconds(inkjetFireMicroseconds);
+			digitalWrite(inkjetOutputEnable, HIGH);
+
+			digitalWrite(inkjetClear, LOW);				// Clear to 0
+			digitalWrite(inkjetClear, HIGH);
+
+			delayMicroseconds(inkjetDelayMicroseconds); // Wait for the next bit
+		}
+
+		bitPattern >>= 1; // Put the next bit in the units column
+	}
+
+	return true;
 }
 
 /*********************************************************************************

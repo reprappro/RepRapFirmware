@@ -8,7 +8,8 @@ This tree is based upon the official "Arduino Due" 1.6.4 platform files, however
 - UART classes were expanded by a "canWrite" method for better sending performance
 
 
-To include this hardware tree, open the Arduino IDE, go to File -> Preferences and set "Additional Boards Manager URLs" to:
+To include this hardware tree, open the Arduino IDE.  Open the Boards Manager and install the Due device tree.  Then
+go to File -> Preferences and set "Additional Boards Manager URLs" to:
 
   https://github.com/chrishamm/RepRapFirmware/raw/dev/Hardware/package_reprap_index.json
   

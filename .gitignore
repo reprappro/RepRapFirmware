@@ -3,7 +3,7 @@
 *~
 *orig
 /Release/
-!Release/RepRapFirmware*.bin
+!/Release/RepRapFirmware*bin
 /arduino
 .*
 spec.d
