@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.09b-zpl"
-#define DATE "2015-07-03"
+#define VERSION "1.09c-zpl"
+#define DATE "2015-07-08"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
@@ -70,13 +70,9 @@ static const size_t MAX_BAD_TEMPERATURE_COUNT = 6;			// Number of bad temperatur
 static const float BAD_LOW_TEMPERATURE = -10.0;				// Celsius
 static const float BAD_HIGH_TEMPERATURE = 300.0;			// Celsius
 
-// Timing constants
-
-static const float STANDBY_INTERRUPT_RATE = 2.0e-4;			// Seconds
-
 // Default Z probe values
 
-static const size_t MAX_PROBE_POINTS = 5;					// Maximum number of probe points (Duet-dc42 uses 16 instead)
+static const size_t MAX_PROBE_POINTS = 16;					// Maximum number of probe points
 static const size_t MAX_DELTA_PROBE_POINTS = 8;				// Must be <= MaxProbePoints, may be smaller to reduce matrix storage requirements. Preferably a power of 2.
 
 static const float DEFAULT_Z_DIVE = 5.0;					// Millimetres
@@ -97,6 +93,11 @@ static const size_t MESSAGE_LENGTH = 256;
 
 static const uint16_t OUTPUT_BUFFER_SIZE = 256;				// How many bytes does each OutputBuffer hold?
 static const size_t OUTPUT_BUFFER_COUNT = 32;				// How many OutputBuffer instances do we have?
+
+// Move system
+
+static const float DEFAULT_FEEDRATE = 3000.0;				// The initial requested feed rate after resetting the printer
+static const float DEFAULT_IDLE_TIMEOUT = 30.0;				// Seconds
 
 // Print estimation defaults
 

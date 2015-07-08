@@ -29,6 +29,7 @@ const char FEEDRATE_LETTER = 'F';					// G-Code feedrate
 const char EXTRUDE_LETTER = 'E';					// G-Code extrude
 
 typedef uint16_t EndstopChecks;						// Must be large enough to hold a bitmap of drive numbers
+const EndstopChecks ZProbeActive = 1 << 15;			// Must be distinct from 1 << (any drive number)
 
 
 // Small class to hold an individual GCode and provide functions to allow it to be parsed
@@ -39,6 +40,7 @@ class GCodeBuffer
 		GCodeBuffer(Platform* p, const char* id);
 		//const char *Identity() const { return identity; }
 		void Init(); 											// Set it up
+		void Clear() { SetFinished(true); }						// Clean it up
 		bool Put(char c);										// Add a character to the end
 		bool Put(const char *str, size_t len);					// Add an entire string
 		bool IsEmpty() const;									// Does this buffer contain any code?
@@ -54,8 +56,6 @@ class GCodeBuffer
 		const char* Buffer() const;								// What G-Code has been fed into this buffer?
 		bool Active() const;									// Is this G-Code buffer still being acted upon?
 		void SetFinished(bool f);								// Set the G Code executed (or not)
-		void Pause();											// Put this instance into paused state
-		void Resume();											// Resume after being paused
 		const char* WritingFileDirectory() const;				// If we are writing the G Code to a file, where that file is
 		void SetWritingFileDirectory(const char* wfd);			// Set the directory for the file to write the GCode in
 		int GetToolNumberAdjust() const { return toolNumberAdjust; }
@@ -64,7 +64,7 @@ class GCodeBuffer
 
 	private:
 
-		enum class GCodeState { idle, executing, paused };
+		enum class GCodeState { idle, executing };
 		int CheckSum();											// Compute the checksum (if any) at the end of the G Code
 		Platform* platform;										// Pointer to the RepRap's controlling class
 		char gcodeBuffer[GCODE_LENGTH];							// The G Code
@@ -73,7 +73,7 @@ class GCodeBuffer
 		int readPointer;										// Where in the buffer to read next
 		bool inComment;											// Are we after a ';' character?
 		bool checksumRequired;									// True if we only accept commands with a valid checksum
-		GCodeState state;										// Idle, executing or paused
+		GCodeState state;										// State of this GCodeBuffer
 		const char* writingFileDirectory;						// If the G Code is going into a file, where that is
 		int toolNumberAdjust;									// Internal offset for tool numbers
 };
@@ -129,7 +129,9 @@ class GCodes
 		void Exit();												// Shut it down
 		void Reset();												// Reset some parameter to defaults
 		bool DoFileMacro(const char* fileName);						// Run a GCode macro in a file. Set externalCall to true if not called from a GCode.
-		bool ReadMove(float* m, EndstopChecks& ce);					// Called by the Move class to get a movement set by the last G Code
+		bool ReadMove(float* m, EndstopChecks& ce,
+				uint8_t& rMoveType, FilePosition& fPos);			// Called by the Move class to get a movement set by the last G Code
+		void ClearMove();
 		void QueueFileToPrint(const char* fileName);				// Open a file of G Codes to run
 		void DeleteFile(const char* fileName);						// Does what it says
 		bool GetProbeCoordinates(int count, float& x,				// Get pre-recorded probe coordinates
@@ -147,7 +149,9 @@ class GCodes
 		void MoveCompleted();										// Indicate that a move has been completed (called by ISR)
 		bool HaveAux() const;										// Any device on the AUX line?
 		bool IsPausing() const;
+		bool IsPaused() const;
 		bool IsResuming() const;
+		bool IsRunning() const;
 		OutputBuffer *GetAuxGCodeReply();							// Returns cached G-Code reply for AUX devices and clears its reference
 		uint32_t GetAuxSeq() const;									// Returns the AUX sequence number
 
@@ -163,12 +167,13 @@ class GCodes
 		bool HandleMcode(GCodeBuffer* gb);							// Do an M code
 		bool HandleTcode(GCodeBuffer* gb);							// Do a T code
 		void CancelPrint();											// Cancel the current print
-		int SetUpMove(GCodeBuffer* gb);								// Pass a move on to the Move module
+		int SetUpMove(GCodeBuffer* gb, StringRef& reply);			// Pass a move on to the Move module
 		bool DoDwell(GCodeBuffer *gb);								// Wait for a bit
 		bool DoDwellTime(float dwell);								// Really wait for a bit
 		bool DoHome(StringRef& reply, bool& error);					// Home some axes
 		bool DoSingleZProbeAtPoint();								// Probe at a given point
 		bool DoSingleZProbe();										// Probe where we are
+		int DoZProbe(float distance);								// Do a Z probe cycle up to the maximum specified distance
 		bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply);	// Probes at a given position - see the comment at the head of the function itself
 		bool SetBedEquationWithProbe(StringRef& reply);				// Probes a series of points and sets the bed equation
 		bool SetPrintZProbe(GCodeBuffer *gb, StringRef& reply);		// Either return the probe value, or set its threshold
@@ -196,6 +201,8 @@ class GCodes
 		void SetToolHeaters(Tool *tool, float temperature);			// Set all a tool's heaters to the temperature.  For M104...
 		bool ChangeTool(int newToolNumber);							// Select a new tool
 		bool ToolHeatersAtSetTemperatures(const Tool *tool) const;	// Wait for the heaters associated with the specified tool to reach their set temperatures
+		bool AllAxesAreHomed() const;								// Return true if all axes are homed
+		void SetAllAxesNotHomed();									// Flag all axes as not homed
 
 		Platform* platform;											// The RepRap machine
 		bool active;												// Live and running?
@@ -211,7 +218,10 @@ class GCodes
 		GCodeBuffer* queuedGCode;									// ... of G Codes
 		bool moveAvailable;											// Have we seen a move G Code and set it up?
 		float moveBuffer[DRIVES+1]; 								// Move coordinates; last is feed rate
+		float savedMoveBuffer[DRIVES+1];							// The position and feedrate when we started the current simulation
+		float pauseCoordinates[AXES+1];								// Coordinates of the last move where we stopped plus the last-known feedrate
 		EndstopChecks endStopsToCheck;								// Which end stops we check them on the next move
+		uint8_t moveType;											// 0 = normal move, 1 = homing move, 2 = direct motor move
 		bool drivesRelative; 										// Are movements relative - all except X, Y and Z
 		bool axesRelative;   										// Are movements relative - X, Y and Z
 		bool drivesRelativeStack[STACK];							// For dealing with Push and Pop
@@ -233,7 +243,7 @@ class GCodes
 		FileStore* fileBeingWritten;								// A file to write G Codes (or sometimes HTML) in
 		bool doingFileMacro, returningFromMacro;					// Are we executing a macro file?
 		bool allowNestedMacro;										// Can we run a nested macro?
-		bool isPausing, isResuming;									// Are we dealing with a print interrupt?
+		bool isPausing, isPaused, isResuming;						// What is the state of the current file print?
 		bool doPauseMacro;											// Do we need to run pause.g and resume.g?
 		float fractionOfFilePrinted;								// Only used to record the main file when a macro is being printed
 		uint8_t eofStringCounter;									// Check the EoF string as we read.
@@ -252,6 +262,7 @@ class GCodes
 		bool waitingForMoveToComplete;
 		bool coolingInverted;
 		float lastFanValue;
+		float lastProbedZ;											// The last height at which the Z probe stopped
 		int8_t toolChangeSequence;									// Steps through the tool change procedure
 		CodeQueueItem *internalCodeQueue;							// Linked list of all the queued codes
 		CodeQueueItem *releasedQueueItems;							// Linked list of all released queue items
@@ -260,6 +271,10 @@ class GCodes
 		bool auxDetected;											// Have we processed at least one G-Code from an AUX device?
 		OutputBuffer *auxGCodeReply;								// G-Code reply for AUX devices (special one because it is actually encapsulated before sending)
 		uint32_t auxSeq;											// Sequence number for AUX devices
+		bool simulating;
+		float simulationTime;
+		FilePosition filePos;										// The position we got up to in the file being printed
+		FilePosition moveFilePos;									// Saved version of filePos for the next real move to be processed
 };
 
 //*****************************************************************************************************
@@ -289,22 +304,6 @@ inline void GCodeBuffer::SetFinished(bool f)
 		gcodeBuffer[0] = 0;
 	}
 	else
-	{
-		state = GCodeState::executing;
-	}
-}
-
-inline void GCodeBuffer::Pause()
-{
-	if (state == GCodeState::executing)
-	{
-		state = GCodeState::paused;
-	}
-}
-
-inline void GCodeBuffer::Resume()
-{
-	if (state == GCodeState::paused)
 	{
 		state = GCodeState::executing;
 	}
@@ -344,6 +343,16 @@ inline bool GCodes::GetAxisIsHomed(size_t axis) const
 inline void GCodes::SetAxisIsHomed(size_t axis)
 {
 	axisIsHomed[axis] = true;
+}
+
+inline bool GCodes::AllAxesAreHomed() const
+{
+	return axisIsHomed[X_AXIS] && axisIsHomed[Y_AXIS] && axisIsHomed[Z_AXIS];
+}
+
+inline void GCodes::SetAllAxesNotHomed()
+{
+	axisIsHomed[X_AXIS] = axisIsHomed[Y_AXIS] = axisIsHomed[Z_AXIS] = false;
 }
 
 inline bool GCodes::NoHome() const

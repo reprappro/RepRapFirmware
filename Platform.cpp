@@ -32,6 +32,16 @@ const uint32_t fanMaxInterruptCount = 32;			// number of fan interrupts that we 
 static volatile uint32_t fanLastResetTime = 0;		// time (microseconds) at which we last reset the interrupt count, accessed inside and outside ISR
 static volatile uint32_t fanInterval = 0;			// written by ISR, read outside the ISR
 
+//#define MOVE_DEBUG
+
+#ifdef MOVE_DEBUG
+unsigned int numInterruptsScheduled = 0;
+unsigned int numInterruptsExecuted = 0;
+uint32_t nextInterruptTime = 0;
+uint32_t nextInterruptScheduledAt = 0;
+uint32_t lastInterruptTime = 0;
+#endif
+
 // Arduino initialise and loop functions
 // Put nothing in these other than calls to the RepRap equivalents
 
@@ -156,8 +166,7 @@ void Platform::Init()
 	ARRAY_INIT(directionPins, DIRECTION_PINS);
 	ARRAY_INIT(directions, DIRECTIONS);
 	ARRAY_INIT(enablePins, ENABLE_PINS);
-	ARRAY_INIT(lowStopPins, LOW_STOP_PINS);
-	ARRAY_INIT(highStopPins, HIGH_STOP_PINS);
+	ARRAY_INIT(endStopPins, END_STOP_PINS);
 	ARRAY_INIT(maxFeedrates, MAX_FEEDRATES);
 	ARRAY_INIT(accelerations, ACCELERATIONS);
 	ARRAY_INIT(driveStepsPerUnit, DRIVE_STEPS_PER_UNIT);
@@ -213,17 +222,19 @@ void Platform::Init()
 		{
 			pinMode(enablePins[drive], OUTPUT);
 		}
-		if (lowStopPins[drive] >= 0)
+		if (endStopPins[drive] >= 0)
 		{
-			pinMode(lowStopPins[drive], INPUT_PULLUP);
-		}
-		if (highStopPins[drive] >= 0)
-		{
-			pinMode(highStopPins[drive], INPUT_PULLUP);
+			pinMode(endStopPins[drive], INPUT_PULLUP);
 		}
 		motorCurrents[drive] = 0.0;
 		DisableDrive(drive);
 		driveState[drive] = DriveStatus::disabled;
+		SetElasticComp(drive, 0.0);
+		if (drive <= AXES)
+		{
+			endStopType[drive] = EndStopType::lowEndStop;	// assume all endstops are low endstops
+			endStopLogicLevel[drive] = true;				// assume all endstops use active high logic e.g. normally-closed switch to ground
+		}
 	}
 
 	extrusionAncilliaryPWM = 0.0;
@@ -327,7 +338,7 @@ void Platform::SetSlowestDrive()
 	slowestDrive = 0;
 	for(size_t drive = 1; drive < DRIVES; drive++)
 	{
-		if(InstantDv(drive) < InstantDv(slowestDrive))
+		if (ConfiguredInstantDv(drive) < ConfiguredInstantDv(slowestDrive))
 		{
 			slowestDrive = drive;
 		}
@@ -339,11 +350,15 @@ void Platform::InitZProbe()
 	zProbeOnFilter.Init(0);
 	zProbeOffFilter.Init(0);
 
-	if (nvData.zProbeType >= 1)
+	if (nvData.zProbeType >= 1 && nvData.zProbeType <= 3)
 	{
 		zProbeModulationPin = (nvData.zProbeChannel == 1) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
 		pinMode(zProbeModulationPin, OUTPUT);
 		digitalWrite(zProbeModulationPin, (nvData.zProbeType <= 2) ? HIGH : LOW);	// enable the IR LED or alternate sensor
+	}
+	else if (nvData.zProbeType == 4)
+	{
+		pinMode(endStopPins[E0_AXIS], INPUT_PULLUP);
 	}
 }
 
@@ -360,9 +375,9 @@ int Platform::ZProbe() const
 	{
 		switch (nvData.zProbeType)
 		{
-			case 1:
-			case 3:
-				// Simple IR sensor, or direct-mode ultrasonic sensor
+			case 1:		// Simple or intelligent IR sensor
+			case 3:		// Alternate sensor
+			case 4:		// Mechanical Z probe
 				return (int) ((zProbeOnFilter.GetSum() + zProbeOffFilter.GetSum()) / (8 * Z_PROBE_AVERAGE_READINGS));
 
 			case 2:
@@ -408,7 +423,7 @@ int Platform::GetZProbeChannel() const
 
 void Platform::SetZProbeAxes(const bool axes[AXES])
 {
-	for(int axis=0; axis<AXES; axis++)
+	for(size_t axis=0; axis<AXES; axis++)
 	{
 		nvData.zProbeAxes[axis] = axes[axis];
 	}
@@ -421,7 +436,7 @@ void Platform::SetZProbeAxes(const bool axes[AXES])
 
 void Platform::GetZProbeAxes(bool (&axes)[AXES])
 {
-	for(int axis=0; axis<AXES; axis++)
+	for(size_t axis=0; axis<AXES; axis++)
 	{
 		axes[axis] = nvData.zProbeAxes[axis];
 	}
@@ -432,6 +447,7 @@ float Platform::ZProbeStopHeight() const
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			return nvData.switchZProbeParameters.GetStopHeight(GetTemperature(0));
 		case 1:
 		case 2:
@@ -448,6 +464,7 @@ float Platform::GetZProbeDiveHeight() const
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			return nvData.switchZProbeParameters.diveHeight;
 		case 1:
 		case 2:
@@ -463,6 +480,7 @@ void Platform::SetZProbeDiveHeight(float height)
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			nvData.switchZProbeParameters.diveHeight = height;
 			break;
 		case 1:
@@ -477,7 +495,7 @@ void Platform::SetZProbeDiveHeight(float height)
 
 void Platform::SetZProbeType(int pt)
 {
-	int newZProbeType = (pt >= 0 && pt <= 3) ? pt : 0;
+	int newZProbeType = (pt >= 0 && pt <= 4) ? pt : 0;
 	if (newZProbeType != nvData.zProbeType)
 	{
 		nvData.zProbeType = newZProbeType;
@@ -518,6 +536,7 @@ const ZProbeParameters& Platform::GetZProbeParameters() const
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 		default:
 			return nvData.switchZProbeParameters;
 
@@ -535,6 +554,7 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			if (nvData.switchZProbeParameters != params)
 			{
 				nvData.switchZProbeParameters = params;
@@ -818,7 +838,11 @@ void Platform::SoftwareReset(uint16_t reason)
 
 void TC3_Handler()
 {
-	TC_GetStatus(TC1, 0);
+	TC1->TC_CHANNEL[0].TC_IDR = TC_IER_CPAS;	// disable the interrupt
+#ifdef MOVE_DEBUG
+	++numInterruptsExecuted;
+	lastInterruptTime = Platform::GetInterruptClocks();
+#endif
 	reprap.Interrupt();
 }
 
@@ -843,18 +867,21 @@ void FanInterrupt()
 void Platform::InitialiseInterrupts()
 {
 	// Timer interrupt for stepper motors
+	// The clock rate we use is a compromise. Too fast and the 64-bit square roots take a long time to execute. Too slow and we lose resolution.
+	// We choose a clock divisor of 32, which gives us 0.38us resolution. The next option is 128 which would give 1.524us resolution.
 	pmc_set_writeprotect(false);
 	pmc_enable_periph_clk((uint32_t) TC3_IRQn);
-	TC_Configure(TC1, 0, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK4);
-	TC1 ->TC_CHANNEL[0].TC_IER = TC_IER_CPCS;
-	TC1 ->TC_CHANNEL[0].TC_IDR = ~TC_IER_CPCS;
-	SetInterrupt(STANDBY_INTERRUPT_RATE);
+	TC_Configure(TC1, 0, TC_CMR_WAVE | TC_CMR_WAVSEL_UP | TC_CMR_TCCLKS_TIMER_CLOCK3);
+	TC1 ->TC_CHANNEL[0].TC_IDR = ~(uint32_t)0;				// interrupts disabled for now
+	TC_Start(TC1, 0);
+	TC_GetStatus(TC1, 0);									// clear any pending interrupt
+	NVIC_EnableIRQ(TC3_IRQn);
 
 	// Timer interrupt to keep the networking timers running (called at 16Hz)
 	pmc_enable_periph_clk((uint32_t) TC4_IRQn);
 	TC_Configure(TC1, 1, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK2);
-	uint32_t rc = VARIANT_MCK/8/16; // 8 because we selected TIMER_CLOCK2 above
-	TC_SetRA(TC1, 1, rc/2); // 50% high, 50% low
+	uint32_t rc = (VARIANT_MCK/8)/16;						// 8 because we selected TIMER_CLOCK2 above
+	TC_SetRA(TC1, 1, rc/2);									// 50% high, 50% low
 	TC_SetRC(TC1, 1, rc);
 	TC_Start(TC1, 1);
 	TC1 ->TC_CHANNEL[1].TC_IER = TC_IER_CPCS;
@@ -871,26 +898,44 @@ void Platform::InitialiseInterrupts()
 	active = true;							// this enables the tick interrupt, which keeps the watchdog happy
 }
 
-void Platform::SetInterrupt(float s) // Seconds
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
+
+// Schedule an interrupt at the specified clock count, or return true if that time is imminent or has passed already
+/*static*/ bool Platform::ScheduleInterrupt(uint32_t tim)
 {
-	if (s <= 0.0)
+	irqflags_t flags = cpu_irq_save();						// disable interrupts
+	TC_SetRA(TC1, 0, tim);									// set up the compare register
+	TC_GetStatus(TC1, 0);									// clear any pending interrupt
+	int32_t diff = (int32_t)(tim - TC_ReadCV(TC1, 0));		// see how long we have to go
+	bool ret;
+	if (diff < 2)											// if less than 0.5us or already passed
 	{
-		//NVIC_DisableIRQ(TC3_IRQn);
-		Message(GENERIC_MESSAGE, "Error: Negative interrupt!\n");
-		s = STANDBY_INTERRUPT_RATE;
+		ret = true;											// tell the caller to simulate an interrupt instead
 	}
-	uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
-	TC_SetRA(TC1, 0, rc/2); //50% high, 50% low
-	TC_SetRC(TC1, 0, rc);
-	TC_Start(TC1, 0);
-	NVIC_EnableIRQ(TC3_IRQn);
+	else
+	{
+		ret = false;
+		TC1 ->TC_CHANNEL[0].TC_IER = TC_IER_CPAS;			// enable the interrupt
+#ifdef MOVE_DEBUG
+		++numInterruptsScheduled;
+		nextInterruptTime = tim;
+		nextInterruptScheduledAt = Platform::GetInterruptClocks();
+#endif
+	}
+	cpu_irq_restore(flags);									// restore interrupt enable status
+	return ret;
 }
 
-//void Platform::DisableInterrupts()
-//{
-//	NVIC_DisableIRQ(TC3_IRQn);
-///	NVIC_DisableIRQ(TC4_IRQn);
-//}
+#pragma GCC pop_options
+
+#if 0	// not used
+void Platform::DisableInterrupts()
+{
+	NVIC_DisableIRQ(TC3_IRQn);
+	NVIC_DisableIRQ(TC4_IRQn);
+}
+#endif
 
 // Process a 1ms tick interrupt
 // This function must be kept fast so as not to disturb the stepper timing, so don't do any floating point maths in here.
@@ -903,6 +948,9 @@ void Platform::SetInterrupt(float s) // Seconds
 //     We do this here because the usual polling loop sometimes gets stuck trying to send data to the USB port.
 
 //#define TIME_TICK_ISR	1		// define this to store the tick ISR time in errorCodeBits
+
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
 
 void Platform::Tick()
 {
@@ -971,6 +1019,8 @@ void Platform::Tick()
 	}
 #endif
 }
+
+#pragma GCC pop_options
 
 /*static*/uint16_t Platform::GetAdcReading(adc_channel_num_t chan)
 {
@@ -1059,6 +1109,11 @@ void Platform::Diagnostics()
 	MessageF(GENERIC_MESSAGE, "Longest block write time: %.1fms\n", FileStore::GetAndClearLongestWriteTime());
 
 	reprap.Timing();
+
+#ifdef MOVE_DEBUG
+	MessageF(GENERIC_MESSAGE, "Interrupts scheduled %u, done %u, last %u, next %u sched at %u, now %u\n",
+			numInterruptsScheduled, numInterruptsExecuted, lastInterruptTime, nextInterruptTime, nextInterruptScheduledAt, GetInterruptClocks());
+#endif
 }
 
 void Platform::DiagnosticTest(int d)
@@ -1192,34 +1247,34 @@ void Platform::SetHeater(size_t heater, float power)
 	analogWrite(heatOnPins[heater], (HEAT_ON == 0) ? 255 - p : p);
 }
 
-EndStopHit Platform::Stopped(size_t drive)
+EndStopHit Platform::Stopped(size_t drive) const
 {
 	if (nvData.zProbeType > 0 && drive < AXES && nvData.zProbeAxes[drive])
 	{
-		int zProbeVal = ZProbe();
-		int zProbeADValue = (nvData.zProbeType == 3) ?
-								nvData.alternateZProbeParameters.adcValue :
-								nvData.irZProbeParameters.adcValue;
-
-		if (zProbeVal >= zProbeADValue)
-			return EndStopHit::lowHit;
-		else if (zProbeVal * 10 >= zProbeADValue * 9)	// if we are at/above 90% of the target value
-			return EndStopHit::lowNear;
-		else
-			return EndStopHit::noStop;
+		return GetZProbeResult();
 	}
 
-	if (lowStopPins[drive] >= 0)
+	if (endStopPins[drive] >= 0 && endStopType[drive] != EndStopType::noEndStop)
 	{
-		if (digitalRead(lowStopPins[drive]) == ENDSTOP_HIT)
-			return EndStopHit::lowHit;
-	}
-	if (highStopPins[drive] >= 0)
-	{
-		if (digitalRead(highStopPins[drive]) == ENDSTOP_HIT)
-			return EndStopHit::highHit;
+		if (digitalRead(endStopPins[drive]) == ((endStopLogicLevel[drive]) ? 1 : 0))
+		{
+			return (endStopType[drive] == EndStopType::highEndStop) ? EndStopHit::highHit : EndStopHit::lowHit;
+		}
 	}
 	return EndStopHit::noStop;
+}
+
+// Return the Z probe result. We assume that if the Z probe is used as an endstop, it is used as the low stop.
+EndStopHit Platform::GetZProbeResult() const
+{
+	const int zProbeVal = ZProbe();
+	const int zProbeADValue =
+		(nvData.zProbeType == 4) ? nvData.switchZProbeParameters.adcValue
+		: (nvData.zProbeType == 3) ? nvData.alternateZProbeParameters.adcValue
+		: nvData.irZProbeParameters.adcValue;
+	return (zProbeVal >= zProbeADValue) ? EndStopHit::lowHit
+		: (zProbeVal * 10 >= zProbeADValue * 9) ? EndStopHit::lowNear   // if we are at/above 90% of the target value
+		: EndStopHit::noStop;
 }
 
 // This is called from the step ISR as well as other places, so keep it fast, especially in the case where the motor is already enabled
@@ -1274,6 +1329,18 @@ void Platform::SetDriveIdle(size_t drive)
 	}
 }
 
+void Platform::SetDrivesIdle()
+{
+	for(size_t drive = 0; drive < DRIVES; drive++)
+	{
+		if (driveState[drive] == DriveStatus::enabled)
+		{
+			driveState[drive] = DriveStatus::idle;
+			UpdateMotorCurrent(drive);
+		}
+	}
+}
+
 // Set the current for a motor. Current is in mA.
 void Platform::SetMotorCurrent(size_t drive, float current)
 {
@@ -1323,15 +1390,6 @@ void Platform::SetIdleCurrentFactor(float f)
 		{
 			UpdateMotorCurrent(drive);
 		}
-	}
-}
-
-void Platform::Step(size_t drive)
-{
-	if (stepPins[drive] >= 0)
-	{
-		digitalWrite(stepPins[drive], 0);
-		digitalWrite(stepPins[drive], 1);
 	}
 }
 
@@ -1462,12 +1520,12 @@ void Platform::Message(MessageType type, const char *message)
 				if (stackPointer > 0)
 				{
 					// First, make sure we get the indentation right
-					char indentation[STACK + 1];
-					for(size_t i = 0; i < stackPointer; i++)
+					char indentation[STACK * 2 + 1];
+					for(size_t i = 0; i < stackPointer * 2; i++)
 					{
 						indentation[i] = ' ';
 					}
-					indentation[stackPointer] = 0;
+					indentation[stackPointer * 2] = 0;
 
 					// Append the indentation string to our chain, or allocate a new buffer if there is none
 					usbOutputBuffer->cat(indentation);
@@ -1616,6 +1674,22 @@ bool Platform::AtxPower() const
 void Platform::SetAtxPower(bool on)
 {
 	digitalWrite(atxPowerPin, (on) ? HIGH : LOW);
+}
+
+void Platform::SetElasticComp(size_t drive, float factor)
+{
+	if (drive < DRIVES)
+	{
+		elasticComp[drive] = factor;
+	}
+}
+
+float Platform::ActualInstantDv(size_t drive) const
+{
+	float idv = instantDvs[drive];
+	float eComp = elasticComp[drive];
+	// If we are using elastic compensation then we need to limit the instantDv to avoid velocity mismatches
+	return (eComp <= 0.0) ? idv : min<float>(idv, 1.0/(eComp * driveStepsPerUnit[drive]));
 }
 
 void Platform::SetBaudRate(size_t chan, uint32_t br)

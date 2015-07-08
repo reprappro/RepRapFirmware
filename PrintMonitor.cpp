@@ -33,7 +33,7 @@ void PrintMonitor::Init()
 
 void PrintMonitor::Spin()
 {
-	if (gCodes->IsPausing() || reprap.GetMove()->IsPaused() || gCodes->IsResuming())
+	if (gCodes->IsPausing() || gCodes->IsPaused() || gCodes->IsResuming())
 	{
 		// TODO: maybe incorporate pause durations in print estimations in the future?
 		platform->ClassReport(longWait);
@@ -47,7 +47,7 @@ void PrintMonitor::Spin()
 		{
 			// When a new print starts, the total (raw) extruder positions are zeroed
 			float extrRaw[DRIVES - AXES], totalRawFilament = 0.0;
-			reprap.GetMove()->GetRawExtruderPositions(extrRaw);
+			reprap.GetMove()->RawExtruderTotals(extrRaw);
 			for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 			{
 				totalRawFilament += extrRaw[extruder];
@@ -97,8 +97,8 @@ void PrintMonitor::Spin()
 				{
 					firstLayerFilament = 0.0;
 					float extrRaw[DRIVES - AXES];
-					reprap.GetMove()->GetRawExtruderPositions(extrRaw);
-					for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+					reprap.GetMove()->RawExtruderTotals(extrRaw);
+					for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 					{
 						firstLayerFilament += extrRaw[extruder];
 					}
@@ -114,7 +114,7 @@ void PrintMonitor::Spin()
 				{
 					// Record untainted extruder positions for filament-based estimation
 					float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
-					reprap.GetMove()->GetRawExtruderPositions(extrRaw);
+					reprap.GetMove()->RawExtruderTotals(extrRaw);
 					for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 					{
 						extrRawTotal += extrRaw[extruder];
@@ -554,8 +554,8 @@ float PrintMonitor::EstimateTimeLeft(PrintEstimationMethod method) const
 			// Sum up the filament usage and the filament needed
 			float totalFilamentNeeded = 0.0;
 			float extrRaw[DRIVES - AXES], extrRawTotal = 0.0;
-			reprap.GetMove()->GetRawExtruderPositions(extrRaw);
-			for(uint8_t extruder=0; extruder<DRIVES - AXES; extruder++)
+			reprap.GetMove()->RawExtruderTotals(extrRaw);
+			for(size_t extruder=0; extruder<DRIVES - AXES; extruder++)
 			{
 				totalFilamentNeeded += currentFileInfo.filamentNeeded[extruder];
 				extrRawTotal += extrRaw[extruder];

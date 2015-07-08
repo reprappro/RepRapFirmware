@@ -143,7 +143,7 @@ float Tool::InstantDv() const
 	float result = FLT_MAX;
 	for(size_t d = 0; d < driveCount; d++)
 	{
-		float idv = reprap.GetPlatform()->InstantDv(drives[d] + AXES);
+		float idv = reprap.GetPlatform()->ActualInstantDv(drives[d] + AXES);
 		if (idv < result)
 		{
 			result = idv;

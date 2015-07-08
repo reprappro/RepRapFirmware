@@ -861,7 +861,7 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->catf(",\"coldRetractTemp\":%1.f", heat->ColdExtrude() ? 0 : HOT_ENOUGH_TO_RETRACT);
 
 		// Delta configuration
-		response->cat(",\"geometry\":\"cartesian\"");	// TODO: Implement this with delta being an alternative
+		response->catf(",\"geometry\":\"%s\"", move->GetGeometryString());
 
 		// Machine name
 		response->cat(",\"name\":");
@@ -930,13 +930,13 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->catf(",\"currentLayerTime\":%.1f", printMonitor->GetCurrentLayerTime());
 
 		// Raw Extruder Positions
-		float rawExtruderPos[DRIVES - AXES];
-		move->GetRawExtruderPositions(rawExtruderPos);
+		float rawExtruderTotals[DRIVES - AXES];
+		move->RawExtruderTotals(rawExtruderTotals);
 		response->cat(",\"extrRaw\":");
 		ch = '[';
 		for (size_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
 		{
-			response->catf("%c%.1f", ch, rawExtruderPos[extruder]);
+			response->catf("%c%.1f", ch, rawExtruderTotals[extruder]);
 			ch = ',';
 		}
 		if (ch == '[')
@@ -1023,7 +1023,7 @@ OutputBuffer *RepRap::GetConfigResponse()
 	ch = '[';
 	for (size_t drive = 0; drive < DRIVES; drive++)
 	{
-		response->catf("%c%.2f", ch, platform->InstantDv(drive));
+		response->catf("%c%.2f", ch, platform->ConfiguredInstantDv(drive));
 		ch = ',';
 	}
 
@@ -1503,7 +1503,7 @@ char RepRap::GetStatusCharacter() const
 		// Resuming
 		return 'R';
 	}
-	if (move->IsPaused())
+	if (gCodes->IsPaused())
 	{
 		// Paused / Stopped
 		return 'S';
@@ -1550,6 +1550,40 @@ void RepRap::SetName(const char* nm)
 
 	// Set new DHCP hostname
 	network->SetHostname(myName);
+}
+
+// Given that we want to extrude/etract the specified extruder drives, check if they are allowed.
+// For each disallowed one, log an error to report later and return a bit in the bitmap.
+// This may be called by an ISR!
+unsigned int RepRap::GetProhibitedExtruderMovements(unsigned int extrusions, unsigned int retractions)
+{
+	unsigned int result = 0;
+	Tool *tool = toolList;
+	while (tool != nullptr)
+	{
+		for (int driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
+		{
+			const int extruderDrive = tool->Drive(driveNum);
+			unsigned int mask = 1 << extruderDrive;
+			if (extrusions & mask)
+			{
+				if (!tool->ToolCanDrive(true))
+				{
+					result |= mask;
+				}
+			}
+			else if (retractions & (1 << extruderDrive))
+			{
+				if (!tool->ToolCanDrive(false))
+				{
+					result |= mask;
+				}
+			}
+		}
+
+		tool = tool->Next();
+	}
+	return result;
 }
 
 //*************************************************************************************************

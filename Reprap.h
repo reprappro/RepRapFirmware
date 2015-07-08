@@ -55,7 +55,7 @@ class RepRap
 		//Tool* GetToolByDrive(int driveNumber);
 		void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
 
-		void GetExtruderCapabilities(bool canDrive[], const bool directions[]) const;
+		unsigned int GetProhibitedExtruderMovements(unsigned int extrusions, unsigned int retractions);
 		void PrintTool(int toolNumber, StringRef& reply);
 		void FlagTemperatureFault(int8_t dudHeater);
 		void ClearTemperatureFault(int8_t wasDudHeater);
@@ -143,23 +143,6 @@ inline Module RepRap::GetSpinningModule() const { return spinningModule; }
 inline Tool* RepRap::GetCurrentTool() { return currentTool; }
 inline uint16_t RepRap::GetExtrudersInUse() const { return activeExtruders; }
 inline uint16_t RepRap::GetHeatersInUse() const { return activeHeaters; }
-
-inline void RepRap::GetExtruderCapabilities(bool canDrive[], const bool directions[]) const
-{
-	for(size_t extruder=0; extruder < DRIVES - AXES; extruder++)
-	{
-		canDrive[extruder] = false;
-	}
-
-	if (currentTool != nullptr)
-	{
-		for(size_t driveNum = 0; driveNum < currentTool->DriveCount(); driveNum++)
-		{
-			const int extruderDrive = currentTool->Drive(driveNum);
-			canDrive[extruderDrive] = currentTool->ToolCanDrive(directions[extruderDrive + AXES] == FORWARDS);
-		}
-	}
-}
 
 inline void RepRap::FlagTemperatureFault(int8_t dudHeater)
 {
