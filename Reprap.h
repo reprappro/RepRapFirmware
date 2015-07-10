@@ -78,6 +78,9 @@ class RepRap
 		// Allocate an unused OutputBuffer instance. Returns true on success or false if no instance could be allocated.
 		bool AllocateOutput(OutputBuffer *&buf);
 
+		// Replace an existing OutputBuffer with another one.
+		void ReplaceOutput(OutputBuffer *&destination, OutputBuffer *source);
+
 		// Release one OutputBuffer instance. Returns the next item from the chain or nullptr if this was the last instance.
 		OutputBuffer *ReleaseOutput(OutputBuffer *buf);
 
@@ -164,6 +167,12 @@ inline void RepRap::ClearTemperatureFault(int8_t wasDudHeater)
 inline void RepRap::Interrupt() { move->Interrupt(); }
 inline bool RepRap::IsStopped() const { return stopped; }
 inline uint16_t RepRap::GetTicksInSpinState() const { return ticksInSpinState; }
+
+inline void RepRap::ReplaceOutput(OutputBuffer *&destination, OutputBuffer *source)
+{
+	ReleaseOutput(destination);
+	destination = source;
+}
 
 #endif
 

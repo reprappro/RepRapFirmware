@@ -905,14 +905,12 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 					type = 1;
 				}
 
-				reprap.ReleaseOutput(response);
-				response = reprap.GetStatusResponse(type, true);
+				reprap.ReplaceOutput(response, reprap.GetStatusResponse(type, true));
 			}
 			else
 			{
 				// Deprecated
-				reprap.ReleaseOutput(response);
-				response = reprap.GetLegacyStatusResponse(1, 0);
+				reprap.ReplaceOutput(response, reprap.GetLegacyStatusResponse(1, 0));
 			}
 		}
 		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
@@ -975,13 +973,12 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 		else if (StringEquals(request, "files"))
 		{
 			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-			reprap.ReleaseOutput(response);
-			response = reprap.GetFilesResponse(dir, false);
+			reprap.ReplaceOutput(response, reprap.GetFilesResponse(dir, false));
 		}
 		else if (StringEquals(request, "fileinfo"))
 		{
-			reprap.ReleaseOutput(response);
-			response = reprap.GetPrintMonitor()->GetFileInfoResponse((StringEquals(key, "name")) ? value : nullptr);
+			reprap.ReplaceOutput(response,
+					reprap.GetPrintMonitor()->GetFileInfoResponse((StringEquals(key, "name")) ? value : nullptr));
 		}
 		else if (StringEquals(request, "move"))
 		{
@@ -1008,8 +1005,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 		}
 		else if (StringEquals(request, "config"))
 		{
-			reprap.ReleaseOutput(response);
-			response = reprap.GetConfigResponse();
+			reprap.ReplaceOutput(response, reprap.GetConfigResponse());
 		}
 		else
 		{

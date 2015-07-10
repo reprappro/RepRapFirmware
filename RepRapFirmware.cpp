@@ -1827,7 +1827,10 @@ size_t OutputBuffer::cat(const char c)
 		// No - allocate a new item and link it
 		OutputBuffer *nextBuffer;
 		if (!reprap.AllocateOutput(nextBuffer))
-			return false;
+		{
+			// We cannot store any more data. Should never happen
+			return 0;
+		}
 		nextBuffer->copy(c);
 
 		lastBuffer->next = nextBuffer;
@@ -1838,6 +1841,7 @@ size_t OutputBuffer::cat(const char c)
 		lastBuffer->data[lastBuffer->dataLength++] = c;
 		lastBuffer->bytesLeft++;
 	}
+	return 1;
 }
 
 size_t OutputBuffer::cat(const char *src)
@@ -1858,31 +1862,31 @@ size_t OutputBuffer::cat(const char *src, size_t len)
 	if (lastBuffer->dataLength + len > OUTPUT_BUFFER_SIZE)
 	{
 		size_t copyLength = OUTPUT_BUFFER_SIZE - lastBuffer->dataLength;
+		size_t bytesCopied = copyLength;
+		bytesCopied = copyLength;
 
 		// Yes - copy what we can't write into a new chain
 		OutputBuffer *nextBuffer;
 		if (!reprap.AllocateOutput(nextBuffer))
 		{
 			// We cannot store any more data. Should never happen
-			return false;
+			return 0;
 		}
-		nextBuffer->copy(src + copyLength, len - copyLength);
+		bytesCopied += nextBuffer->copy(src + copyLength, len - copyLength);
 		lastBuffer->next = nextBuffer;
 
 		// Then copy the rest into this one
 		memcpy(lastBuffer->data + lastBuffer->dataLength, src, copyLength);
 		lastBuffer->dataLength += copyLength;
 		lastBuffer->bytesLeft += copyLength;
-	}
-	else
-	{
-		// No - reuse this one instead
-		memcpy(lastBuffer->data + lastBuffer->dataLength, src, len);
-		lastBuffer->dataLength += len;
-		lastBuffer->bytesLeft += len;
+		return bytesCopied;
 	}
 
-	return true;
+	// No - reuse this one instead
+	memcpy(lastBuffer->data + lastBuffer->dataLength, src, len);
+	lastBuffer->dataLength += len;
+	lastBuffer->bytesLeft += len;
+	return len;
 }
 
 size_t OutputBuffer::cat(StringRef &str)
