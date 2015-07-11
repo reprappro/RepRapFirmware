@@ -160,7 +160,7 @@ static const float DEFAULT_THERMISTOR_25_RS[HEATERS] = { 10000.0, 100000.0, 1000
 // This allows us to switch between PID and bang-bang using the M301 and M304 commands.
 
 // We use method 2 (see above)
-static const float DEFAULT_PID_KIS[HEATERS] = { 5.0, 0.1, 0.1, 0.1, 0.1, 0.1 };				// Integral PID constants
+static const float DEFAULT_PID_KIS[HEATERS] = { 5.0, 0.2, 0.2, 0.2, 0.2, 0.2 };				// Integral PID constants
 static const float DEFAULT_PID_KDS[HEATERS] = { 500.0, 100.0, 100.0, 100.0, 100.0, 100.0 };	// Derivative PID constants
 const float DEFAULT_PID_KPS[HEATERS] = { -1.0, 10.0, 10.0, 10.0, 10.0, 10.0 };				// Proportional PID constants, negative values indicate use bang-bang instead of PID
 static const float DEFAULT_PID_KTS[HEATERS] = { 2.7, 0.4, 0.4, 0.4, 0.4, 0.4 };				// Approximate PWM value needed to maintain temperature, per degC above room temperature

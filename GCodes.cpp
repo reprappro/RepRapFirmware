@@ -287,7 +287,7 @@ void GCodes::Spin()
 			{
 				if (fileGCode->Put(b))
 				{
-					fileGCode->SetFinished(ActOnCode(fileGCode));
+					// Will be acted upon later
 					break;
 				}
 			}
@@ -297,7 +297,7 @@ void GCodes::Spin()
 				{
 					fileGCode->SetFinished(ActOnCode(fileGCode));
 				}
-				if (!fileGCode->Active() && Pop())
+				if (!fileGCode->Active() && internalCodeQueue == nullptr && Pop())
 				{
 					fileStack[stackPointer + 1].Close();
 					reprap.GetPrintMonitor()->StoppedPrint();
@@ -1510,7 +1510,21 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
 		return true;  // No time given - throw it away
 
 	float dwell = 0.001 * (float) gb->GetLValue(); // P values are in milliseconds; we need seconds
-	return DoDwellTime(dwell);
+
+	// Wait for all the queued moves to stop
+	if (!reprap.GetMove()->AllMovesAreFinished())
+		return false;
+
+	if (simulating)
+	{
+		simulationTime += dwell;
+		reprap.GetMove()->ResumeMoving();
+		return true;
+	}
+	else
+	{
+		return DoDwellTime(dwell);
+	}
 }
 
 bool GCodes::DoDwellTime(float dwell)
@@ -1522,6 +1536,7 @@ bool GCodes::DoDwellTime(float dwell)
 		if (platform->Time() - dwellTime >= 0.0)
 		{
 			dwellWaiting = false;
+			reprap.GetMove()->ResumeMoving();
 			return true;
 		}
 		return false;
@@ -1590,7 +1605,7 @@ void GCodes::SetOrReportOffsets(StringRef& reply, GCodeBuffer *gb)
 				settingTemps = true;
 			}
 
-			if (settingTemps)
+			if (settingTemps && !simulating)
 			{
 				tool->SetVariables(standby, active);
 			}
@@ -2334,12 +2349,14 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 		// Run the next code immediately and wait for it if there is no free item available
 		if (releasedQueueItems == nullptr)
 		{
-			internalCodeQueue->Execute();
-			if (queuedGCode->Put(internalCodeQueue->GetCode(), internalCodeQueue->GetCodeLength()))
+			if (!internalCodeQueue->IsExecuting())
 			{
-				queuedGCode->SetFinished(ActOnCode(queuedGCode, true));
+				internalCodeQueue->Execute();
+				if (queuedGCode->Put(internalCodeQueue->GetCode(), internalCodeQueue->GetCodeLength()))
+				{
+					queuedGCode->SetFinished(ActOnCode(queuedGCode));
+				}
 			}
-
 			return false;
 		}
 
@@ -2381,6 +2398,13 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 	reply.Clear();
 
 	int code = gb->GetIValue();
+	if (simulating && code != 0 && code != 1 && code != 4 && code != 10 && code != 20 && code != 21 && code != 90
+			&& code != 91 && code != 92)
+	{
+		HandleReply(gb, false, "");
+		return true;                    // we only simulate some gcodes
+	}
+
 	switch (code)
 	{
 		case 0: // There are no rapid moves...
@@ -2403,6 +2427,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 				{
 					return false;
 				}
+
 				for (size_t axis = 0; axis < AXES; ++axis)
 				{
 					float offset = gb->Seen(axisLetters[axis]) ? gb->GetFValue() * distanceScale : 0.0;
@@ -2414,9 +2439,13 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 				}
 				if (gb->Seen(FEEDRATE_LETTER))
 				{
-					moveBuffer[DRIVES] = gb->GetFValue();
+					moveBuffer[DRIVES] = gb->GetFValue() * distanceScale * SECONDS_TO_MINUTES; // G Code feedrates are in mm/minute; we need mm/sec
 				}
+
+				endStopsToCheck = 0;
+				moveType = 0;
 				moveAvailable = true;
+				moveFilePos = NO_FILE_POSITION;
 			}
 			else
 			{
@@ -2519,6 +2548,13 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 	reply.Clear();
 
 	int code = gb->GetIValue();
+	if (simulating && (code < 20 || code > 37) && code != 82 && code != 83 && code != 111 && code != 105 && code != 122
+			&& code != 999)
+	{
+		HandleReply(gb, false, "");
+		return true;                    // we don't yet simulate most M codes
+	}
+
 	switch (code)
 	{
 		case 0: // Stop
@@ -2616,12 +2652,13 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 				if (gb->Seen('S'))
 				{
+					seen = true;
+
 					float idleTimeout = gb->GetFValue();
 					if (idleTimeout < 0.0)
 					{
 						reply.copy("Idle timeouts cannot be negative!\n");
 						error = true;
-						break;
 					}
 					else
 					{
@@ -2736,7 +2773,14 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			// no break otherwise
 
 		case 24: // Print/resume-printing the selected file
-			if (!fileToPrint.IsLive() && internalCodeQueue == nullptr)
+			// We must be in a safe state to do this...
+			if (IsPausing())
+			{
+				return false;
+			}
+
+			// See if we're printing a file
+			if (!fileToPrint.IsLive())
 			{
 				reply.copy("Cannot resume print, because no print is in progress!\n");
 				error = true;
@@ -2744,7 +2788,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 
 			// We're resuming a paused print, so we may need to run the resume macro first.
-			if (isPaused)
+			if (IsPaused())
 			{
 				isResuming = true;
 				if (doPauseMacro && !DoFileMacro(RESUME_G))
@@ -2755,53 +2799,55 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				doPauseMacro = false;
 			}
 
-			if (isResuming)
+			if (IsResuming())
 			{
-				// If a live print is resumed, make sure we go back to the right coordinates first
-				result = AllMovesAreFinishedAndMoveBufferIsLoaded();
-				if (result)
+				// We must have finished all pending moves first
+				if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 				{
-					float liveCoordinates[DRIVES+1];
-					reprap.GetMove()->LiveCoordinates(liveCoordinates);
+					return false;
+				}
 
-					bool needExtraMove = false;
-					for(size_t axis = 0; axis < AXES; axis++)
+				// If a live print is resumed, make sure we go back to the right coordinates first
+				float liveCoordinates[DRIVES+1];
+				reprap.GetMove()->LiveCoordinates(liveCoordinates);
+
+				bool needExtraMove = false;
+				for(size_t axis = 0; axis < AXES; axis++)
+				{
+					if (liveCoordinates[axis] != pauseCoordinates[axis])
 					{
-						if (liveCoordinates[axis] != pauseCoordinates[axis])
-						{
-							needExtraMove = true;
-							break;
-						}
-					}
-
-					if (needExtraMove)
-					{
-						for(size_t axis = 0; axis < AXES; axis++)
-						{
-							moveBuffer[axis] = pauseCoordinates[axis];
-						}
-						for(size_t eDrive = AXES; eDrive < DRIVES; eDrive++)
-						{
-							moveBuffer[eDrive] = 0.0;
-						}
-						// Note we don't set the feedrate here - this may be explicitly done using G1 F... in the resume macro
-
-						moveAvailable = true;
-						moveType = 0;
-						endStopsToCheck = 0;
-						moveFilePos = NO_FILE_POSITION;
-
-						result = false;
+						needExtraMove = true;
 						break;
 					}
-					else
-					{
-						// We do overwrite the feedrate here with the previous one of the file print
-						moveBuffer[DRIVES] = pauseCoordinates[AXES];
-						reprap.GetMove()->SetFeedrate(pauseCoordinates[AXES]);
+				}
 
-						reply.copy("Print resumed\n");
+				if (needExtraMove)
+				{
+					for(size_t axis = 0; axis < AXES; axis++)
+					{
+						moveBuffer[axis] = pauseCoordinates[axis];
 					}
+					for(size_t eDrive = AXES; eDrive < DRIVES; eDrive++)
+					{
+						moveBuffer[eDrive] = 0.0;
+					}
+					// Note we don't set the feedrate here - this may be explicitly done using G1 F... in the resume macro
+
+					moveAvailable = true;
+					moveType = 0;
+					endStopsToCheck = 0;
+					moveFilePos = NO_FILE_POSITION;
+
+					result = false;
+					break;
+				}
+				else
+				{
+					// We do overwrite the feedrate here with the previous one of the file print
+					moveBuffer[DRIVES] = pauseCoordinates[AXES];
+					reprap.GetMove()->SetFeedrate(pauseCoordinates[AXES]);
+
+					reply.copy("Print resumed\n");
 				}
 			}
 			else
@@ -2822,12 +2868,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 
 		case 226: // Gcode Initiated Pause
-			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			if (!IsPausing() && !AllMovesAreFinishedAndMoveBufferIsLoaded())
 				return false;
 			// no break
 
 		case 25: // Pause the print
-			if (!isPausing)
+			if (!IsPausing())
 			{
 				if (!reprap.GetPrintMonitor()->IsPrinting())
 				{
@@ -2843,7 +2889,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				{
 					result = false;
 					isPausing = true;
-					doPauseMacro = !reprap.GetMove()->NoLiveMovement();
+					doPauseMacro = (code == 226) || (!reprap.GetMove()->NoLiveMovement());
 
 					if (code == 25)
 					{
@@ -2906,10 +2952,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 					if (gb != fileGCode)
 					{
-						// Need to do this, because M226 may have to be called later again
+						// Only clear the last running G-Code if it isn't the origin of this M25 or M226 call
 						fileGCode->Clear();
 					}
-					queuedGCode->Clear();
 				}
 			}
 			// We're pausing, so wait for all pending moves to finish first.
@@ -4815,6 +4860,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 bool GCodes::HandleTcode(GCodeBuffer* gb)
 {
+	if (simulating)                                         // we don't yet simulate any T codes
+	{
+		HandleReply(gb, false, "");
+		return true;
+	}
+
 	bool result = true;
 	if (strlen(gb->Buffer()) > 1)
 	{
