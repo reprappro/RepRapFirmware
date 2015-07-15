@@ -103,7 +103,7 @@ void GCodes::Reset()
 	fileBeingWritten = nullptr;
 	endStopsToCheck = 0;
 	doingFileMacro = returningFromMacro = false;
-	allowNestedMacro = false;
+	macroSourceGCode = nullptr;
 	isPausing = isPaused = isResuming = false;
 	for(size_t axis = 0; axis < AXES; axis++)
 	{
@@ -344,7 +344,6 @@ void GCodes::Spin()
 		fileGCode->SetFinished(ActOnCode(fileGCode, false));
 	}
 
-	allowNestedMacro = false;	// Must set this, else we get stack overflows in RepRap::Init
 	platform->ClassReport(longWait);
 }
 
@@ -675,11 +674,11 @@ void GCodes::ClearMove()
 	moveType = 0;
 }
 
-bool GCodes::DoFileMacro(const char* fileName)
+bool GCodes::DoFileMacro(const GCodeBuffer *gb, const char* fileName)
 {
 	// Can we run another macro file at this point?
 	
-	if (doingFileMacro && !allowNestedMacro)
+	if (doingFileMacro && gb != fileMacroGCode)
 	{
 		return false;
 	}
@@ -688,8 +687,20 @@ bool GCodes::DoFileMacro(const char* fileName)
 
 	if (returningFromMacro)
 	{
-		returningFromMacro = false;
-		return true;
+		// We can confirm this macro was called by a verified source, so make it return
+		if (gb == fileMacroGCode || gb == macroSourceGCode)
+		{
+			returningFromMacro = false;
+			if (!doingFileMacro)
+			{
+				// Only reset the macro source if we've actually finished everything
+				macroSourceGCode = nullptr;
+			}
+			return true;
+		}
+
+		// This request was issued by another GCodeBuffer, so make it wait a bit longer
+		return false;
 	}
 
 	// See if we can push some values on the stack
@@ -736,10 +747,14 @@ bool GCodes::DoFileMacro(const char* fileName)
 
 	// Deal with nested macros (rewind back to the position before the last code so it is called again later)
 
-	size_t lastStackPointer = stackPointer - 1;
-	if (doingFileMacroStack[lastStackPointer])
+	if (gb == fileMacroGCode)
 	{
+		size_t lastStackPointer = stackPointer - 1;
 		fileStack[lastStackPointer].Seek(fileStack[lastStackPointer].Position() - fileMacroGCode->Length());
+	}
+	else
+	{
+		macroSourceGCode = gb;
 	}
 
 	// Set some values so the macro file gets processed properly
@@ -752,15 +767,16 @@ bool GCodes::DoFileMacro(const char* fileName)
 
 bool GCodes::FileMacroCyclesReturn()
 {
-	if (!doingFileMacro)
+	if (!DoingFileMacro())
 		return true;
 
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
 
 	fileBeingPrinted.Close();
-	fileMacroGCode->Init();
 	returningFromMacro = true;
+	//fileMacroGCode->Init();
+	//macroSourceGCode = nullptr;
 
 	return Pop();
 }
@@ -892,9 +908,15 @@ bool GCodes::OffsetAxes(GCodeBuffer* gb)
 // Returns true if completed, false if needs to be called again.
 // 'reply' is only written if there is an error.
 // 'error' is false on entry, gets changed to true if there is an error.
-bool GCodes::DoHome(StringRef& reply, bool& error)
+bool GCodes::DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error)
 //pre(reply.upb == STRING_LENGTH)
 {
+	if (!homing && !CanStartMacro(gb))
+	{
+		// If we're interfering with another GCode, wait until it's finished
+		return false;
+	}
+
 	if (homeX && homeY && homeZ)
 	{
 		if (!homing)
@@ -904,7 +926,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			axisIsHomed[Y_AXIS] = false;
 			axisIsHomed[Z_AXIS] = false;
 		}
-		if (DoFileMacro(HOME_ALL_G))
+		if (DoFileMacro(gb, HOME_ALL_G))
 		{
 			homing = false;
 			homeX = false;
@@ -922,7 +944,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			homing = true;
 			axisIsHomed[X_AXIS] = false;
 		}
-		if (DoFileMacro(HOME_X_G))
+		if (DoFileMacro(gb, HOME_X_G))
 		{
 			homing = false;
 			homeX = false;
@@ -938,7 +960,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			homing = true;
 			axisIsHomed[Y_AXIS] = false;
 		}
-		if (DoFileMacro(HOME_Y_G))
+		if (DoFileMacro(gb, HOME_Y_G))
 		{
 			homing = false;
 			homeY = false;
@@ -963,7 +985,7 @@ bool GCodes::DoHome(StringRef& reply, bool& error)
 			homing = true;
 			axisIsHomed[Z_AXIS] = false;
 		}
-		if (DoFileMacro(HOME_Z_G))
+		if (DoFileMacro(gb, HOME_Z_G))
 		{
 			homing = false;
 			homeZ = false;
@@ -1204,14 +1226,14 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply)
 // triangle or four in the corners), then sets the bed transformation to compensate
 // for the bed not quite being the plane Z = 0.
 
-bool GCodes::SetBedEquationWithProbe(StringRef& reply)
+bool GCodes::SetBedEquationWithProbe(const GCodeBuffer *gb, StringRef& reply)
 {
 	// zpl-2014-10-09: In order to stay compatible with older firmware versions,
 	// only execute bed.g if it is actually present in the /sys directory.
 	const char *absoluteBedGPath = platform->GetMassStorage()->CombineName(SYS_DIR, BED_EQUATION_G);
 	if (platform->GetMassStorage()->FileExists(absoluteBedGPath))
 	{
-		return DoFileMacro(absoluteBedGPath);
+		return DoFileMacro(gb, absoluteBedGPath);
 	}
 
 	if (reprap.GetMove()->NumberOfXYProbePoints() < 3)
@@ -1357,7 +1379,7 @@ float GCodes::FractionOfFilePrinted() const
 		return fractionOfFilePrinted;
 	}
 
-	if (doingFileMacro && !fileToPrint.IsLive())
+	if (DoingFileMacro() && !fileToPrint.IsLive())
 	{
 		return -1.0;
 	}
@@ -1914,7 +1936,7 @@ void GCodes::HandleReply(GCodeBuffer *gb, bool error, const char *reply)
 				return;
 			}
 
-			if (reply[0] && !doingFileMacro)
+			if (reply[0] && !DoingFileMacro())
 			{
 				platform->Message(type, reply);
 				platform->Message(type, response);
@@ -2059,7 +2081,7 @@ void GCodes::HandleReply(GCodeBuffer *gb, bool error, OutputBuffer *reply)
 				return;
 			}
 
-			if (reply->Length() && !doingFileMacro)
+			if (reply->Length() && !DoingFileMacro())
 			{
 				platform->Message(type, reply);
 				platform->Message(type, "\n");
@@ -2323,9 +2345,6 @@ bool GCodes::ActOnCode(GCodeBuffer *gb, bool executeImmediately)
 	// Check if we can execute this code immediately
 	if (executeImmediately || totalMoves == movesCompleted || !CanQueueCode(gb))
 	{
-		// Only the macro G-Code buffer may start nested macros. Ensure this here.
-		allowNestedMacro = (gb == fileMacroGCode);
-
 		// M-code parameters might contain letters T and G, e.g. in filenames.
 		// dc42 assumes that G-and T-code parameters never contain the letter M.
 		// Therefore we must check for an M-code first.
@@ -2487,7 +2506,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 					homeZ = true;
 				}
 			}
-			result = DoHome(reply, error);
+			result = DoHome(gb, reply, error);
 			break;
 
 		case 30: // Z probe/manually set at a position and set that as point P
@@ -2507,7 +2526,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 			}
 			else
 			{
-				result = SetBedEquationWithProbe(reply);
+				result = SetBedEquationWithProbe(gb, reply);
 			}
 			break;
 
@@ -2574,7 +2593,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 
 			// Call stop.g or sleep.g to allow users to execute custom actions before everything stops
-			if (!DoFileMacro((code == 0) ? STOP_G : SLEEP_G))
+			if (!DoFileMacro(gb, (code == 0) ? STOP_G : SLEEP_G))
 				return false;
 
 			{
@@ -2737,7 +2756,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 		case 23: // Set file to print
 		case 32: // Select file and start SD print
-			if (doingFileMacro)
+			if (DoingFileMacro())
 			{
 				reply.copy("Cannot use M32/M23 in file macros!\n");
 				error = true;
@@ -2791,7 +2810,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			if (IsPaused())
 			{
 				isResuming = true;
-				if (doPauseMacro && !DoFileMacro(RESUME_G))
+				if (doPauseMacro && !DoFileMacro(gb, RESUME_G))
 				{
 					result = false;
 					break;
@@ -2880,7 +2899,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					reply.copy("Cannot pause print, because no file is being printed!\n");
 					error = true;
 				}
-				else if (doingFileMacro)
+				else if (DoingFileMacro())
 				{
 					reply.copy("Cannot pause macro files, wait for it to complete first!\n");
 					error = true;
@@ -2958,17 +2977,17 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				}
 			}
 			// We're pausing, so wait for all pending moves to finish first.
-			else if (doingFileMacro || AllMovesAreFinishedAndMoveBufferIsLoaded())
+			else if (DoingFileMacro() || AllMovesAreFinishedAndMoveBufferIsLoaded())
 			{
 				// If we're working with absolute E values, retrieve the current extruder totals,
 				// so we have valid values when movement is resumed later on.
-				if (!doingFileMacro)
+				if (!DoingFileMacro())
 				{
 					reprap.GetMove()->RawExtruderTotals(lastExtruderPosition);
 				}
 
 				// We're done if we either don't need to run the pause macro, or if the macro file has finished
-				result = (!doPauseMacro || DoFileMacro(PAUSE_G));
+				result = (!doPauseMacro || DoFileMacro(gb, PAUSE_G));
 				if (result)
 				{
 					isPausing = false;
@@ -3190,7 +3209,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		case 98: // Call Macro/Subprogram
 			if (gb->Seen('P'))
 			{
-				result = DoFileMacro(gb->GetString());
+				result = DoFileMacro(gb, gb->GetString());
 			}
 			break;
 
@@ -4871,7 +4890,7 @@ bool GCodes::HandleTcode(GCodeBuffer* gb)
 	{
 		int code = gb->GetIValue();
 		code += gb->GetToolNumberAdjust();
-		result = ChangeTool(code);
+		result = ChangeTool(gb, code);
 		if (result)
 		{
 			HandleReply(gb, false, "");
@@ -4894,7 +4913,7 @@ bool GCodes::HandleTcode(GCodeBuffer* gb)
 	return result;
 }
 
-bool GCodes::ChangeTool(int newToolNumber)
+bool GCodes::ChangeTool(const GCodeBuffer *gb, int newToolNumber)
 {
 	Tool* oldTool = reprap.GetCurrentTool();
 	Tool* newTool = reprap.GetTool(newToolNumber);
@@ -4908,7 +4927,7 @@ bool GCodes::ChangeTool(int newToolNumber)
 			if (oldTool != nullptr)
 			{
 				scratchString.printf("tfree%d.g", oldTool->Number());
-				if(DoFileMacro(scratchString.Pointer()))
+				if (DoFileMacro(gb, scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -4931,7 +4950,7 @@ bool GCodes::ChangeTool(int newToolNumber)
 			if (newTool != nullptr)
 			{
 				scratchString.printf("tpre%d.g", newToolNumber);
-				if (DoFileMacro(scratchString.Pointer()))
+				if (DoFileMacro(gb, scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}
@@ -4951,7 +4970,7 @@ bool GCodes::ChangeTool(int newToolNumber)
 			if (newTool != nullptr)
 			{
 				scratchString.printf("tpost%d.g", newToolNumber);
-				if (DoFileMacro(scratchString.Pointer()))
+				if (DoFileMacro(gb, scratchString.Pointer()))
 				{
 					toolChangeSequence++;
 				}

@@ -234,7 +234,7 @@ void RepRap::Init()
 		configFile = platform->GetDefaultFile();
 	}
 
-	while (!gCodes->DoFileMacro(configFile))
+	while (!gCodes->DoFileMacro(nullptr, configFile))
 	{
 		// GCodes::Spin will read the macro and ensure DoFileMacro returns true when it's done
 		Spin();

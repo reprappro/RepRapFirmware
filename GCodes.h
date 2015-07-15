@@ -128,7 +128,7 @@ class GCodes
 		void Init();												// Set it up
 		void Exit();												// Shut it down
 		void Reset();												// Reset some parameter to defaults
-		bool DoFileMacro(const char* fileName);						// Run a GCode macro in a file. Set externalCall to true if not called from a GCode.
+		bool DoFileMacro(const GCodeBuffer *gb, const char* fileName);	// Run a macro file. gb may be nullptr if called by an external class
 		bool ReadMove(float* m, EndstopChecks& ce,
 				uint8_t& rMoveType, FilePosition& fPos);			// Called by the Move class to get a movement set by the last G Code
 		void ClearMove();
@@ -157,10 +157,10 @@ class GCodes
 
 	private:
 
-		void DoFilePrint(GCodeBuffer* gb);							// Get G Codes from a file and print them
 		bool AllMovesAreFinishedAndMoveBufferIsLoaded();			// Wait for move queue to exhaust and the current position is loaded
 		bool DoCannedCycleMove(EndstopChecks ce);					// Do a move from an internally programmed canned cycle
 		bool FileMacroCyclesReturn();								// End a macro
+		bool CanStartMacro(const GCodeBuffer *gb) const;			// Verify if this GCodeBuffer can start another macro file
 		bool CanQueueCode(GCodeBuffer *gb) const;					// Can we queue this code for delayed execution?
 		bool ActOnCode(GCodeBuffer* gb, bool executeImmediately = true);	// Do a G, M or T Code
 		bool HandleGcode(GCodeBuffer* gb);							// Do a G code
@@ -170,12 +170,12 @@ class GCodes
 		int SetUpMove(GCodeBuffer* gb, StringRef& reply);			// Pass a move on to the Move module
 		bool DoDwell(GCodeBuffer *gb);								// Wait for a bit
 		bool DoDwellTime(float dwell);								// Really wait for a bit
-		bool DoHome(StringRef& reply, bool& error);					// Home some axes
+		bool DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error);	// Home some axes
 		bool DoSingleZProbeAtPoint();								// Probe at a given point
 		bool DoSingleZProbe();										// Probe where we are
 		int DoZProbe(float distance);								// Do a Z probe cycle up to the maximum specified distance
 		bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply);	// Probes at a given position - see the comment at the head of the function itself
-		bool SetBedEquationWithProbe(StringRef& reply);				// Probes a series of points and sets the bed equation
+		bool SetBedEquationWithProbe(const GCodeBuffer *gb, StringRef& reply);	// Probes a series of points and sets the bed equation
 		bool SetPrintZProbe(GCodeBuffer *gb, StringRef& reply);		// Either return the probe value, or set its threshold
 		void SetOrReportOffsets(StringRef& reply, GCodeBuffer *gb);	// Deal with a G10
 		bool SetPositions(GCodeBuffer *gb);							// Deal with a G92
@@ -199,7 +199,7 @@ class GCodes
 		void SetHeaterParameters(GCodeBuffer *gb, StringRef& reply);	// Set the thermistor and ADC parameters for a heater
 		void ManageTool(GCodeBuffer *gb, StringRef& reply);			// Create a new tool definition
 		void SetToolHeaters(Tool *tool, float temperature);			// Set all a tool's heaters to the temperature.  For M104...
-		bool ChangeTool(int newToolNumber);							// Select a new tool
+		bool ChangeTool(const GCodeBuffer *gb, int newToolNumber);	// Select a new tool
 		bool ToolHeatersAtSetTemperatures(const Tool *tool) const;	// Wait for the heaters associated with the specified tool to reach their set temperatures
 		bool AllAxesAreHomed() const;								// Return true if all axes are homed
 		void SetAllAxesNotHomed();									// Flag all axes as not homed
@@ -241,8 +241,8 @@ class GCodes
 		FileData fileBeingPrinted;
 		FileData fileToPrint;
 		FileStore* fileBeingWritten;								// A file to write G Codes (or sometimes HTML) in
-		bool doingFileMacro, returningFromMacro;					// Are we executing a macro file?
-		bool allowNestedMacro;										// Can we run a nested macro?
+		bool doingFileMacro, returningFromMacro;					// Are we executing a macro file or are we returning from it?
+		const GCodeBuffer *macroSourceGCode;						// Which GCodeBuffer is running the macro(s)?
 		bool isPausing, isPaused, isResuming;						// What is the state of the current file print?
 		bool doPauseMacro;											// Do we need to run pause.g and resume.g?
 		float fractionOfFilePrinted;								// Only used to record the main file when a macro is being printed
@@ -323,7 +323,21 @@ inline void GCodeBuffer::SetWritingFileDirectory(const char* wfd)
 
 inline bool GCodes::DoingFileMacro() const
 {
-	return doingFileMacro;
+	return doingFileMacro || returningFromMacro;
+}
+
+inline bool GCodes::CanStartMacro(const GCodeBuffer *gb) const
+{
+	// Macros may always start another macro file
+	if (gb == fileMacroGCode && !returningFromMacro)
+		return true;
+
+	// Regular GCodeBuffers may do this only if no macro file is being run,
+	// or if they're the source of the currently executing macro file.
+	if (!DoingFileMacro() || gb == macroSourceGCode)
+		return true;
+
+	return false;
 }
 
 inline bool GCodes::HaveIncomingData() const

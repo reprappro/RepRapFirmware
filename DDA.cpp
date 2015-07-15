@@ -97,15 +97,8 @@ bool DDA::Init(const float nextMove[], float feedRate, EndstopChecks ce, bool do
 		}
 
 		int32_t delta;
-		if (drive < AXES)
-		{
-			endCoordinates[drive] = nextMove[drive];					// this will be wrong if we are doing a special move
-			delta = endPoint[drive] - positionNow[drive];
-		}
-		else
-		{
-			delta = endPoint[drive];
-		}
+		delta = (drive < AXES) ? endPoint[drive] - positionNow[drive] : endPoint[drive];
+		endCoordinates[drive] = nextMove[drive];		// this will be wrong for XYZ if we are doing a special move
 
 		DriveMovement& dm = ddm[drive];
 		if (drive < AXES && isDeltaMovement)
@@ -491,7 +484,7 @@ void DDA::CalcNewSpeeds()
 
 // This is called by Move::CurrentMoveCompleted to update the live coordinates from the move that has just finished
 // The raw extruder differences are added and not overwritten, because we want to keep track of the total E distances
-bool DDA::FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords[AXES], volatile float rawExtrTotals[DRIVES - AXES])
+bool DDA::FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords[DRIVES], volatile float rawExtrTotals[DRIVES - AXES])
 {
 	for (size_t drive = 0; drive < DRIVES; ++drive)
 	{
@@ -506,6 +499,7 @@ bool DDA::FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords
 	}
 	for (size_t extruder = 0; extruder < AXES; ++extruder)
 	{
+		endCoords[extruder + AXES] += endCoordinates[extruder + AXES];
 		rawExtrTotals[extruder] += rawExtruderDistances[extruder];
 	}
 	return endCoordinatesValid;

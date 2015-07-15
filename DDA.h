@@ -53,7 +53,7 @@ class DDA
 		void SetDriveCoordinate(int32_t a, size_t drive);						// Force an end point
 		void SetFeedRate(float rate) { requestedSpeed = rate; }
 		float GetEndCoordinate(size_t drive, bool disableDeltaMapping);
-		bool FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords[AXES], volatile float rawExtrDists[DRIVES - AXES]);
+		bool FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords[DRIVES], volatile float rawExtrDists[DRIVES - AXES]);
 		void SetPositions(const float move[]);									// Force the endpoints to be these
 		FilePosition GetFilePosition() const { return filePos; }
 		float GetRequestedSpeed() const { return requestedSpeed; }
@@ -104,7 +104,7 @@ class DDA
 		FilePosition filePos;													// The position in the SD card file after this move was read, or zero if not read fro SD card
 
 		int32_t endPoint[DRIVES];  												// Machine coordinates of the endpoint
-		float endCoordinates[AXES];												// The Cartesian coordinates at the end of the move
+		float endCoordinates[DRIVES];											// The Cartesian coordinates at the end of the move
 		float directionVector[DRIVES];											// The normalised direction vector - first 3 are XYZ Cartesian coordinates even on a delta
 		float totalDistance;													// How long is the move in hypercuboid space
 		float acceleration;														// The acceleration to use

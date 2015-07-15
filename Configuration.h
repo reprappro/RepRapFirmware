@@ -25,7 +25,7 @@ Licence: GPL
 
 #define NAME "RepRapFirmware"
 #define VERSION "1.09d-zpl"
-#define DATE "2015-07-11"
+#define DATE "2015-07-15"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
