@@ -779,15 +779,29 @@ void Platform::Spin()
 	// Write non-blocking data to the USB line
 	if (usbOutputBuffer != nullptr)
 	{
-		size_t bytesToWrite = min<size_t>(SerialUSB.canWrite(), usbOutputBuffer->BytesLeft());
-		if (bytesToWrite > 0)
+		if (!SerialUSB)
 		{
-			SerialUSB.write(usbOutputBuffer->Read(bytesToWrite), bytesToWrite);
-		}
+			// If the USB port is not opened, free the data left for writing
+			OutputBuffer *buffer = usbOutputBuffer;
+			usbOutputBuffer = nullptr;
 
-		if (usbOutputBuffer->BytesLeft() == 0)
+			do {
+				buffer = reprap.ReleaseOutput(buffer);
+			} while (buffer != nullptr);
+		}
+		else
 		{
-			usbOutputBuffer = reprap.ReleaseOutput(usbOutputBuffer);
+			// Write as much data as we can...
+			size_t bytesToWrite = min<size_t>(SerialUSB.canWrite(), usbOutputBuffer->BytesLeft());
+			if (bytesToWrite > 0)
+			{
+				SerialUSB.write(usbOutputBuffer->Read(bytesToWrite), bytesToWrite);
+			}
+
+			if (usbOutputBuffer->BytesLeft() == 0)
+			{
+				usbOutputBuffer = reprap.ReleaseOutput(usbOutputBuffer);
+			}
 		}
 	}
 
@@ -1505,17 +1519,20 @@ void Platform::Message(MessageType type, const char *message)
 		case HOST_MESSAGE:
 			// Message that is to be sent via the USB line (non-blocking)
 			//
-			// Allow this type of message only if the USB port is opened
-			if (SerialUSB)
+			// Ensure we have a valid buffer to write to
+			if (usbOutputBuffer == nullptr)
 			{
-				// Ensure we have a valid buffer to write to
-				if (usbOutputBuffer == nullptr && !reprap.AllocateOutput(usbOutputBuffer))
+				OutputBuffer *buffer;
+				if (!reprap.AllocateOutput(buffer))
 				{
 					// Should never happen
 					return;
 				}
+				usbOutputBuffer = buffer;
+			}
 
-				// Check if we need to write the indentation chars first
+			// Check if we need to write the indentation chars first
+			{
 				const size_t stackPointer = reprap.GetGCodes()->GetStackPointer();
 				if (stackPointer > 0)
 				{
@@ -1530,10 +1547,10 @@ void Platform::Message(MessageType type, const char *message)
 					// Append the indentation string to our chain, or allocate a new buffer if there is none
 					usbOutputBuffer->cat(indentation);
 				}
-
-				// Append the message string to the output buffer chain
-				usbOutputBuffer->cat(message);
 			}
+
+			// Append the message string to the output buffer chain
+			usbOutputBuffer->cat(message);
 			break;
 
 		case HTTP_MESSAGE:

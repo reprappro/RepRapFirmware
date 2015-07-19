@@ -245,7 +245,7 @@ class Webserver
 
 				// Response from GCodes class
 
-				OutputBuffer *gcodeReply;
+				OutputBuffer * volatile gcodeReply;
 
 			protected:
 
@@ -348,7 +348,7 @@ class Webserver
 
 				// Response from GCodes class
 
-				OutputBuffer *gcodeReply;
+				OutputBuffer * volatile gcodeReply;
 		};
 		TelnetInterpreter *telnetInterpreter;
 

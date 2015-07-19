@@ -873,8 +873,8 @@ class Platform
 
 		uint32_t baudRates[NUM_SERIAL_CHANNELS];
 		uint8_t commsParams[NUM_SERIAL_CHANNELS];
-		OutputBuffer *auxOutputBuffer;
-		OutputBuffer *usbOutputBuffer;
+		OutputBuffer * volatile auxOutputBuffer;
+		OutputBuffer * volatile usbOutputBuffer;
 
 		// Files
 

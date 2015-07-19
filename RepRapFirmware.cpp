@@ -1425,8 +1425,12 @@ OutputBuffer *RepRap::GetFilesResponse(const char *dir, bool flagsDirs)
 // Allocates an output buffer instance which can be used for (large) string outputs
 bool RepRap::AllocateOutput(OutputBuffer *&buf)
 {
+	const irqflags_t flags = cpu_irq_save();
+
 	if (freeOutputBuffers == nullptr)
 	{
+		cpu_irq_restore(flags);
+
 		buf = nullptr;
 		return false;
 	}
@@ -1438,24 +1442,31 @@ bool RepRap::AllocateOutput(OutputBuffer *&buf)
 	buf->dataLength = buf->bytesLeft = 0;
 	buf->referenceCounter = 1; // Assume it's only used once by default
 
+	cpu_irq_restore(flags);
+
 	return true;
 }
 
 // Releases an output buffer instance and returns the next entry from the chain
 OutputBuffer *RepRap::ReleaseOutput(OutputBuffer *buf)
 {
+	const irqflags_t flags = cpu_irq_save();
+
 	OutputBuffer *nextBuffer = buf->next;
 
 	// If this one is reused by another piece of code, don't free it up
 	if (buf->referenceCounter > 1)
 	{
 		buf->referenceCounter--;
+		cpu_irq_restore(flags);
 		return nextBuffer;
 	}
 
 	// Otherwise prepend it to the list of free output buffers again
 	buf->next = freeOutputBuffers;
 	freeOutputBuffers = buf;
+
+	cpu_irq_restore(flags);
 
 	return nextBuffer;
 }

@@ -1753,11 +1753,13 @@ void Webserver::HttpInterpreter::HandleGCodeReply(const char *reply)
 	{
 		if (gcodeReply == nullptr)
 		{
-			if (!reprap.AllocateOutput(gcodeReply))
+			OutputBuffer *buffer;
+			if (!reprap.AllocateOutput(buffer))
 			{
 				// No more space available. Should never happen
 				return;
 			}
+			gcodeReply = buffer;
 			seq++;
 		}
 
@@ -1806,7 +1808,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 			// like FileZilla open a second connection for transfers for some reason.
 			if (req->GetLocalPort() == FTP_PORT)
 			{
-				req->Write("220 RepRapPro Ormerod\r\n");
+				req->Write("220 RepRapFirmware FTP server\r\n");
 				network->SendAndClose(nullptr, true);
 
 				ResetState();
@@ -2471,7 +2473,7 @@ Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws, Netw
 void Webserver::TelnetInterpreter::ConnectionEstablished()
 {
 	NetworkTransaction *req = network->GetTransaction();
-	req->Write("RepRapPro Ormerod Telnet Interface\r\n\r\n");
+	req->Write("RepRapFirmware Telnet interface\r\n\r\n");
 	req->Write("Please enter your password:\r\n");
 	req->Write("> ");
 	network->SendAndClose(nullptr, true);
@@ -2691,14 +2693,19 @@ void Webserver::TelnetInterpreter::HandleGCodeReply(OutputBuffer *reply)
 	if (reply != nullptr && state >= authenticated && network->AcquireTelnetTransaction())
 	{
 		// We need a valid OutputBuffer to start the conversion
-		if (gcodeReply == nullptr && !reprap.AllocateOutput(gcodeReply))
+		if (gcodeReply == nullptr)
 		{
-			// We cannot acquire a new buffer. Release everything and stop here
-			while (reply != nullptr)
+			OutputBuffer *buffer;
+			if (!reprap.AllocateOutput(buffer))
 			{
-				reply = reprap.ReleaseOutput(reply);
+				// We cannot acquire a new buffer. Release everything and stop here
+				while (reply != nullptr)
+				{
+					reply = reprap.ReleaseOutput(reply);
+				}
+				return;
 			}
-			return;
+			gcodeReply = buffer;
 		}
 
 		// Write entire content to new output buffers, but this time with \r\n instead of \n
@@ -2737,10 +2744,15 @@ void Webserver::TelnetInterpreter::HandleGCodeReply(const char *reply)
 	if (reply != nullptr && state >= authenticated && network->AcquireTelnetTransaction())
 	{
 		// We need a valid OutputBuffer to start the conversion
-		if (gcodeReply == nullptr && !reprap.AllocateOutput(gcodeReply))
+		if (gcodeReply == nullptr)
 		{
-			// Should never happen
-			return;
+			OutputBuffer *buffer;
+			if (!reprap.AllocateOutput(buffer))
+			{
+				// Should never happen
+				return;
+			}
+			gcodeReply = buffer;
 		}
 
 		// Write entire content to new output buffers, but this time with \r\n instead of \n
