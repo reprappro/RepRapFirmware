@@ -54,6 +54,7 @@ class DDA
 		void SetFeedRate(float rate) { requestedSpeed = rate; }
 		float GetEndCoordinate(size_t drive, bool disableDeltaMapping);
 		bool FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords[DRIVES], volatile float rawExtrDists[DRIVES - AXES]);
+		float GetRawExtruderDistance(size_t extruder) const { return rawExtruderDistances[extruder]; }
 		void SetPositions(const float move[]);									// Force the endpoints to be these
 		FilePosition GetFilePosition() const { return filePos; }
 		float GetRequestedSpeed() const { return requestedSpeed; }

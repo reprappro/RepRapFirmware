@@ -105,11 +105,11 @@ void GCodes::Reset()
 	doingFileMacro = returningFromMacro = false;
 	macroSourceGCode = nullptr;
 	isPausing = isPaused = isResuming = false;
-	for(size_t axis = 0; axis < AXES; axis++)
+	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
-		pauseCoordinates[axis] = 0.0;
+		pauseCoordinates[drive] = 0.0;
 	}
-	pauseCoordinates[AXES] = DEFAULT_FEEDRATE;
+	pauseCoordinates[DRIVES] = DEFAULT_FEEDRATE;
 	doPauseMacro = false;
 	fractionOfFilePrinted = -1.0;
 	dwellWaiting = false;
@@ -2863,8 +2863,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				else
 				{
 					// We do overwrite the feedrate here with the previous one of the file print
-					moveBuffer[DRIVES] = pauseCoordinates[AXES];
-					reprap.GetMove()->SetFeedrate(pauseCoordinates[AXES]);
+					moveBuffer[DRIVES] = pauseCoordinates[DRIVES];
+					reprap.GetMove()->SetFeedrate(pauseCoordinates[DRIVES]);
 
 					reply.copy("Print resumed\n");
 				}
@@ -2916,10 +2916,16 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						unsigned int skippedMoves;
 						FilePosition fPos = reprap.GetMove()->PausePrint(pauseCoordinates, skippedMoves);
 
-						// Rewind the file being printed to the position of the last move to be executed
+						// Rewind the file being printed to the position after the last move to be executed
 						if (fPos != NO_FILE_POSITION && fileBeingPrinted.IsLive())
 						{
 							fileBeingPrinted.Seek(fPos);
+						}
+
+						// Deal with the amount of (raw) extrusion we're about to skip
+						for (size_t extruder = 0; extruder < DRIVES - AXES; extruder++)
+						{
+							lastExtruderPosition[extruder] -= pauseCoordinates[extruder + AXES];
 						}
 
 						// Take care of the code queue (purge duplicate entries)
@@ -2946,6 +2952,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 							}
 						}
 
+						// If there is any move left, clear it now
 						if (moveAvailable)
 						{
 							ClearMove();
@@ -2963,7 +2970,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						{
 							pauseCoordinates[axis] = moveBuffer[axis];
 						}
-						pauseCoordinates[AXES] = moveBuffer[DRIVES];
+						for (size_t extruder = AXES; extruder < DRIVES; ++extruder)
+						{
+							pauseCoordinates[extruder] = 0.0;
+						}
+						pauseCoordinates[DRIVES] = moveBuffer[DRIVES];
 					}
 
 					fractionOfFilePrinted = fileBeingPrinted.FractionRead();
@@ -2979,12 +2990,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			// We're pausing, so wait for all pending moves to finish first.
 			else if (DoingFileMacro() || AllMovesAreFinishedAndMoveBufferIsLoaded())
 			{
-				// If we're working with absolute E values, retrieve the current extruder totals,
-				// so we have valid values when movement is resumed later on.
-				if (!DoingFileMacro())
-				{
-					reprap.GetMove()->RawExtruderTotals(lastExtruderPosition);
-				}
+				// If M25 is called and we're working with absolute E values, Move::PausePrint should have already
+				// retrieved the amount of extrusion we've skipped and that will be performed later again when the
+				// print is resumed. Don't deal with raw extruder totals here, because they aren't affected by G92 calls.
 
 				// We're done if we either don't need to run the pause macro, or if the macro file has finished
 				result = (!doPauseMacro || DoFileMacro(gb, PAUSE_G));

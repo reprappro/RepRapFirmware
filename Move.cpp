@@ -286,8 +286,8 @@ void Move::Spin()
 // Pause the print as soon as we can.
 // Returns the file position of the first queue move we are going to skip, or NO_FILE_POSITION we we are not skipping any moves,
 // and the number of skipped moves so the GCodes class can deal with them.
-// We update 'positions' to the positions and feed rate expected for the next move.
-FilePosition Move::PausePrint(float positions[AXES+1], unsigned int &skippedMoves)
+// We update 'positions' to the positions and feed rate expected for the next move, and the amount of extrusion in the moves we skipped.
+FilePosition Move::PausePrint(float positions[DRIVES+1], unsigned int &skippedMoves)
 {
 	// Find a move we can pause after.
 	// Ideally, we would adjust a move if necessary and possible so that we can pause after it, but for now we don't do that.
@@ -338,12 +338,20 @@ FilePosition Move::PausePrint(float positions[AXES+1], unsigned int &skippedMove
 		{
 			positions[axis] = dda->GetEndCoordinate(axis, false);
 		}
-		positions[AXES] = dda->GetRequestedSpeed();
+		for (size_t drive = AXES; drive < DRIVES; ++drive)
+		{
+			positions[drive] = 0.0;		// clear out extruder movement
+		}
+		positions[DRIVES] = dda->GetRequestedSpeed();
 
 		// Free the DDAs for the moves we are going to skip, and work out how much extrusion they would have performed
 		dda = ddaRingAddPointer;
 		do
 		{
+			for (size_t drive = AXES; drive < DRIVES; ++drive)
+			{
+				positions[drive] += dda->GetRawExtruderDistance(drive - AXES);		// update the amount of extrusion we are going to skip
+			}
 			if (fPos == NO_FILE_POSITION)
 			{
 				fPos = dda->GetFilePosition();
@@ -356,13 +364,7 @@ FilePosition Move::PausePrint(float positions[AXES+1], unsigned int &skippedMove
 	}
 	else
 	{
-		float userCoords[DRIVES+1];
-		GetCurrentUserPosition(userCoords, 0);		// gets positions and feed rate, and clears out extrusion values
-		for(size_t axis = 0; axis < AXES; axis++)
-		{
-			positions[axis] = userCoords[axis];
-		}
-		positions[AXES] = userCoords[DRIVES];
+		GetCurrentUserPosition(positions, 0);		// gets positions and feed rate, and clears out extrusion values
 	}
 
 	return fPos;

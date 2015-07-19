@@ -219,7 +219,7 @@ class GCodes
 		bool moveAvailable;											// Have we seen a move G Code and set it up?
 		float moveBuffer[DRIVES+1]; 								// Move coordinates; last is feed rate
 		float savedMoveBuffer[DRIVES+1];							// The position and feedrate when we started the current simulation
-		float pauseCoordinates[AXES+1];								// Coordinates of the last move where we stopped plus the last-known feedrate
+		float pauseCoordinates[DRIVES+1];							// Holds the XYZ coordinates of the last move, the amount of skipped extrusion plus feedrate
 		EndstopChecks endStopsToCheck;								// Which end stops we check them on the next move
 		uint8_t moveType;											// 0 = normal move, 1 = homing move, 2 = direct motor move
 		bool drivesRelative; 										// Are movements relative - all except X, Y and Z
