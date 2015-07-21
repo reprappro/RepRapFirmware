@@ -4366,7 +4366,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		// Set or read processor pins directly.  Setting should obviously be
         // used with extreme caution.
 
-		case 579:
+		case 42:
 			if(gb->Seen('P'))
 			{
 				int pin = gb->GetIValue();

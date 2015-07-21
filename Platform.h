@@ -738,7 +738,7 @@ class Platform
 		bool Inkjet(int bitPattern);
 		
 		// Two functions to set and get any processor pin.
-        // Only for use by the M579 command with extreme caution.  Don't use these
+        // Only for use by the M42 command with extreme caution.  Don't use these
         // for anything else.
 
 		void SetOutputPin(int pin, bool value);
@@ -1310,7 +1310,7 @@ inline void Platform::SetNozzleDiameter(float diameter)
 }
 
 // Two functions to set and get any processor pin.
-// Only for use by the M579 command with extreme caution.  Don't use these
+// Only for use by the M42 command with extreme caution.  Don't use these
 // for anything else.
 
 inline void Platform::SetOutputPin(int pin, bool value)
