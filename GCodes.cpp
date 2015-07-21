@@ -4248,7 +4248,9 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			break;
 
-		case 578: // Fire Inkjet bits
+		// Fire Inkjet bits
+
+		case 578: 
 			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 				return false;
 			if(gb->Seen('S')) // Need to handle the 'P' parameter too; see http://reprap.org/wiki/G-code#M578:_Fire_inkjet_bits
@@ -4312,8 +4314,8 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			break;
 
-			//****************************
-			// These last are M codes only for the cognoscenti
+//****************************
+// These last are M codes only for the cognoscenti
 
 		case 562: // Reset temperature fault - use with great caution
 			if (gb->Seen('P'))
@@ -4358,6 +4360,20 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					reply.printf("Invalid drive number.\n");
 					error = true;
 				}
+			}
+			break;
+
+		// Set or read processor pins directly.  Setting should obviously be
+        // used with extreme caution.
+
+		case 579:
+			if(gb->Seen('P'))
+			{
+				int pin = gb->GetIValue();
+				if(gb->Seen('S'))
+					platform->SetOutputPin(pin, gb->GetIValue());
+				else
+					reply.printf("Pin %d is %s.\n", pin, platform->GetInputPin(pin) ? "high" : "low");
 			}
 			break;
 

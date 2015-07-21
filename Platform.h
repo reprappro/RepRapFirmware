@@ -736,6 +736,13 @@ class Platform
 		// So you can test for inkjet presence with if(platform->Inkjet(0))
 
 		bool Inkjet(int bitPattern);
+		
+		// Two functions to set and get any processor pin.
+        // Only for use by the M579 command with extreme caution.  Don't use these
+        // for anything else.
+
+		void SetOutputPin(int pin, bool value);
+		bool GetInputPin(int pin);
 
 	private:
 		void ResetChannel(size_t chan); // re-initialise a serial channel
@@ -1301,6 +1308,22 @@ inline void Platform::SetNozzleDiameter(float diameter)
 {
 	nozzleDiameter = diameter;
 }
+
+// Two functions to set and get any processor pin.
+// Only for use by the M579 command with extreme caution.  Don't use these
+// for anything else.
+
+inline void Platform::SetOutputPin(int pin, bool value)
+{
+	pinMode(pin, OUTPUT);
+	digitalWrite(pin, value);	
+}
+		
+inline bool Platform::GetInputPin(int pin)
+{
+	return digitalRead(pin);
+}
+
 
 //***************************************************************************************
 
