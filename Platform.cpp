@@ -362,9 +362,21 @@ void Platform::InitZProbe()
 	}
 }
 
-int Platform::GetRawZHeight() const
+uint16_t Platform::GetRawZHeight() const
 {
-	return (nvData.zProbeType != 0) ? analogRead(zProbePin) : 0;
+	if (nvData.zProbeType == 4)
+	{
+		bool b = (bool)digitalRead(endStopPins[E0_AXIS]);
+		if (!endStopLogicLevel[AXES])
+		{
+			b = !b;
+		}
+		return (b) ? 4000 : 0;
+	}
+	else
+	{
+		return GetAdcReading(zProbeAdcChannel);
+	}
 }
 
 // Return the Z probe data.

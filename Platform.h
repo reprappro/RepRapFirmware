@@ -803,7 +803,7 @@ class Platform
 		uint32_t errorCodeBits;
 
 		void InitialiseInterrupts();
-		int GetRawZHeight() const;
+		uint16_t GetRawZHeight() const;
 		void GetStackUsage(size_t* currentStack, size_t* maxStack, size_t* neverUsed) const;
 
 		// DRIVES
