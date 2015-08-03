@@ -68,7 +68,7 @@ static const float TIME_FROM_REPRAP = 1.0e-6;			// Convert the units used by the
 
 static const size_t DRIVES = 8;							// The number of drives in the machine, including X, Y, and Z plus extruder drives
 static const size_t AXES = 3;							// The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
-static const size_t HEATERS = 6;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
+static const int8_t HEATERS = 6;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
 static const size_t NUM_SERIAL_CHANNELS = 2;			// The number of serial IO channels (usually USB and auxiliary UART)
 
 // The numbers of entries in each array must correspond with the values of DRIVES,
@@ -231,7 +231,7 @@ static const int8_t INKJET_CLEAR = 36;							// Clear the register to 0
 
 static const size_t MAX_FILES = 10;				// Must be large enough to handle the max number of simultaneous web requests + files being printed
 
-static const size_t FILE_BUFFER_LENGTH = 256;
+static const size_t FILE_BUFFER_SIZE = 256;
 static const size_t FILENAME_LENGTH = 100;
 
 static const char *FS_PREFIX = "0:";
@@ -370,7 +370,7 @@ class FileStore
 
 	private:
 		bool inUse;
-		byte buf[FILE_BUFFER_LENGTH];
+		byte buf[FILE_BUFFER_SIZE];
 		int bufferPointer;
 		FilePosition bytesRead;
 
@@ -957,7 +957,7 @@ class FileData
 		}
 
 		bool Write(const char *s, unsigned int len)
-		//pre(len <= 256)
+		//pre(len <= FILE_BUFFER_SIZE)
 		{
 			return f->Write(s, len);
 		}

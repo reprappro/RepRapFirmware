@@ -158,7 +158,7 @@ float Tool::InstantDv() const
 void Tool::AddTool(Tool* tool)
 {
 	Tool* t = this;
-	Tool* last;
+	Tool* last = this;		// initialised to suppress spurious compiler warning
 	while (t != nullptr)
 	{
 		last = t;

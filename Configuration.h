@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.09e-zpl"
-#define DATE "2015-07-19"
+#define VERSION "1.09f-zpl"
+#define DATE "2015-08-03"
 #define AUTHORS "reprappro, dc42, zpl"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
@@ -66,7 +66,7 @@ static const float HOT_ENOUGH_TO_EXTRUDE = 160.0;			// Celsius
 static const float HOT_ENOUGH_TO_RETRACT = 90.0;			// Celsius
 static const float TIME_TO_HOT = 150.0;						// Seconds
 
-static const size_t MAX_BAD_TEMPERATURE_COUNT = 6;			// Number of bad temperature samples before a heater fault is reported
+static const uint8_t MAX_BAD_TEMPERATURE_COUNT = 6;			// Number of bad temperature samples before a heater fault is reported
 static const float BAD_LOW_TEMPERATURE = -10.0;				// Celsius
 static const float BAD_HIGH_TEMPERATURE = 300.0;			// Celsius
 
@@ -92,7 +92,7 @@ static const size_t MESSAGE_LENGTH = 256;
 // Output buffer lengths
 
 static const uint16_t OUTPUT_BUFFER_SIZE = 256;				// How many bytes does each OutputBuffer hold?
-static const size_t OUTPUT_BUFFER_COUNT = 32;				// How many OutputBuffer instances do we have?
+static const size_t OUTPUT_BUFFER_COUNT = 16;				// How many OutputBuffer instances do we have?
 
 // Move system
 

@@ -129,7 +129,9 @@ class RepRap
 		int beepFrequency, beepDuration;
 		char message[SHORT_STRING_LENGTH + 1];
 
-		OutputBuffer * volatile freeOutputBuffers;		// Messages may also be sent by ISRs, hence it's volatile
+		OutputBuffer * volatile freeOutputBuffers;		// Messages may also be sent by ISRs,
+		volatile size_t usedOutputBuffers;				// so make these volatile.
+		volatile size_t maxUsedOutputBuffers;
 };
 
 inline Platform* RepRap::GetPlatform() const { return platform; }

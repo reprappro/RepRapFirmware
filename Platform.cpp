@@ -105,8 +105,8 @@ bool PidParameters::operator==(const PidParameters& other) const
 // Platform class
 
 Platform::Platform() :
-		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
-		autoSaveEnabled(false), auxOutputBuffer(nullptr), usbOutputBuffer(nullptr)
+		autoSaveEnabled(false), active(false), errorCodeBits(0), auxOutputBuffer(nullptr), usbOutputBuffer(nullptr),
+		fileStructureInitialised(false), tickState(0), debugCode(0)
 {
 	// Files
 
@@ -953,8 +953,6 @@ void Platform::InitialiseInterrupts()
 	return ret;
 }
 
-#pragma GCC pop_options
-
 #if 0	// not used
 void Platform::DisableInterrupts()
 {
@@ -975,9 +973,6 @@ void Platform::DisableInterrupts()
 
 //#define TIME_TICK_ISR	1		// define this to store the tick ISR time in errorCodeBits
 
-#pragma GCC push_options
-#pragma GCC optimize ("O3")
-
 void Platform::Tick()
 {
 #ifdef TIME_TICK_ISR
@@ -987,29 +982,29 @@ void Platform::Tick()
 	{
 		case 1:			// last conversion started was a thermistor
 		case 3:
-		{
-			ThermistorAveragingFilter& currentFilter = const_cast<ThermistorAveragingFilter&>(thermistorFilters[currentHeater]);
-			currentFilter.ProcessReading(GetAdcReading(heaterAdcChannels[currentHeater]));
-			StartAdcConversion(zProbeAdcChannel);
-			if (currentFilter.IsValid())
 			{
-				uint32_t sum = currentFilter.GetSum();
-				if (sum < thermistorOverheatSums[currentHeater] || sum >= AD_DISCONNECTED_REAL * THERMISTOR_AVERAGE_READINGS)
+				ThermistorAveragingFilter& currentFilter = const_cast<ThermistorAveragingFilter&>(thermistorFilters[currentHeater]);
+				currentFilter.ProcessReading(GetAdcReading(heaterAdcChannels[currentHeater]));
+				StartAdcConversion(zProbeAdcChannel);
+				if (currentFilter.IsValid())
 				{
-					// We have an over-temperature or bad reading from this thermistor, so turn off the heater
-					// NB - the SetHeater function we call does floating point maths, but this is an exceptional situation so we allow it
-					SetHeater(currentHeater, 0.0);
-					errorCodeBits |= ErrorBadTemp;
+					uint32_t sum = currentFilter.GetSum();
+					if (sum < thermistorOverheatSums[currentHeater] || sum >= AD_DISCONNECTED_REAL * THERMISTOR_AVERAGE_READINGS)
+					{
+						// We have an over-temperature or bad reading from this thermistor, so turn off the heater
+						// NB - the SetHeater function we call does floating point maths, but this is an exceptional situation so we allow it
+						SetHeater(currentHeater, 0.0);
+						errorCodeBits |= ErrorBadTemp;
+					}
 				}
+				++currentHeater;
+				if (currentHeater == HEATERS)
+				{
+					currentHeater = 0;
+				}
+				++tickState;
+				break;
 			}
-			++currentHeater;
-			if (currentHeater == HEATERS)
-			{
-				currentHeater = 0;
-			}
-			++tickState;
-			break;
-		}
 
 		case 2:			// last conversion started was the Z probe, with IR LED on
 			const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
@@ -1046,8 +1041,6 @@ void Platform::Tick()
 #endif
 }
 
-#pragma GCC pop_options
-
 /*static*/uint16_t Platform::GetAdcReading(adc_channel_num_t chan)
 {
 	uint16_t rslt = (uint16_t) adc_get_channel_value(ADC, chan);
@@ -1070,6 +1063,8 @@ void Platform::Tick()
 	}
 	return (adc_channel_num_t) (int) g_APinDescription[pin].ulADCChannelNumber;
 }
+
+#pragma GCC pop_options
 
 //*************************************************************************************************
 
@@ -1228,7 +1223,7 @@ float Platform::GetTemperature(size_t heater) const
 	{
 		rawTemp -= (int) p.adcHighOffset;
 	}
-	if (rawTemp >= AD_DISCONNECTED_VIRTUAL)
+	if (rawTemp >= (int)AD_DISCONNECTED_VIRTUAL)
 	{
 		return ABS_ZERO;		// thermistor is disconnected
 	}
@@ -1781,13 +1776,13 @@ bool Platform::Inkjet(int bitPattern)
 	if (!bitPattern)
 		return true;
 
-	for(size_t i = 0; i < inkjetBits; i)
+	for(int8_t i = 0; i < inkjetBits; i++)
 	{
 		if (bitPattern & 1)
 		{
 			digitalWrite(inkjetSerialOut, 1);			// Write data to shift register
 
-			for(size_t j = 0; j <= i; j++)
+			for(int8_t j = 0; j <= i; j++)
 			{
 				digitalWrite(inkjetShiftClock, HIGH);
 				digitalWrite(inkjetShiftClock, LOW);
@@ -1879,9 +1874,9 @@ void MassStorage::Init()
 
 	// Print some card details (optional)
 
-	/*platform->Message(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
-	platform->Message(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
-	platform->Message(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
+	/*platform->MessageF(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
+	platform->MessageF(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
+	platform->MessageF(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
 	switch (sd_mmc_get_type(0))
 	{
 		case CARD_TYPE_SD | CARD_TYPE_HC:
@@ -1919,8 +1914,8 @@ void MassStorage::Init()
 
 const char* MassStorage::CombineName(const char* directory, const char* fileName)
 {
-	int out = 0;
-	int in = 0;
+	size_t out = 0;
+	size_t in = 0;
 
 	if (directory != nullptr)
 	{
@@ -2156,7 +2151,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 							? platform->GetMassStorage()->CombineName(directory, fileName)
 							: fileName;
 	writing = write;
-	lastBufferEntry = FILE_BUFFER_LENGTH - 1;
+	lastBufferEntry = FILE_BUFFER_SIZE - 1;
 	bytesRead = 0;
 
 	FRESULT openReturn = f_open(&file, location, (writing) ? FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
@@ -2166,7 +2161,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 		return false;
 	}
 
-	bufferPointer = (writing) ? 0 : FILE_BUFFER_LENGTH;
+	bufferPointer = (writing) ? 0 : FILE_BUFFER_SIZE;
 	inUse = true;
 	openCount = 1;
 	return true;
@@ -2225,7 +2220,7 @@ bool FileStore::Seek(FilePosition pos)
 	FRESULT fr = f_lseek(&file, pos);
 	if (fr == FR_OK)
 	{
-		bufferPointer = (writing) ? 0 : FILE_BUFFER_LENGTH;
+		bufferPointer = (writing) ? 0 : FILE_BUFFER_SIZE;
 		bytesRead = pos;
 		return true;
 	}
@@ -2263,10 +2258,10 @@ IOStatus FileStore::Status() const
 	if (!inUse)
 		return IOStatus::nothing;
 
-	if (lastBufferEntry == FILE_BUFFER_LENGTH)
+	if (lastBufferEntry == FILE_BUFFER_SIZE)
 		return IOStatus::byteAvailable;
 
-	if (bufferPointer < lastBufferEntry)
+	if (bufferPointer < (int)lastBufferEntry)
 		return IOStatus::byteAvailable;
 
 	return IOStatus::nothing;
@@ -2274,7 +2269,7 @@ IOStatus FileStore::Status() const
 
 bool FileStore::ReadBuffer()
 {
-	FRESULT readStatus = f_read(&file, buf, FILE_BUFFER_LENGTH, &lastBufferEntry);	// Read a chunk of file
+	FRESULT readStatus = f_read(&file, buf, FILE_BUFFER_SIZE, &lastBufferEntry);	// Read a chunk of file
 	if (readStatus)
 	{
 		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
@@ -2293,7 +2288,7 @@ bool FileStore::Read(char& b)
 		return false;
 	}
 
-	if (bufferPointer >= FILE_BUFFER_LENGTH)
+	if (bufferPointer >= (int)FILE_BUFFER_SIZE)
 	{
 		bool ok = ReadBuffer();
 		if (!ok)
@@ -2302,7 +2297,7 @@ bool FileStore::Read(char& b)
 		}
 	}
 
-	if (bufferPointer >= lastBufferEntry)
+	if (bufferPointer >= (int)lastBufferEntry)
 	{
 		b = 0;  // Good idea?
 		return false;
@@ -2325,18 +2320,15 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 		return -1;
 	}
 
-	bufferPointer = FILE_BUFFER_LENGTH;	// invalidate the buffer
-	UINT bytes_read;
-	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytes_read);
-
+	size_t bytesRead;
+	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytesRead);
 	if (readStatus)
 	{
 		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
 		return -1;
 	}
 
-	bytesRead += bytes_read;
-	return (int)bytes_read;
+	return bytesRead;
 }
 
 bool FileStore::WriteBuffer()
@@ -2363,7 +2355,7 @@ bool FileStore::Write(char b)
 	}
 	buf[bufferPointer] = b;
 	bufferPointer++;
-	if (bufferPointer >= FILE_BUFFER_LENGTH)
+	if (bufferPointer >= (int)FILE_BUFFER_SIZE)
 	{
 		return WriteBuffer();
 	}
@@ -2372,20 +2364,7 @@ bool FileStore::Write(char b)
 
 bool FileStore::Write(const char* b)
 {
-	if (!inUse)
-	{
-		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write string to a non-open file.\n");
-		return false;
-	}
-	int i = 0;
-	while (b[i])
-	{
-		if (!Write(b[i++]))
-		{
-			return false;
-		}
-	}
-	return true;
+	return Write(b, strlen(b));
 }
 
 // Direct block write that bypasses the buffer. Used when uploading files.

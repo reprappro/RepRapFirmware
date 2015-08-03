@@ -230,7 +230,7 @@ class GCodes
 		float extruderPositionStack[STACK][DRIVES-AXES];			// For dealing with Push and Pop
 		FileData fileStack[STACK];
 		bool doingFileMacroStack[STACK];							// For dealing with Push and Pop
-		int8_t stackPointer;										// Push and Pop stack pointer
+		uint8_t stackPointer;										// Push and Pop stack pointer
 		char axisLetters[AXES]; 									// 'X', 'Y', 'Z'
 		float lastExtruderPosition[DRIVES - AXES];					// Extruder position of the last move fed into the Move class
 		float record[DRIVES+1];										// Temporary store for move positions

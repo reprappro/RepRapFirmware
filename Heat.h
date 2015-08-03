@@ -63,7 +63,7 @@ class PID
 		bool active;									// Are we active or standby?
 		bool switchedOff;								// Becomes false when someone tells us our active or standby temperatures
 		int8_t heater;									// The index of our heater
-		int8_t badTemperatureCount;						// Count of sequential dud readings
+		uint8_t badTemperatureCount;					// Count of sequential dud readings
 		bool temperatureFault;							// Has our heater developed a fault?
 		float timeSetHeating;							// When we were switched on
 		bool heatingUp;									// Are we heating up?

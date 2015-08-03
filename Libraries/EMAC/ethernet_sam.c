@@ -141,7 +141,7 @@ void ethernet_timers_update(void)
 
 // Added by AB.
 
-static void ethernet_configure_interface(unsigned char ipAddress[], unsigned char netMask[], unsigned char gateWay[])
+static void ethernet_configure_interface(const unsigned char ipAddress[], const unsigned char netMask[], const unsigned char gateWay[])
 {
 	struct ip_addr x_ip_addr, x_net_mask, x_gateway;
 	extern err_t ethernetif_init(struct netif *netif);

@@ -170,8 +170,8 @@ void watchdogSetup(void)
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noModule), ticksInSpinState(0),
-	resetting(false)
+RepRap::RepRap() : ticksInSpinState(0), spinningModule(noModule), debug(0), stopped(false), active(false),
+	resetting(false), usedOutputBuffers(0), maxUsedOutputBuffers(0)
 {
 	platform = new Platform();
 	network = new Network(platform);
@@ -341,15 +341,8 @@ void RepRap::Timing()
 void RepRap::Diagnostics()
 {
 	platform->Message(GENERIC_MESSAGE, "Diagnostics\n");
-
-	OutputBuffer *buff = freeOutputBuffers;
-	size_t freeOutputBuffers = 0;
-	while (buff != nullptr)
-	{
-		freeOutputBuffers++;
-		buff = buff->next;
-	}
-	platform->MessageF(GENERIC_MESSAGE, "Free output buffers: %d of %d\n", freeOutputBuffers, OUTPUT_BUFFER_COUNT);
+	platform->MessageF(GENERIC_MESSAGE, "Used output buffers: %d of %d (%d max)\n",
+			usedOutputBuffers, OUTPUT_BUFFER_COUNT, maxUsedOutputBuffers);
 
 	platform->Diagnostics();				// this includes a call to our Timing() function
 	move->Diagnostics();
@@ -1326,7 +1319,7 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 		response->EncodeString(myName, ARRAY_SIZE(myName), false);
 	}
 
-	uint32_t newSeq = gCodes->GetAuxSeq();
+	int newSeq = (int)gCodes->GetAuxSeq();
 	if (type < 2 || (seq != -1 && seq != newSeq))
 	{
 		// Send the response to the last command. Do this last
@@ -1438,6 +1431,12 @@ bool RepRap::AllocateOutput(OutputBuffer *&buf)
 	buf = freeOutputBuffers;
 	freeOutputBuffers = buf->next;
 
+	usedOutputBuffers++;
+	if (usedOutputBuffers > maxUsedOutputBuffers)
+	{
+		maxUsedOutputBuffers = usedOutputBuffers;
+	}
+
 	buf->next = nullptr;
 	buf->dataLength = buf->bytesLeft = 0;
 	buf->referenceCounter = 1; // Assume it's only used once by default
@@ -1465,6 +1464,8 @@ OutputBuffer *RepRap::ReleaseOutput(OutputBuffer *buf)
 	// Otherwise prepend it to the list of free output buffers again
 	buf->next = freeOutputBuffers;
 	freeOutputBuffers = buf;
+
+	usedOutputBuffers--;
 
 	cpu_irq_restore(flags);
 
@@ -1572,7 +1573,7 @@ unsigned int RepRap::GetProhibitedExtruderMovements(unsigned int extrusions, uns
 	Tool *tool = toolList;
 	while (tool != nullptr)
 	{
-		for (int driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
+		for(size_t driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
 		{
 			const int extruderDrive = tool->Drive(driveNum);
 			unsigned int mask = 1 << extruderDrive;
@@ -1785,7 +1786,7 @@ size_t OutputBuffer::copy(const char *src, size_t len)
 	if (len > OUTPUT_BUFFER_SIZE)
 	{
 		// No - copy what we can't write into a new chain
-		OutputBuffer *currentBuffer, *lastBuffer;
+		OutputBuffer *currentBuffer, *lastBuffer = nullptr;
 		size_t bytesCopied = OUTPUT_BUFFER_SIZE;
 		do {
 			if (!reprap.AllocateOutput(currentBuffer))

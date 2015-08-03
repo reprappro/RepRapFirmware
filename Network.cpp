@@ -293,9 +293,9 @@ void telnetd_init()
 // Network/Ethernet class
 
 Network::Network(Platform* p)
-	: platform(p), isEnabled(true), state(NetworkInactive), readingData(false),
-	  freeTransactions(nullptr), readyTransactions(nullptr), writingTransactions(nullptr),
-	  dataCs(nullptr), ftpCs(nullptr), telnetCs(nullptr), freeConnections(nullptr)
+	: platform(p), freeTransactions(nullptr), readyTransactions(nullptr), writingTransactions(nullptr),
+	state(NetworkInactive), isEnabled(true), readingData(false),
+	dataCs(nullptr), ftpCs(nullptr), telnetCs(nullptr), freeConnections(nullptr)
 {
 	for (size_t i = 0; i < NETWORK_TRANSACTION_COUNT; i++)
 	{
@@ -670,7 +670,6 @@ NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 	// If we're waiting for a new connection on a data port, see if there is a matching transaction available
 	if (cs == nullptr && rs->waitingForDataConnection)
 	{
-		const uint16_t localPort = rs->GetLocalPort();
 		for (NetworkTransaction *rsNext = rs->next; rsNext != nullptr; rsNext = rs->next)
 		{
 			if (rsNext->status == connected && rsNext->GetLocalPort() > 1023)
@@ -1267,7 +1266,7 @@ bool NetworkTransaction::Send()
 		size_t bytesToRead;
 		while (fileBeingSent != nullptr && bytesLeftToSend > 0)
 		{
-			bytesToRead = min<size_t>(FILE_BUFFER_LENGTH, bytesLeftToSend);
+			bytesToRead = min<size_t>(FILE_BUFFER_SIZE, bytesLeftToSend);
 			bytesRead = fileBeingSent->Read(sendingWindow + bytesBeingSent, bytesToRead);
 
 			if (bytesRead > 0)
@@ -1276,7 +1275,7 @@ bool NetworkTransaction::Send()
 				bytesLeftToSend = TCP_WND - bytesBeingSent;
 			}
 
-			if (bytesRead != bytesToRead)
+			if (bytesRead != (int)bytesToRead)
 			{
 				fileBeingSent->Close();
 				fileBeingSent = nullptr;
