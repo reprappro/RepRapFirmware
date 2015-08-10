@@ -4870,7 +4870,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			if (gb->Seen('P'))
 			{
 				int drive = gb->GetIValue();
-				if (drive > 0 && drive < (int)DRIVES)
+				if (drive >= 0 && drive < (int)DRIVES)
 				{
 					if (gb->Seen('S'))
 					{
