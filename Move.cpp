@@ -32,7 +32,7 @@ void Move::Init()
 	deltaProbing = false;
 
 	// Empty the ring
-	ddaRingGetPointer = ddaRingAddPointer;
+	ddaRingGetPointer = ddaRingCheckPointer = ddaRingAddPointer;
 	DDA *dda = ddaRingAddPointer;
 	do {
 		dda->Init();
@@ -41,6 +41,7 @@ void Move::Init()
 
 	currentDda = nullptr;
 	addNoMoreMoves = false;
+	stepErrors = 0;
 
 	// Clear the transforms
 	SetIdentityTransform();
@@ -52,6 +53,7 @@ void Move::Init()
 	for (size_t i = 0; i < DRIVES; i++)
 	{
 		move[i] = 0.0;
+		liveEndPoints[i] = 0;									// not actually right for a delta, but better than printing random values in response to M114
 		reprap.GetPlatform()->SetDirection(i, FORWARDS);		// DC: I don't see any reason why we do this
 	}
 	SetLiveCoordinates(move);
@@ -110,14 +112,25 @@ void Move::Spin()
 		++idleCount;
 	}
 
+	// Check for DDA errors to print if Move debug is enabled
+	while (ddaRingCheckPointer->GetState() == DDA::completed)
+	{
+		if (ddaRingCheckPointer->HasStepError())
+		{
+			if (reprap.Debug(moduleMove))
+			{
+				ddaRingCheckPointer->DebugPrint();
+			}
+			++stepErrors;
+		}
+		ddaRingCheckPointer->Free();
+		ddaRingCheckPointer = ddaRingCheckPointer->GetNext();
+	}
+
 	// See if we can add another move to the ring
 	if (!addNoMoreMoves && ddaRingAddPointer->GetState() == DDA::empty)
 	{
 		DDA *dda = ddaRingAddPointer;
-		if (reprap.Debug(moduleMove))
-		{
-			dda->PrintIfHasStepError();
-		}
 
 		// In order to react faster to speed and extrusion rate changes, only add more moves if the total duration of
 		// all un-frozen moves is less than 2 seconds, or the total duration of all but the first un-frozen move is
@@ -217,7 +230,7 @@ void Move::Spin()
 			DDA *dda = ddaRingGetPointer;
 			simulationTime += dda->CalcTime();
 			liveCoordinatesValid = dda->FetchEndPosition(const_cast<int32_t*>(liveEndPoints), const_cast<float *>(liveCoordinates), const_cast<float *>(rawExtruderTotals));
-			dda->Release();
+			dda->Complete();
 			ddaRingGetPointer = ddaRingGetPointer->GetNext();
 		}
 	}
@@ -262,10 +275,14 @@ void Move::Spin()
 			// See whether we need to prepare any moves
 			int32_t preparedTime = 0;
 			DDA::DDAState st;
-			while ((st = cdda->GetState()) == DDA:: completed || st == DDA::executing || st == DDA::frozen)
+			while ((st = cdda->GetState()) == DDA::completed || st == DDA::executing || st == DDA::frozen)
 			{
 				preparedTime += cdda->GetTimeLeft();
 				cdda = cdda->GetNext();
+				if (cdda == ddaRingAddPointer)
+				{
+					break;
+				}
 			}
 
 			// If the number of prepared moves will execute in less than the minimum time, prepare another move
@@ -355,7 +372,7 @@ FilePosition Move::PausePrint(float positions[DRIVES+1], unsigned int &skippedMo
 			{
 				fPos = dda->GetFilePosition();
 			}
-			dda->Release();
+			dda->Complete();
 			dda = dda->GetNext();
 			skippedMoves++;
 		}
@@ -379,7 +396,7 @@ extern uint64_t lastNum;
 void Move::Diagnostics()
 {
 	reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Move Diagnostics:\n");
-	reprap.GetPlatform()->MessageF(GENERIC_MESSAGE, "MaxReps: %u\n", maxReps);
+	reprap.GetPlatform()->MessageF(GENERIC_MESSAGE, "MaxReps: %u, StepErrors: %u\n", maxReps, stepErrors);
 	maxReps = 0;
 
 #if 0
@@ -397,7 +414,7 @@ void Move::SetPositions(const float move[DRIVES])
 {
 	if (DDARingEmpty())
 	{
-		ddaRingAddPointer->GetPrevious()->SetPositions(move);
+		ddaRingAddPointer->GetPrevious()->SetPositions(move, DRIVES);
 	}
 	else
 	{
@@ -1109,7 +1126,7 @@ void Move::CurrentMoveCompleted()
 	// Save the current motor coordinates, and the machine Cartesian coordinates if known
 	liveCoordinatesValid = currentDda->FetchEndPosition(const_cast<int32_t*>(liveEndPoints), const_cast<float *>(liveCoordinates), const_cast<float *>(rawExtruderTotals));
 
-	currentDda->Release();
+	currentDda->Complete();
 	currentDda = nullptr;
 	ddaRingGetPointer = ddaRingGetPointer->GetNext();
 
@@ -1148,9 +1165,7 @@ void Move::HitLowStop(size_t drive, DDA* hitDDA)
 		{
 			hitPoint = reprap.GetPlatform()->AxisMinimum(drive);
 		}
-		int32_t coord = MotorEndPointToMachine(drive, hitPoint);
-		hitDDA->SetDriveCoordinate(coord, drive);
-		reprap.GetGCodes()->SetAxisIsHomed(drive);
+		JustHomed(drive, hitPoint, hitDDA);
 	}
 }
 
@@ -1159,14 +1174,34 @@ void Move::HitHighStop(size_t drive, DDA* hitDDA)
 {
 	if (drive < AXES)		// should always be true
 	{
-		float position = (IsDeltaMode())
+		float hitPoint = (IsDeltaMode())
 							? deltaParams.GetHomedCarriageHeight(drive)
-							        // this is a delta printer, so the motor is at the homed carriage height for this drive
+							        // this is a Delta printer, so the motor is at the homed carriage height for this drive
 							: reprap.GetPlatform()->AxisMaximum(drive);
 									// this is a Cartesian printer, so we're at the maximum for this axis
-		hitDDA->SetDriveCoordinate(MotorEndPointToMachine(drive, position), drive);
-		reprap.GetGCodes()->SetAxisIsHomed(drive);
+		JustHomed(drive, hitPoint, hitDDA);
 	}
+}
+
+// This is called from the step ISR. Any variables it modifies that are also read by code outside the ISR must be declared 'volatile'.
+void Move::JustHomed(size_t axisHomed, float hitPoint, DDA* hitDDA)
+{
+	if (IsCoreXYAxis(axisHomed))
+	{
+		float tempCoordinates[AXES];
+		for (size_t axis = 0; axis < AXES; ++axis)
+		{
+			tempCoordinates[axis] = hitDDA->GetEndCoordinate(axis, false);
+		}
+		tempCoordinates[axisHomed] = hitPoint;
+		hitDDA->SetPositions(tempCoordinates, AXES);
+	}
+	else
+	{
+		hitDDA->SetDriveCoordinate(MotorEndPointToMachine(axisHomed, hitPoint), axisHomed);
+	}
+	reprap.GetGCodes()->SetAxisIsHomed(axisHomed);
+
 }
 
 // This is called from the step ISR. Any variables it modifies that are also read by code outside the ISR must be declared 'volatile'.
@@ -1402,6 +1437,22 @@ const char* Move::GetGeometryString() const
 			: (coreXYMode == 2) ? "coreXZ"
 			: (coreXYMode == 3) ? "coreYZ"
 			: "cartesian";
+}
+
+// Return true if the specified axis shares its motors with another
+bool Move::IsCoreXYAxis(unsigned int axis) const
+{
+	switch(coreXYMode)
+	{
+		case 1:
+			return axis == X_AXIS || axis == Y_AXIS;
+		case 2:
+			return axis == X_AXIS || axis == Z_AXIS;
+		case 3:
+			return axis == Y_AXIS || axis == Z_AXIS;
+		default:
+			return false;
+	}
 }
 
 // Do a delta probe returning -1 if still probing, 0 if failed, 1 if success

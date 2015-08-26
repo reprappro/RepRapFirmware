@@ -37,6 +37,7 @@ class Move
 		void Spin();																	// Called in a tight loop to keep the class going
 		void Exit();																	// Shut down
 		void GetCurrentUserPosition(float m[DRIVES + 1], uint8_t moveType) const;		// Return the position (after all queued moves have been executed) in transformed coords
+		int32_t GetEndPoint(size_t drive) const { return liveEndPoints[drive]; }		// Get the current position of a motor
 		void LiveCoordinates(float m[DRIVES]);											// Gives the last point at the end of the last complete DDA transformed to user coords
 		void RawExtruderTotals(float e[DRIVES-AXES]);									// Returns the unmodified absolute E totals since the beginning of the current file print (if any)
 		void Interrupt();																// The hardware's (i.e. platform's)  interrupt should call this.
@@ -77,6 +78,7 @@ class Move
 
 		int GetCoreXYMode() const { return coreXYMode; }
 		void SetCoreXYMode(int mode) { coreXYMode = mode; }
+		bool IsCoreXYAxis(size_t axis) const;											// Returns true if the specified axis shares its motors with another
 
 		void CurrentMoveCompleted();													// Signals that the current move has just been completed
 		bool StartNextMove(uint32_t startTime);											// Start the next move, returning true if Step() needs to be called immediately
@@ -120,6 +122,7 @@ class Move
 				float& l2, float& l3) const;
 		float TriangleZ(float x, float y) const;										// Interpolate onto a triangular grid
 		void AdjustDeltaParameters(const float v[], size_t numFactors);					// Perform delta adjustment
+		void JustHomed(size_t axis, float hitPoint, DDA* hitDDA);						// Deal with setting positions after a drive has been homed
 
 		static void PrintMatrix(const char* s, const MathMatrix<float>& m, size_t numRows = 0, size_t maxCols = 0);	// for debugging
 		static void PrintVector(const char *s, const float *v, size_t numElems);		// for debugging
@@ -131,6 +134,7 @@ class Move
 		DDA* volatile currentDda;
 		DDA* ddaRingAddPointer;
 		DDA* volatile ddaRingGetPointer;
+		DDA* ddaRingCheckPointer;
 
 		bool addNoMoreMoves;															// If true, allow no more moves to be added to the look-ahead
 		bool active;																	// Are we live and running?
@@ -165,6 +169,7 @@ class Move
 		uint32_t deltaProbingStartTime;
 		bool deltaProbing;
 		int coreXYMode;																	// 0 = Cartesian, 1 = CoreXY, 2 = CoreXZ, 3 = CoreYZ
+		unsigned int stepErrors;														// Count of step errors, for diagnostics
 
 		float extrusionFactors[DRIVES - AXES];											// Extrusion factors (normally 1.0)
 		float speedFactor;																// Speed factor, changed feedrates are multiplied by this

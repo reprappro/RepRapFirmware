@@ -105,8 +105,8 @@ bool PidParameters::operator==(const PidParameters& other) const
 // Platform class
 
 Platform::Platform() :
-		autoSaveEnabled(false), active(false), errorCodeBits(0), auxOutputBuffer(nullptr), usbOutputBuffer(nullptr),
-		fileStructureInitialised(false), tickState(0), debugCode(0)
+		autoSaveEnabled(false), active(false), errorCodeBits(0), auxOutputBuffer(nullptr), aux2OutputBuffer(nullptr),
+		usbOutputBuffer(nullptr), fileStructureInitialised(false), tickState(0), debugCode(0)
 {
 	// Files
 
@@ -129,11 +129,14 @@ void Platform::Init()
 
 	baudRates[0] = USB_BAUD_RATE;
 	baudRates[1] = AUX_BAUD_RATE;
+	baudRates[2] = AUX2_BAUD_RATE;
 	commsParams[0] = 0;
 	commsParams[1] = 1;							// by default we require a checksum on data from the aux port, to guard against overrun errors
+	// The third serial channel isn't a G-Code source
 
 	SerialUSB.begin(baudRates[0]);
 	Serial.begin(baudRates[1]);					// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
+	Serial1.begin(baudRates[2]);
 
 	static_assert(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024, "NVData too large");
 
@@ -362,7 +365,7 @@ void Platform::InitZProbe()
 	}
 }
 
-uint16_t Platform::GetRawZHeight() const
+uint16_t Platform::GetRawZProbeReading() const
 {
 	if (nvData.zProbeType == 4)
 	{
@@ -679,12 +682,10 @@ void Platform::SetAutoSave(bool enabled)
 #endif
 }
 
-// AUX device
+// Send beep message to the AUX device
 void Platform::Beep(int freq, int ms)
 {
-	// Send the beep command to the aux channel. There is no flow control on this port, so it can't block for long.
-	scratchString.printf("{\"beep_freq\":%d,\"beep_length\":%d}\n", freq, ms);
-	Serial.print(scratchString.Pointer());
+	MessageF(AUX_MESSAGE, "{\"beep_freq\":%d,\"beep_length\":%d}\n", freq, ms);
 }
 
 // Note: the use of floating point time will cause the resolution to degrade over time.
@@ -788,6 +789,21 @@ void Platform::Spin()
 		}
 	}
 
+	// Write non-blocking data to the second AUX line
+	if (aux2OutputBuffer != nullptr)
+	{
+		size_t bytesToWrite = min<size_t>(Serial1.canWrite(), aux2OutputBuffer->BytesLeft());
+		if (bytesToWrite > 0)
+		{
+			Serial1.write(aux2OutputBuffer->Read(bytesToWrite), bytesToWrite);
+		}
+
+		if (aux2OutputBuffer->BytesLeft() == 0)
+		{
+			aux2OutputBuffer = reprap.ReleaseOutput(aux2OutputBuffer);
+		}
+	}
+
 	// Write non-blocking data to the USB line
 	if (usbOutputBuffer != nullptr)
 	{
@@ -838,7 +854,7 @@ void Platform::SoftwareReset(uint16_t reason)
 		{
 			reason |= SoftwareResetReason::inLwipSpin;
 		}
-		if (!Serial.canWrite())
+		if (!Serial.canWrite() || !Serial1.canWrite())
 		{
 			reason |= SoftwareResetReason::inAuxOutput;	// if we are resetting because we are stuck in a Spin function, record whether we are trying to send to aux
 		}
@@ -892,6 +908,9 @@ void FanInterrupt()
 
 void Platform::InitialiseInterrupts()
 {
+	// Set the tick interrupt to the highest priority. We need to to monitor the heaters and kick the watchdog.
+	NVIC_SetPriority (SysTick_IRQn, 0);						// set priority for tick interrupts
+
 	// Timer interrupt for stepper motors
 	// The clock rate we use is a compromise. Too fast and the 64-bit square roots take a long time to execute. Too slow and we lose resolution.
 	// We choose a clock divisor of 32, which gives us 0.38us resolution. The next option is 128 which would give 1.524us resolution.
@@ -901,7 +920,7 @@ void Platform::InitialiseInterrupts()
 	TC1 ->TC_CHANNEL[0].TC_IDR = ~(uint32_t)0;				// interrupts disabled for now
 	TC_Start(TC1, 0);
 	TC_GetStatus(TC1, 0);									// clear any pending interrupt
-	NVIC_SetPriority(TC3_IRQn, 0);							// set highest priority for this IRQ; it's time-critical
+	NVIC_SetPriority(TC3_IRQn, 2);							// set high priority for this IRQ; it's time-critical
 	NVIC_EnableIRQ(TC3_IRQn);
 
 	// Timer interrupt to keep the networking timers running (called at 16Hz)
@@ -913,7 +932,7 @@ void Platform::InitialiseInterrupts()
 	TC_Start(TC1, 1);
 	TC1 ->TC_CHANNEL[1].TC_IER = TC_IER_CPCS;
 	TC1 ->TC_CHANNEL[1].TC_IDR = ~TC_IER_CPCS;
-	NVIC_SetPriority(TC4_IRQn, 12);							// Ethernet isn't as critical as the step interrupt
+	NVIC_SetPriority(TC4_IRQn, 4);							// Ethernet isn't as critical as the step interrupt
 	NVIC_EnableIRQ(TC4_IRQn);
 
 	// Interrupt for 4-pin PWM fan sense line
@@ -937,7 +956,7 @@ void Platform::InitialiseInterrupts()
 	TC_GetStatus(TC1, 0);									// clear any pending interrupt
 	int32_t diff = (int32_t)(tim - TC_ReadCV(TC1, 0));		// see how long we have to go
 	bool ret;
-	if (diff < 2)											// if less than 0.5us or already passed
+	if (diff < 3)											// if less than about 1us or already passed
 	{
 		ret = true;											// tell the caller to simulate an interrupt instead
 	}
@@ -1009,7 +1028,7 @@ void Platform::Tick()
 			}
 
 		case 2:			// last conversion started was the Z probe, with IR LED on
-			const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
+			const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetRawZProbeReading());
 			StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
 			if (currentZProbeType == 2)								// if using a modulated IR sensor
 			{
@@ -1019,7 +1038,7 @@ void Platform::Tick()
 			break;
 
 		case 4:			// last conversion started was the Z probe, with IR LED off if modulation is enabled
-			const_cast<ZProbeAveragingFilter&>(zProbeOffFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
+			const_cast<ZProbeAveragingFilter&>(zProbeOffFilter).ProcessReading(GetRawZProbeReading());
 			// no break
 		case 0:			// this is the state after initialisation, no conversion has been started
 		default:
@@ -1509,10 +1528,24 @@ void Platform::Message(MessageType type, const char *message)
 			break;
 
 		case AUX_MESSAGE:
-			// Message that is to be sent to an auxiliary device (blocking)
-			Serial.write(message);
-			Serial.flush();
+			// Message that is to be sent to the first auxiliary device
+			if (auxOutputBuffer != nullptr)
+			{
+				// If we're still busy sending a response to the UART device, append this message to the output buffer
+				auxOutputBuffer->cat(message);
+			}
+			else
+			{
+				// Send the beep command to the aux channel. There is no flow control on this port, so it can't block for long.
+				Serial.write(message);
+				Serial.flush();
+			}
 			break;
+
+		case AUX2_MESSAGE:
+			// Message that is to be sent to the second auxiliary device (blocking)
+			Serial1.write(message);
+			Serial1.flush();
 
 		case DISPLAY_MESSAGE:
 			// Message that is to appear on a local display;  \f and \n should be supported.
@@ -1611,6 +1644,17 @@ void Platform::Message(const MessageType type, OutputBuffer *buffer)
 				auxOutputBuffer->Append(buffer);
 			}
 			break;
+
+		case AUX2_MESSAGE:
+			// Send this message to the second UART device
+			if (aux2OutputBuffer == nullptr)
+			{
+				aux2OutputBuffer = buffer;
+			}
+			else
+			{
+				aux2OutputBuffer->Append(buffer);
+			}
 
 		case DEBUG_MESSAGE:
 			// Probably rarely used, but supported.

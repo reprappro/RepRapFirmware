@@ -89,6 +89,9 @@ class Heat
 		void AllowColdExtrude();									// Allow cold extrusion
 		void DenyColdExtrude();										// Deny cold extrusion
 
+		int8_t GetBedHeater() const;								// Get hot bed heater number
+		void SetBedHeater(int8_t heater);							// Set hot bed heater number
+
 		int8_t GetChamberHeater() const;							// Get chamber heater number
 		void SetChamberHeater(int8_t heater);						// Set chamber heater number
 
@@ -118,6 +121,7 @@ class Heat
 		PID* pids[HEATERS];							// A PID controller for each heater
 
 		bool coldExtrude;							// Is cold extrusion allowed?
+		int8_t bedHeater;							// Index of the hot bed heater to use or -1 if none is available
 		int8_t chamberHeater;						// Index of the chamber heater to use or -1 if none is available
 
 		float lastTime;								// The last time our Spin() was called
@@ -248,6 +252,16 @@ inline void Heat::AllowColdExtrude()
 inline void Heat::DenyColdExtrude()
 {
 	coldExtrude = false;
+}
+
+inline int8_t Heat::GetBedHeater() const
+{
+	return bedHeater;
+}
+
+inline void Heat::SetBedHeater(int8_t heater)
+{
+	bedHeater = heater;
 }
 
 inline int8_t Heat::GetChamberHeater() const

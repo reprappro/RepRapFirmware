@@ -329,7 +329,7 @@ void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHea
 
 	for(size_t heater = 0; heater < heaterCount; heater++)
 	{
-		if (heaters[heater] != HOT_BED && heaters[heater] >= numHeaters)
+		if (heaters[heater] != reprap.GetHeat()->GetBedHeater() && heaters[heater] >= numHeaters)
 		{
 			numHeaters = heaters[heater] + 1;
 		}

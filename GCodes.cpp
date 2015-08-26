@@ -554,7 +554,9 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				{
 					moveArg -= currentTool->GetOffset()[axis];		// adjust requested position to compensate for tool offset
 				}
-				if (applyLimits && axis < 2 && axisIsHomed[axis])	// limit X & Y moves unless doing G92
+
+				// If on a Cartesian printer and applying limits, limit all axes
+				if (applyLimits && axisIsHomed[axis] && !reprap.GetMove()->IsDeltaMode())
 				{
 					if (moveArg < platform->AxisMinimum(axis))
 					{
@@ -568,6 +570,24 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 			}
 			moveBuffer[axis] = moveArg;
 		}
+	}
+
+	// If axes have been homed on a delta printer and this isn't a homing move, check for movements outside limits.
+	// Skip this check if axes have not been homed, so that extruder-only moved are allowed before homing
+	if (applyLimits && reprap.GetMove()->IsDeltaMode() && AllAxesAreHomed())
+	{
+		// Constrain the move to be within the build radius
+	 	float diagonalSquared = fsquare(moveBuffer[X_AXIS]) + fsquare(moveBuffer[Y_AXIS]);
+		if (diagonalSquared > reprap.GetMove()->GetDeltaParams().GetPrintRadiusSquared())
+		{
+			float factor = sqrtf(reprap.GetMove()->GetDeltaParams().GetPrintRadiusSquared() / diagonalSquared);
+			moveBuffer[X_AXIS] *= factor;
+			moveBuffer[Y_AXIS] *= factor;
+		}
+
+		// Constrain the end height of the move to be no greater than the homed height and no lower than -0.2mm
+		moveBuffer[Z_AXIS] = max<float>(platform->AxisMinimum(Z_AXIS),
+			min<float>(moveBuffer[Z_AXIS], reprap.GetMove()->GetDeltaParams().GetHomedHeight()));
 	}
 
 	return true;
@@ -915,15 +935,32 @@ bool GCodes::DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error)
 		return false;
 	}
 
+	// Homing procedure for delta printers
+	if (reprap.GetMove()->IsDeltaMode())
+	{
+		if (!homing)
+		{
+			homing = true;
+			SetAllAxesNotHomed();
+		}
+
+		if (DoFileMacro(gb, HOME_DELTA_G))
+		{
+			homing = false;
+			return true;
+		}
+		return false;
+	}
+
+	// Homing procedure for cartesian printers
 	if (homeX && homeY && homeZ)
 	{
 		if (!homing)
 		{
 			homing = true;
-			axisIsHomed[X_AXIS] = false;
-			axisIsHomed[Y_AXIS] = false;
-			axisIsHomed[Z_AXIS] = false;
+			SetAllAxesNotHomed();
 		}
+
 		if (DoFileMacro(gb, HOME_ALL_G))
 		{
 			homing = false;
@@ -1002,7 +1039,7 @@ bool GCodes::DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error)
 // This lifts Z a bit, moves to the probe XY coordinates (obtained by a call to GetProbeCoordinates() ),
 // probes the bed height, and records the Z coordinate probed.  If you want to program any general
 // internal canned cycle, this shows how to do it.
-bool GCodes::DoSingleZProbeAtPoint()
+bool GCodes::DoSingleZProbeAtPoint(int probePointIndex, float heightAdjust)
 {
 	reprap.GetMove()->SetIdentityTransform(); // It doesn't matter if these are called repeatedly
 
@@ -1025,7 +1062,7 @@ bool GCodes::DoSingleZProbeAtPoint()
 			return false;
 
 		case 1:	// Move to the correct XY coordinates
-			GetProbeCoordinates(probeCount, moveToDo[X_AXIS], moveToDo[Y_AXIS], moveToDo[Z_AXIS]);
+			GetProbeCoordinates(probePointIndex, moveToDo[X_AXIS], moveToDo[Y_AXIS], moveToDo[Z_AXIS]);
 			activeDrive[X_AXIS] = true;
 			activeDrive[Y_AXIS] = true;
 			// NB - we don't use the Z value
@@ -1049,23 +1086,23 @@ bool GCodes::DoSingleZProbeAtPoint()
 						// Z probe is already triggered at the start of the move, so abandon the probe and record an error
 						platform->Message(GENERIC_MESSAGE, "Z probe warning: probe already triggered at start of probing move\n");
 						cannedCycleMoveCount++;
-						reprap.GetMove()->SetZBedProbePoint(probeCount, platform->GetZProbeDiveHeight(), true, true);
+						reprap.GetMove()->SetZBedProbePoint(probePointIndex, platform->GetZProbeDiveHeight(), true, true);
 						break;
 
 					case 1:
 						if (axisIsHomed[Z_AXIS])
 						{
-							lastProbedZ = moveBuffer[Z_AXIS] - platform->ZProbeStopHeight();
+							lastProbedZ = moveBuffer[Z_AXIS] - (platform->ZProbeStopHeight() + heightAdjust);
 						}
 						else
 						{
 							// The Z axis has not yet been homed, so treat this probe as a homing move.
-							moveBuffer[Z_AXIS] = platform->ZProbeStopHeight();
+							moveBuffer[Z_AXIS] = platform->ZProbeStopHeight() + heightAdjust;
 							SetPositions(moveBuffer);
 							axisIsHomed[Z_AXIS] = true;
 							lastProbedZ = 0.0;
 						}
-						reprap.GetMove()->SetZBedProbePoint(probeCount, lastProbedZ, true, false);
+						reprap.GetMove()->SetZBedProbePoint(probePointIndex, lastProbedZ, true, false);
 						cannedCycleMoveCount++;
 						break;
 
@@ -1095,7 +1132,7 @@ bool GCodes::DoSingleZProbeAtPoint()
 
 // This simply moves down till the Z probe/switch is triggered. Call it repeatedly until it returns true.
 // Called when we do a G30 with no P parameter.
-bool GCodes::DoSingleZProbe()
+bool GCodes::DoSingleZProbe(bool reportOnly, float heightAdjust)
 {
 	switch (DoZProbe(1.1 * platform->AxisTotalLength(Z_AXIS)))
 	{
@@ -1103,10 +1140,13 @@ bool GCodes::DoSingleZProbe()
 			return true;
 
 		case 1:		// success
-			moveBuffer[Z_AXIS] = platform->ZProbeStopHeight();
-			SetPositions(moveBuffer);
-			axisIsHomed[Z_AXIS] = true;
-			lastProbedZ = 0.0;
+			if (!reportOnly)
+			{
+				moveBuffer[Z_AXIS] = platform->ZProbeStopHeight() + heightAdjust;
+				SetPositions(moveBuffer);
+				axisIsHomed[Z_AXIS] = true;
+				lastProbedZ = 0.0;
+			}
 			return true;
 
 		default:	// not finished yet
@@ -1164,13 +1204,26 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply)
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 		return false;
 
+	float heightAdjust = 0.0;
+	if (gb->Seen('H'))
+	{
+		heightAdjust = gb->GetFValue();
+	}
+
 	if (!gb->Seen('P'))
-		return DoSingleZProbe();
+	{
+		bool reportOnly = false;
+		if (gb->Seen('S') && gb->GetIValue() < 0)
+		{
+			reportOnly = true;
+		}
+		return DoSingleZProbe(reportOnly, heightAdjust);
+	}
 
 	int probePointIndex = gb->GetIValue();
-	if (probePointIndex < 0 || (size_t)probePointIndex >= MAX_PROBE_POINTS)
+	if (probePointIndex < 0 || (unsigned int)probePointIndex >= MAX_PROBE_POINTS)
 	{
-		reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Z probe point index out of range.\n");
+		reprap.GetPlatform()->Message(GENERIC_MESSAGE, "Error: Z probe point index out of range.\n");
 		return true;
 	}
 
@@ -1178,9 +1231,8 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply)
 	float y = (gb->Seen(axisLetters[Y_AXIS])) ? gb->GetFValue() : moveBuffer[Y_AXIS];
 	float z = (gb->Seen(axisLetters[Z_AXIS])) ? gb->GetFValue() : moveBuffer[Z_AXIS];
 
-	probeCount = probePointIndex;
-	reprap.GetMove()->SetXBedProbePoint(probeCount, x);
-	reprap.GetMove()->SetYBedProbePoint(probeCount, y);
+	reprap.GetMove()->SetXBedProbePoint(probePointIndex, x);
+	reprap.GetMove()->SetYBedProbePoint(probePointIndex, y);
 
 	if (z > SILLY_Z_VALUE)
 	{
@@ -1194,7 +1246,7 @@ bool GCodes::SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply)
 	}
 	else
 	{
-		if (DoSingleZProbeAtPoint())
+		if (DoSingleZProbeAtPoint(probePointIndex, heightAdjust))
 		{
 			if (gb->Seen('S'))
 			{
@@ -1247,7 +1299,7 @@ bool GCodes::SetBedEquationWithProbe(const GCodeBuffer *gb, StringRef& reply)
 		settingBedEquationWithProbe = true;
 	}
 
-	if (DoSingleZProbeAtPoint())
+	if (DoSingleZProbeAtPoint(probeCount, 0.0))
 	{
 		probeCount++;
 	}
@@ -1278,9 +1330,6 @@ bool GCodes::GetProbeCoordinates(int count, float& x, float& y, float& z) const
 
 bool GCodes::SetPrintZProbe(GCodeBuffer* gb, StringRef& reply)
 {
-	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-		return false;
-
 	ZProbeParameters params = platform->GetZProbeParameters();
 	bool seen = false;
 	if (gb->Seen(axisLetters[X_AXIS]))
@@ -1311,10 +1360,14 @@ bool GCodes::SetPrintZProbe(GCodeBuffer* gb, StringRef& reply)
 		{
 			params.calibTemperature = gb->GetFValue();
 		}
+		else if (reprap.GetHeat()->GetBedHeater() < 0)
+		{
+			reply.copy("Error: Could not set calibration temperature, because no heated bed is configured!\n");
+		}
 		else
 		{
 			// Use the current bed temperature as the calibration temperature if no value was provided
-			params.calibTemperature = platform->GetTemperature(HOT_BED);
+			params.calibTemperature = platform->GetTemperature(reprap.GetHeat()->GetBedHeater());
 		}
 	}
 
@@ -1348,7 +1401,7 @@ bool GCodes::SetPrintZProbe(GCodeBuffer* gb, StringRef& reply)
 
 //Fixed to deal with multiple extruders
 
-const char* GCodes::GetCurrentCoordinates() const
+void GCodes::GetCurrentCoordinates(StringRef &s) const
 {
 	float liveCoordinates[DRIVES + 1];
 	reprap.GetMove()->LiveCoordinates(liveCoordinates);
@@ -1362,12 +1415,18 @@ const char* GCodes::GetCurrentCoordinates() const
 		}
 	}
 
-	scratchString.printf("X:%.2f Y:%.2f Z:%.2f ", liveCoordinates[X_AXIS], liveCoordinates[Y_AXIS], liveCoordinates[Z_AXIS]);
+	s.printf("X:%.2f Y:%.2f Z:%.2f ", liveCoordinates[X_AXIS], liveCoordinates[Y_AXIS], liveCoordinates[Z_AXIS]);
 	for(size_t i = AXES; i< DRIVES; i++)
 	{
-		scratchString.catf("E%u:%.1f ", i-AXES, liveCoordinates[i]);
+		s.catf("E%u:%.1f ", i-AXES, liveCoordinates[i]);
 	}
-	return scratchString.Pointer();
+
+	// Print the stepper motor positions as Marlin does, as an aid to debugging
+	s.cat(" Count");
+	for (size_t i = 0; i < DRIVES; ++i)
+	{
+		s.catf(" %d", reprap.GetMove()->GetEndPoint(i));
+	}
 }
 
 float GCodes::FractionOfFilePrinted() const
@@ -2492,7 +2551,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 			break;
 
 		case 28: // Home
-			if (NoHome())
+			if (NoHome() && !reprap.GetMove()->IsDeltaMode())
 			{
 				homeX = gb->Seen(axisLetters[X_AXIS]);
 				homeY = gb->Seen(axisLetters[Y_AXIS]);
@@ -2504,6 +2563,7 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 					homeZ = true;
 				}
 			}
+
 			result = DoHome(gb, reply, error);
 			break;
 
@@ -3236,6 +3296,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				else
 				{
 					tool = reprap.GetCurrentTool();
+					// If no tool is selected, and there is only one tool, set the active temperature for that one
+					if (tool == nullptr)
+					{
+						tool = reprap.GetOnlyTool();
+					}
 				}
 				SetToolHeaters(tool, temperature);
 			}
@@ -3283,26 +3348,28 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 							reply.catf("%.1f", reprap.GetHeat()->GetTemperature(currentTool->Heater(0)));
 						}
 
-						// Report bed temperature and temperatures for all heaters in use
+						// Report bed temperature (if available)
+						const int8_t bedHeater = reprap.GetHeat()->GetBedHeater();
+						if (bedHeater >= 0)
+						{
+							reply.catf(" B:%.1f", reprap.GetHeat()->GetTemperature(bedHeater));
+						}
+						
+						// Report current/target temperature for all heaters in use
 						char ch = ' ';
 						float targetTemperature;
-#if HOT_BED != -1
-						reply.catf(" B:%.1f", reprap.GetHeat()->GetTemperature(HOT_BED));
-						for(size_t heater = HOT_BED; heater < reprap.GetHeatersInUse(); heater++)
-#else
-							for(size_t heater = E0_HEATER; heater < reprap.GetHeatersInUse(); heater++)
-#endif
+						for(size_t heater = min<size_t>(bedHeater, E0_HEATER); heater < reprap.GetHeatersInUse(); heater++)
+						{
+							if (reprap.GetHeat()->GetStatus(heater) == Heat::HeaterStatus::HS_active)
 							{
-								if (reprap.GetHeat()->GetStatus(heater) == Heat::HeaterStatus::HS_active)
-								{
-									targetTemperature = reprap.GetHeat()->GetActiveTemperature(heater);
-								}
-								else
-								{
-									targetTemperature = reprap.GetHeat()->GetStandbyTemperature(heater);
-								}
-								reply.catf(" H%d:%.1f/%.1f", heater, reprap.GetHeat()->GetTemperature(heater), targetTemperature);
+								targetTemperature = reprap.GetHeat()->GetActiveTemperature(heater);
 							}
+							else
+							{
+								targetTemperature = reprap.GetHeat()->GetStandbyTemperature(heater);
+							}
+							reply.catf(" H%d:%.1f/%.1f", heater, reprap.GetHeat()->GetTemperature(heater), targetTemperature);
+						}
 						reply.cat("\n");
 						break;
 				}
@@ -3414,17 +3481,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 
 		case 114: // Deprecated
-			{
-				const char* str = GetCurrentCoordinates();
-				if (str != 0)
-				{
-					reply.copy(str);
-				}
-				else
-				{
-					result = false;
-				}
-			}
+			GetCurrentCoordinates(reply);
 			break;
 
 		case 115: // Print firmware version
@@ -3567,28 +3624,62 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 
 		case 140: // Set bed temperature
-#if HOT_BED != -1
-			if(gb->Seen('S'))
 			{
-				float temperature = gb->GetFValue();
-				if (temperature < NEARLY_ABS_ZERO)
+				int8_t bedHeater;
+				if (gb->Seen('H'))
 				{
-					reprap.GetHeat()->SwitchOff(HOT_BED);
+					bedHeater = gb->GetIValue();
+					if (bedHeater < 0)
+					{
+						// Make sure we stay within reasonable boundaries...
+						bedHeater = -1;
+
+						// If we're disabling the hot bed, make sure the old heater is turned off
+						reprap.GetHeat()->SwitchOff(reprap.GetHeat()->GetBedHeater());
+					}
+					else if (bedHeater >= HEATERS)
+					{
+						reply.copy("Invalid heater number!\n");
+						error = true;
+						break;
+					}
+					reprap.GetHeat()->SetBedHeater(bedHeater);
+
+					if (bedHeater < 0)
+					{
+						// Stop here if the hot bed has been disabled
+						break;
+					}
 				}
 				else
 				{
-					reprap.GetHeat()->SetActiveTemperature(HOT_BED, temperature);
-					reprap.GetHeat()->Activate(HOT_BED);
+					bedHeater = reprap.GetHeat()->GetBedHeater();
+					if (bedHeater < 0)
+					{
+						reply.copy("Hot bed is not present!\n");
+						error = true;
+						break;
+					}
+				}
+
+				if(gb->Seen('S'))
+				{
+					float temperature = gb->GetFValue();
+					if (temperature < NEARLY_ABS_ZERO)
+					{
+						reprap.GetHeat()->SwitchOff(bedHeater);
+					}
+					else
+					{
+						reprap.GetHeat()->SetActiveTemperature(bedHeater, temperature);
+						reprap.GetHeat()->Activate(bedHeater);
+					}
+				}
+				if(gb->Seen('R'))
+				{
+					reprap.GetHeat()->SetStandbyTemperature(bedHeater, gb->GetFValue());
 				}
 			}
-			if(gb->Seen('R'))
-			{
-				reprap.GetHeat()->SetStandbyTemperature(HOT_BED, gb->GetFValue());
-			}
-#else
-			reply.copy("Hot bed is not present!\n");
-			error = true;
-#endif
 			break;
 
 		case 141: // Chamber temperature
@@ -3662,36 +3753,48 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 
 		case 144: // Set bed to standby
-#if HOT_BED != -1
-			reprap.GetHeat()->Standby(HOT_BED);
-#else
-			reply.copy("Hot bed is not present!\n");
-			error = true;
-#endif
+			{
+				const int8_t bedHeater = reprap.GetHeat()->GetBedHeater();
+				if (bedHeater < 0)
+				{
+					reply.copy("Hot bed is not present!\n");
+					error = true;
+				}
+				else
+				{
+					reprap.GetHeat()->Standby(bedHeater);
+				}
+			}
 			break;
 
-			//    case 160: //number of mixing filament drives  TODO: With tools defined, is this needed?
-			//    	if(gb->Seen('S'))
-			//		{
-			//			platform->SetMixingDrives(gb->GetIValue());
-			//		}
-			//		break;
+		//    case 160: //number of mixing filament drives  TODO: With tools defined, is this needed?
+		//    	if(gb->Seen('S'))
+		//		{
+		//			platform->SetMixingDrives(gb->GetIValue());
+		//		}
+		//		break;
 
 		case 190: // Wait for bed temperature to reach target temp - deprecated
-#if HOT_BED != -1
-			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-				return false;
-
-			if(gb->Seen('S'))
 			{
-				reprap.GetHeat()->SetActiveTemperature(HOT_BED, gb->GetFValue());
-				reprap.GetHeat()->Activate(HOT_BED);
-				result = reprap.GetHeat()->HeaterAtSetTemperature(HOT_BED);
+				const int8_t bedHeater = reprap.GetHeat()->GetBedHeater();
+				if (bedHeater < 0)
+				{
+					reply.copy("Hot bed is not present!\n");
+					error = true;
+				}
+
+				if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+				{
+					return false;
+				}
+
+				if (gb->Seen('S'))
+				{
+					reprap.GetHeat()->SetActiveTemperature(bedHeater, gb->GetFValue());
+					reprap.GetHeat()->Activate(bedHeater);
+					result = reprap.GetHeat()->HeaterAtSetTemperature(bedHeater);
+				}
 			}
-#else
-			reply.copy("Hot bed is not present!\n");
-			error = true;
-#endif
 			break;
 
 		case 201: // Set/print axis accelerations  FIXME - should these be in /min not /sec ?
@@ -3939,14 +4042,17 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 
 		case 304: // Set/report heated bed PID values
-			if (HOT_BED != -1)
 			{
-				SetPidParameters(gb, HOT_BED, reply);
-			}
-			else
-			{
-				reply.copy("Hot bed is not present!\n");
-				error = true;
+				const int8_t bedHeater = reprap.GetHeat()->GetBedHeater();
+				if (bedHeater >= 0)
+				{
+					SetPidParameters(gb, bedHeater, reply);
+				}
+				else
+				{
+					reply.copy("Hot bed is not present!\n");
+					error = true;
+				}
 			}
 			break;
 
@@ -4701,6 +4807,12 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					params.SetYCorrection(gb->GetFValue());
 					seen = true;
 				}
+				if (gb->Seen('Z'))
+				{
+					// Z tower position correction
+					params.SetZCorrection(gb->GetFValue());
+					seen = true;
+				}
 
 				// The homed height must be done last, because it gets recalculated when some of the other factors are changed
 				if (gb->Seen('H'))
@@ -4723,10 +4835,11 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				{
 					if (params.IsDeltaMode())
 					{
-						reply.printf("Diagonal %.2f, delta radius %.2f, homed height %.2f, bed radius %.1f, X %.2f" DEGREE_SYMBOL ", Y %.2f" DEGREE_SYMBOL "\n",
+						reply.printf("Diagonal %.2f, delta radius %.2f, homed height %.2f, bed radius %.1f"
+								", X %.2f" DEGREE_SYMBOL ", Y %.2f" DEGREE_SYMBOL ", Z %.2f" DEGREE_SYMBOL "\n",
 								params.GetDiagonal() / distanceScale, params.GetRadius() / distanceScale,
 								params.GetHomedHeight() / distanceScale, params.GetPrintRadius() / distanceScale,
-								params.GetXCorrection(), params.GetYCorrection());
+								params.GetXCorrection(), params.GetYCorrection(), params.GetZCorrection());
 					}
 					else
 					{

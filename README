@@ -7,14 +7,14 @@ This is the version for the RepRap Duet:
 
   http://blog.think3dprint3d.com/2013/12/Duet-Arduino-Due-compatible-3DPrinter-controller.html  
 
-To edit and compile this you will also need the libraries in this repository:
+To edit and compile this you will also need the Arduino board files from
 
-  https://github.com/jmgiacalone/Arduino-libraries
+  https://github.com/reprappro/RepRapFirmware/tree/master/Hardware
 
 A complete uploadable executable version is in the directory Release/RepRapFirmware.bin in this
 repository.  For details of how to flash it to a Duet see here:
 
-  http://www.reprappro.com/documentation/RepRapPro_Firmware#Flashing_the_Firmware
+  https://reprappro.com/documentation/commissioning-introduction/maintenance-duet/#Installation_8211_Flashing_the_Firmware
 
 For details of how to compile the source code, see below.
 
@@ -220,7 +220,7 @@ See the "Changes in ... fork" text files for complete lists of all the changes d
 Version 1.09
 
 Started: 2012-11-18
-This README dated: 2015-06-02
+This README dated: 2015-08-13
 
 Adrian Bowyer
 RepRap Professional Ltd

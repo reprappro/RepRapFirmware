@@ -69,7 +69,7 @@ static const float TIME_FROM_REPRAP = 1.0e-6;			// Convert the units used by the
 static const size_t DRIVES = 8;							// The number of drives in the machine, including X, Y, and Z plus extruder drives
 static const size_t AXES = 3;							// The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
 static const int8_t HEATERS = 6;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
-static const size_t NUM_SERIAL_CHANNELS = 2;			// The number of serial IO channels (usually USB and auxiliary UART)
+static const size_t NUM_SERIAL_CHANNELS = 3;			// The number of serial IO channels (USB and two auxiliary UARTs)
 
 // The numbers of entries in each array must correspond with the values of DRIVES,
 // AXES, or HEATERS. Set values to -1 to flag unavailability.
@@ -172,7 +172,7 @@ const float DEFAULT_PID_MAXES[HEATERS] = { 255.0, 180.0, 180.0, 180.0, 180.0, 18
 static const float STANDBY_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO }; // We specify one for the bed, though it's not needed
 static const float ACTIVE_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO };
 
-static const int8_t HOT_BED = 0;						// Index of the heated bed; set to -1 if there is no heated bed
+static const int8_t HOT_BED_HEATER = 0;					// Index of the heated bed
 static const int8_t E0_HEATER = 1;						// Index of the first extruder heater
 static const int8_t E1_HEATER = 2;						// Index of the second extruder heater
 static const int8_t E2_HEATER = 3;						// Index of the third extruder heater
@@ -213,7 +213,7 @@ static const unsigned int Z_PROBE_AVERAGE_READINGS = 8;			// We average this num
 
 // Inkjet (if any - no inkjet is flagged by INKJET_BITS negative)
 
-static const int8_t INKJET_BITS = -1;							// How many nozzles? (stock Ormerods don't have any)
+static const int8_t INKJET_BITS = 12;							// How many nozzles? Set to -1 to disable this feature
 static const int INKJET_FIRE_MICROSECONDS = 5;					// How long to fire a nozzle
 static const int INKJET_DELAY_MICROSECONDS = 800;				// How long to wait before the next bit
 
@@ -247,7 +247,8 @@ static const uint8_t MAC_ADDRESS[6] = { 0xBE, 0xEF, 0xDE, 0xAD, 0xFE, 0xED };
 // Miscellaneous...
 
 const unsigned int USB_BAUD_RATE = 115200;		// Default communication speed of the USB if needed
-const unsigned int AUX_BAUD_RATE = 57600;		// Ditto - for auxiliary UART devices
+const unsigned int AUX_BAUD_RATE = 57600;		// Ditto - for auxiliary UART device
+const unsigned int AUX2_BAUD_RATE = 115200;		// Ditto - for second auxiliary UART device
 
 const int8_t atxPowerPin = 12;					// Arduino Due pin number that controls the ATX power on/off
 
@@ -535,13 +536,15 @@ enum ErrorCode
 enum class SerialSource
 {
 	USB,
-	AUX
+	AUX,
+	AUX2
 };
 
 // Supported message destinations
 enum MessageType
 {
-	AUX_MESSAGE,						// Type byte of a message that is to be sent to an auxiliary device
+	AUX_MESSAGE,						// Type byte of a message that is to be sent to the first auxiliary device
+	AUX2_MESSAGE,						// Type byte of a message that is to be sent to the second auxiliary device
 	FLASH_LED,							// Type byte of a message that is to flash an LED; the next two bytes define the frequency and M/S ratio
 	DISPLAY_MESSAGE,					// Type byte of a message that is to appear on a local display; the L is not displayed; \f and \n should be supported
 	HOST_MESSAGE,						// Type byte of a message that is to be sent in non-blocking mode to the host via USB
@@ -803,7 +806,7 @@ class Platform
 		uint32_t errorCodeBits;
 
 		void InitialiseInterrupts();
-		uint16_t GetRawZHeight() const;
+		uint16_t GetRawZProbeReading() const;
 		void GetStackUsage(size_t* currentStack, size_t* maxStack, size_t* neverUsed) const;
 
 		// DRIVES
@@ -874,6 +877,7 @@ class Platform
 		uint32_t baudRates[NUM_SERIAL_CHANNELS];
 		uint8_t commsParams[NUM_SERIAL_CHANNELS];
 		OutputBuffer * volatile auxOutputBuffer;
+		OutputBuffer * volatile aux2OutputBuffer;
 		OutputBuffer * volatile usbOutputBuffer;
 
 		// Files
@@ -1199,20 +1203,12 @@ inline float Platform::AxisTotalLength(size_t axis) const
 // The A4988 requires 1us minimum pulse width, so we make separate StepHigh and StepLow calls so that we don't waste this time
 inline void Platform::StepHigh(size_t drive)
 {
-	const int pin = stepPins[drive];
-	if (pin >= 0)
-	{
-		digitalWrite(pin, 1);
-	}
+	digitalWrite(stepPins[drive], 1);
 }
 
 inline void Platform::StepLow(size_t drive)
 {
-	const int pin = stepPins[drive];
-	if (pin >= 0)
-	{
-		digitalWrite(pin, 0);
-	}
+	digitalWrite(stepPins[drive], 0);
 }
 
 //********************************************************************************************************
@@ -1255,6 +1251,9 @@ inline bool Platform::GCodeAvailable(const SerialSource source) const
 
 		case SerialSource::AUX:
 			return Serial.available() > 0;
+
+		case SerialSource::AUX2:
+			return Serial1.available() > 0;
 	}
 
 	return false;
@@ -1269,6 +1268,9 @@ inline char Platform::ReadFromSource(const SerialSource source)
 
 		case SerialSource::AUX:
 			return static_cast<char>(Serial.read());
+
+		case SerialSource::AUX2:
+			return static_cast<char>(Serial1.read());
 	}
 
 	return 0;

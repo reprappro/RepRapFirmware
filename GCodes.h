@@ -136,12 +136,13 @@ class GCodes
 		void DeleteFile(const char* fileName);						// Does what it says
 		bool GetProbeCoordinates(int count, float& x,				// Get pre-recorded probe coordinates
 				float& y, float& z) const;
-		const char* GetCurrentCoordinates() const;					// Get where we are as a string
+		void GetCurrentCoordinates(StringRef &s) const;				// Get where we are as a string
 		float FractionOfFilePrinted() const;						// Returns the current file-based progress or -1.0 if no file is being printed
 		bool DoingFileMacro() const;								// Are we busy processing a macro file?
 		void Diagnostics();											// Send helpful information out
 		bool HaveIncomingData() const;								// Is there something that we have to do?
 		size_t GetStackPointer() const;								// Returns the current stack pointer
+		bool AllAxesAreHomed() const;								// Return true if all axes are homed
 		bool GetAxisIsHomed(size_t axis) const;						// Is the axis at 0?
 		void SetAxisIsHomed(size_t axis);							// Tell us that the axis is now homes
 		bool CoolingInverted() const;								// Is the current fan value inverted?
@@ -170,9 +171,9 @@ class GCodes
 		int SetUpMove(GCodeBuffer* gb, StringRef& reply);			// Pass a move on to the Move module
 		bool DoDwell(GCodeBuffer *gb);								// Wait for a bit
 		bool DoDwellTime(float dwell);								// Really wait for a bit
-		bool DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error);	// Home some axes
-		bool DoSingleZProbeAtPoint();								// Probe at a given point
-		bool DoSingleZProbe();										// Probe where we are
+		bool DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error);		// Home some axes
+		bool DoSingleZProbeAtPoint(int probePointIndex, float heightAdjust);	// Probe at a given point
+		bool DoSingleZProbe(bool reportOnly, float heightAdjust);	// Probe where we are
 		int DoZProbe(float distance);								// Do a Z probe cycle up to the maximum specified distance
 		bool SetSingleZProbeAtAPosition(GCodeBuffer *gb, StringRef& reply);	// Probes at a given position - see the comment at the head of the function itself
 		bool SetBedEquationWithProbe(const GCodeBuffer *gb, StringRef& reply);	// Probes a series of points and sets the bed equation
@@ -201,7 +202,6 @@ class GCodes
 		void SetToolHeaters(Tool *tool, float temperature);			// Set all a tool's heaters to the temperature.  For M104...
 		bool ChangeTool(const GCodeBuffer *gb, int newToolNumber);	// Select a new tool
 		bool ToolHeatersAtSetTemperatures(const Tool *tool) const;	// Wait for the heaters associated with the specified tool to reach their set temperatures
-		bool AllAxesAreHomed() const;								// Return true if all axes are homed
 		void SetAllAxesNotHomed();									// Flag all axes as not homed
 
 		Platform* platform;											// The RepRap machine

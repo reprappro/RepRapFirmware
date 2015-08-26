@@ -12,7 +12,7 @@ void DeltaParameters::Init()
 	deltaMode = false;
 	diagonal = 0.0;
 	radius = 0.0;
-	xCorrection = yCorrection = 0.0;
+	xCorrection = yCorrection = zCorrection = 0.0;
 	printRadius = DEFAULT_PRINT_RADIUS;
 	homedHeight = DEFAULT_DELTA_HOMED_HEIGHT;
 
@@ -32,8 +32,8 @@ void DeltaParameters::Recalc()
 		towerY[A_AXIS] = -(radius * sin((30 + xCorrection) * degreesToRadians));
 		towerX[B_AXIS] = +(radius * cos((30 - yCorrection) * degreesToRadians));
 		towerY[B_AXIS] = -(radius * sin((30 - yCorrection) * degreesToRadians));
-		towerX[C_AXIS] = 0;
-		towerY[C_AXIS] = radius;
+		towerX[C_AXIS] = -(radius * sin(zCorrection * degreesToRadians));
+		towerY[C_AXIS] = +(radius * cos(zCorrection * degreesToRadians));
 
 		Xbc = towerX[C_AXIS] - towerX[B_AXIS];
 		Xca = towerX[A_AXIS] - towerX[C_AXIS];
@@ -203,8 +203,9 @@ void DeltaParameters::Adjust(size_t numFactors, const float v[])
 
 void DeltaParameters::PrintParameters(StringRef& reply) const
 {
-	reply.printf("Endstops X%.2f Y%.2f Z%.2f, height %.2f, diagonal %.2f, radius %.2f, xcorr %.2f, ycorr %.2f\n",
-			endstopAdjustments[A_AXIS], endstopAdjustments[B_AXIS], endstopAdjustments[C_AXIS], homedHeight, diagonal, radius, xCorrection, yCorrection);
+	reply.printf("Endstops X%.2f Y%.2f Z%.2f, height %.2f, diagonal %.2f, radius %.2f, xcorr %.2f, ycorr %.2f, zcorr %.2f\n",
+			endstopAdjustments[A_AXIS], endstopAdjustments[B_AXIS], endstopAdjustments[C_AXIS], homedHeight, diagonal, radius,
+			xCorrection, yCorrection, zCorrection);
 }
 
 // vim: ts=4:sw=4

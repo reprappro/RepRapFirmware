@@ -414,11 +414,20 @@ void RepRap::PrintDebug()
 	if (debug != 0)
 	{
 		platform->Message(GENERIC_MESSAGE, "Debugging enabled for modules:");
-		for(size_t i=0; i<16;i++)
+		for(size_t i = 0; i < numModules; i++)
 		{
-			if (debug & (1 << i))
+			if ((debug & (1 << i)) != 0)
 			{
-				platform->MessageF(GENERIC_MESSAGE, " %s", moduleName[i]);
+				platform->MessageF(GENERIC_MESSAGE, " %s (%u)", moduleName[i], i);
+			}
+		}
+
+		platform->Message(GENERIC_MESSAGE, "\nDebugging disabled for modules:");
+		for(size_t i = 0; i < numModules; i++)
+		{
+			if ((debug & (1 << i)) == 0)
+			{
+				platform->MessageF(GENERIC_MESSAGE, " %s(%u)", moduleName[i], i);
 			}
 		}
 		platform->Message(GENERIC_MESSAGE, "\n");
@@ -552,7 +561,7 @@ void RepRap::StandbyTool(int toolNumber)
 	platform->MessageF(GENERIC_MESSAGE, "Error: Attempt to standby a non-existent tool: %d.\n", toolNumber);
 }
 
-Tool* RepRap::GetTool(int toolNumber)
+Tool* RepRap::GetTool(int toolNumber) const
 {
 	Tool* tool = toolList;
 
@@ -566,6 +575,11 @@ Tool* RepRap::GetTool(int toolNumber)
 		tool = tool->Next();
 	}
 	return nullptr; // Not an error
+}
+
+Tool* RepRap::GetOnlyTool() const
+{
+	return (toolList != nullptr && toolList->Next() == nullptr) ? toolList : nullptr;
 }
 
 /*Tool* RepRap::GetToolByDrive(int driveNumber)
@@ -681,11 +695,20 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 
 		// XYZ positions
 		response->cat("],\"xyz\":");
-		ch = '[';
-		for (size_t axis = 0; axis < AXES; axis++)
+		if (!gCodes->AllAxesAreHomed() && move->IsDeltaMode())
 		{
-			response->catf("%c%.2f", ch, liveCoordinates[axis]);
-			ch = ',';
+			// If in Delta mode, skip these coordinates if some axes are not homed
+			response->cat("[0.00,0.00,0.00");
+		}
+		else
+		{
+			// On Cartesian printers, the live coordinates are (usually) valid
+			ch = '[';
+			for (size_t axis = 0; axis < AXES; axis++)
+			{
+				response->catf("%c%.2f", ch, liveCoordinates[axis]);
+				ch = ',';
+			}
 		}
 	}
 
@@ -782,19 +805,21 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->cat(",\"temps\":{");
 
 		/* Bed */
-		if (HOT_BED != -1)
+		const int8_t bedHeater = heat->GetBedHeater();
+		if (bedHeater != -1)
 		{
 			response->catf("\"bed\":{\"current\":%.1f,\"active\":%.1f,\"state\":%d},",
-					heat->GetTemperature(HOT_BED), heat->GetActiveTemperature(HOT_BED),
-					heat->GetStatus(HOT_BED));
+					heat->GetTemperature(bedHeater), heat->GetActiveTemperature(bedHeater),
+					heat->GetStatus(bedHeater));
 		}
 
 		/* Chamber */
-		if (heat->GetChamberHeater() != -1)
+		const int8_t chamberHeater = heat->GetChamberHeater();
+		if (chamberHeater != -1)
 		{
-			response->catf("\"chamber\":{\"current\":%.1f,", heat->GetTemperature(heat->GetChamberHeater()));
-			response->catf("\"active\":%.1f,", heat->GetActiveTemperature(heat->GetChamberHeater()));
-			response->catf("\"state\":%d},", static_cast<int>(heat->GetStatus(heat->GetChamberHeater())));
+			response->catf("\"chamber\":{\"current\":%.1f,", heat->GetTemperature(chamberHeater));
+			response->catf("\"active\":%.1f,", heat->GetActiveTemperature(chamberHeater));
+			response->catf("\"state\":%d},", static_cast<int>(heat->GetStatus(chamberHeater)));
 		}
 
 		/* Heads */
@@ -1116,11 +1141,11 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 		response->printf("{\"status\":\"%c\",\"heaters\":", ch);
 
 		// Send the heater actual temperatures
-		const Heat *heat = reprap.GetHeat();
-		if (HOT_BED != -1)
+		const int8_t bedHeater = heat->GetBedHeater();
+		if (bedHeater != -1)
 		{
 			ch = ',';
-			response->catf("[%.1f", heat->GetTemperature(HOT_BED));
+			response->catf("[%.1f", heat->GetTemperature(bedHeater));
 		}
 		else
 		{
@@ -1135,10 +1160,10 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 
 		// Send the heater active temperatures
 		response->catf(",\"active\":");
-		if (HOT_BED != -1)
+		if (heat->GetBedHeater() != -1)
 		{
 			ch = ',';
-			response->catf("[%.1f", heat->GetActiveTemperature(HOT_BED));
+			response->catf("[%.1f", heat->GetActiveTemperature(heat->GetBedHeater()));
 		}
 		else
 		{
@@ -1153,10 +1178,10 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 
 		// Send the heater standby temperatures
 		response->catf(",\"standby\":");
-		if (HOT_BED != -1)
+		if (bedHeater != -1)
 		{
 			ch = ',';
-			response->catf("[%.1f", heat->GetStandbyTemperature(HOT_BED));
+			response->catf("[%.1f", heat->GetStandbyTemperature(bedHeater));
 		}
 		else
 		{
@@ -1171,10 +1196,10 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 
 		// Send the heater statuses (0=off, 1=standby, 2=active)
 		response->cat(",\"hstat\":");
-		if (HOT_BED != -1)
+		if (bedHeater != -1)
 		{
 			ch = ',';
-			response->catf("[%d", static_cast<int>(heat->GetStatus(HOT_BED)));
+			response->catf("[%d", static_cast<int>(heat->GetStatus(bedHeater)));
 		}
 		else
 		{

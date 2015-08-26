@@ -22,7 +22,8 @@ Licence: GPL
 
 const float invHeatPwmAverageCount = HEAT_SAMPLE_TIME/HEAT_PWM_AVERAGE_TIME;
 
-Heat::Heat(Platform* p, GCodes* g) : platform(p), gCodes(g), active(false), coldExtrude(false), chamberHeater(-1)
+Heat::Heat(Platform* p, GCodes* g) : platform(p), gCodes(g), active(false), coldExtrude(false),
+	bedHeater(HOT_BED_HEATER), chamberHeater(-1)
 {
 	for(size_t heater=0; heater < HEATERS; heater++)
 	{
@@ -82,8 +83,8 @@ void Heat::Diagnostics()
 
 bool Heat::AllHeatersAtSetTemperatures(bool includingBed) const
 {
-	size_t firstHeater = 	(HOT_BED == -1) ? E0_HEATER :
-							(includingBed) ? HOT_BED : E0_HEATER;
+	size_t firstHeater = 	(bedHeater == -1) ? E0_HEATER :
+							(includingBed) ? min<int8_t>(bedHeater, E0_HEATER) : E0_HEATER;
 
 	for(size_t heater = firstHeater; heater < HEATERS; heater++)
 	{
@@ -183,7 +184,7 @@ void PID::Spin()
 
 	// Now check how long it takes to warm up.  If too long, maybe the thermistor is not in contact with the heater
 
-	if (heatingUp && heater != HOT_BED) // FIXME - also check bed warmup time?
+	if (heatingUp && heater != reprap.GetHeat()->GetBedHeater()) // FIXME - also check bed warmup time?
 	{
 		float tmp = (active) ? activeTemperature : standbyTemperature;
 		if (temperature < tmp - TEMPERATURE_CLOSE_ENOUGH)
