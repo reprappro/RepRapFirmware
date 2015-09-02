@@ -71,6 +71,7 @@ void GCodes::Init()
 	for(size_t axis=0; axis<AXES; axis++)
 	{
 		axisIsHomed[axis] = false;
+		axisScaleFactors[axis] = 1.0;
 	}
 	toolChangeSequence = 0;
 	coolingInverted = false;
@@ -540,6 +541,12 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 		if(gb->Seen(axisLetters[axis]))
 		{
 			float moveArg = gb->GetFValue() * distanceScale;
+			if (reprap.GetMove()->IsDeltaMode())
+			{
+				// Perform axis scale compensation for Delta configurations
+				moveArg *= axisScaleFactors[axis];
+			}
+
 			if (doingG92)
 			{
 				axisIsHomed[axis] = true;		// doing a G92 defines the absolute axis position
@@ -3047,10 +3054,6 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			// We're pausing, so wait for all pending moves to finish first.
 			else if (DoingFileMacro() || AllMovesAreFinishedAndMoveBufferIsLoaded())
 			{
-				// If M25 is called and we're working with absolute E values, Move::PausePrint should have already
-				// retrieved the amount of extrusion we've skipped and that will be performed later again when the
-				// print is resumed. Don't deal with raw extruder totals here, because they aren't affected by G92 calls.
-
 				// We're done if we either don't need to run the pause macro, or if the macro file has finished
 				result = (!doPauseMacro || DoFileMacro(gb, PAUSE_G));
 				if (result)
@@ -4763,10 +4766,42 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 		case 578: // Fire Inkjet bits
 			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+			{
 				return false;
-			if(gb->Seen('S')) // Need to handle the 'P' parameter too; see http://reprap.org/wiki/G-code#M578:_Fire_inkjet_bits
+			}
+
+			if (gb->Seen('S')) // Need to handle the 'P' parameter too; see http://reprap.org/wiki/G-code#M578:_Fire_inkjet_bits
+			{
 				platform->Inkjet(gb->GetIValue());
-			result = true;
+			}
+			break;
+
+		case 579: // Scale Cartesian axes
+			{
+				bool seen = false;
+				for(size_t axis = 0; axis < AXES; axis++)
+				{
+					if (gb->Seen(axisLetters[axis]))
+					{
+						axisScaleFactors[axis] = gb->GetFValue();
+						seen = true;
+					}
+				}
+
+				if (!seen)
+				{
+					char comma = ',';
+					reply.copy("Axis scale factors:");
+					for(size_t axis = 0; axis < AXES; axis++)
+					{
+						if (axis == AXES - 1)
+						{
+							comma = '\n';
+						}
+						reply.catf(" %c: %.3f%c", axisLetters[axis], axisScaleFactors[axis], comma);
+					}
+				}
+			}
 			break;
 
 		case 665: // Set delta configuration

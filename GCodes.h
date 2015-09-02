@@ -232,6 +232,7 @@ class GCodes
 		bool doingFileMacroStack[STACK];							// For dealing with Push and Pop
 		uint8_t stackPointer;										// Push and Pop stack pointer
 		char axisLetters[AXES]; 									// 'X', 'Y', 'Z'
+		float axisScaleFactors[AXES];								// Scale XYZ coordinates by this factor (for Delta configurations)
 		float lastExtruderPosition[DRIVES - AXES];					// Extruder position of the last move fed into the Move class
 		float record[DRIVES+1];										// Temporary store for move positions
 		float moveToDo[DRIVES+1];									// Where to go set by G1 etc
@@ -268,6 +269,7 @@ class GCodes
 		CodeQueueItem *releasedQueueItems;							// Linked list of all released queue items
 		unsigned int totalMoves;									// Total number of moves that have been fed into the look-ahead
 		volatile unsigned int movesCompleted;						// Number of moves that have been completed (changed by ISR)
+
 		bool auxDetected;											// Have we processed at least one G-Code from an AUX device?
 		OutputBuffer *auxGCodeReply;								// G-Code reply for AUX devices (special one because it is actually encapsulated before sending)
 		uint32_t auxSeq;											// Sequence number for AUX devices

@@ -183,7 +183,7 @@ static const int8_t E4_HEATER = 5;						// Index of the fifth extruder heater
 // COOLING FAN
 
 static const uint8_t COOLING_FAN_PIN = X6;				// Pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
-static const uint8_t COOLING_FAN_RPM_PIN = 36;			// Pin PC4
+static const uint8_t COOLING_FAN_RPM_PIN = 23;			// Pin PA15
 static const float COOLING_FAN_RPM_SAMPLE_TIME = 2.0;	// Seconds
 
 
