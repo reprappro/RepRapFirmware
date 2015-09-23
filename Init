@@ -1,0 +1,4 @@
+Platform.cpp:	roland->Init();
+Platform.cpp:	roland->Spin();
+Platform.cpp~:	roland->Init();
+Platform.cpp~:	roland->Spin();

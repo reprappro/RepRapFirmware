@@ -143,7 +143,7 @@ float Tool::InstantDv() const
 	float result = FLT_MAX;
 	for(size_t d = 0; d < driveCount; d++)
 	{
-		float idv = reprap.GetPlatform()->InstantDv(drives[d] + AXES);
+		float idv = reprap.GetPlatform()->ActualInstantDv(drives[d] + AXES);
 		if (idv < result)
 		{
 			result = idv;
@@ -158,7 +158,7 @@ float Tool::InstantDv() const
 void Tool::AddTool(Tool* tool)
 {
 	Tool* t = this;
-	Tool* last;
+	Tool* last = this;		// initialised to suppress spurious compiler warning
 	while (t != nullptr)
 	{
 		last = t;
@@ -329,7 +329,7 @@ void Tool::UpdateExtruderAndHeaterCount(uint16_t &numExtruders, uint16_t &numHea
 
 	for(size_t heater = 0; heater < heaterCount; heater++)
 	{
-		if (heaters[heater] != HOT_BED && heaters[heater] >= numHeaters)
+		if (heaters[heater] != reprap.GetHeat()->GetBedHeater() && heaters[heater] >= numHeaters)
 		{
 			numHeaters = heaters[heater] + 1;
 		}

@@ -38,8 +38,9 @@ enum Module
 	moduleGcodes = 3,
 	moduleMove = 4,
 	moduleHeat = 5,
-	moduleDda = 6,			// not yet implemented in zpl fork
+	moduleDda = 6,
 	modulePrintMonitor = 7,
+	numModules = 8,				// make this one greater than the last module number
 	noModule = 15
 };
 
@@ -215,6 +216,25 @@ template<> inline double max(double _a, double _b)
 {
 	return (isnan(_a) || _a > _b) ? _a : _b;
 }
+
+inline float fsquare(float arg)
+{
+	return arg * arg;
+}
+
+inline uint64_t isquare64(int32_t arg)
+{
+	return (uint64_t)((int64_t)arg * arg);
+}
+
+inline void swap(float& a, float& b)
+{
+	float temp = a;
+	a = b;
+	b = temp;
+}
+
+extern uint32_t isqrt64(uint64_t num);          // Thus is defined in its own file, Isqrt.cpp or Isqrt.asm
 
 #endif
 

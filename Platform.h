@@ -68,8 +68,8 @@ static const float TIME_FROM_REPRAP = 1.0e-6;			// Convert the units used by the
 
 static const size_t DRIVES = 8;							// The number of drives in the machine, including X, Y, and Z plus extruder drives
 static const size_t AXES = 3;							// The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
-static const size_t HEATERS = 6;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
-static const size_t NUM_SERIAL_CHANNELS = 2;			// The number of serial IO channels (usually USB and auxiliary UART)
+static const int8_t HEATERS = 6;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
+static const size_t NUM_SERIAL_CHANNELS = 3;			// The number of serial IO channels (USB and two auxiliary UARTs)
 
 // The numbers of entries in each array must correspond with the values of DRIVES,
 // AXES, or HEATERS. Set values to -1 to flag unavailability.
@@ -87,14 +87,12 @@ static const int8_t DIRECTION_PINS[DRIVES] = { 15, 26, 4, X3, 35, 53, 51, 48 };
 static const float DEFAULT_IDLE_CURRENT_FACTOR = 0.3;	// Proportion of normal motor current that we use for idle hold
 static const bool DISABLE_DRIVES[DRIVES] = { false, false, false, true, true, true, true, true };								// Set true to disable a drive when it becomes idle
 
+static const int8_t END_STOP_PINS[DRIVES] = { 11, 28, 60, 31, 24, 46, 45, 44 };
+static const int ENDSTOP_HIT = HIGH;
+
 static const bool FORWARDS = true;
 static const bool BACKWARDS = !FORWARDS;
 static const bool DIRECTIONS[DRIVES] = { BACKWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS };		// What each axis needs to make it go forwards - defaults
-
-static const int8_t LOW_STOP_PINS[DRIVES] = { 11, -1, 60, 31, 24, 46, 45, 44 };
-static const int8_t HIGH_STOP_PINS[DRIVES] = { -1, 28, -1, -1, -1, -1, -1, -1 };
-
-static const int ENDSTOP_HIT = HIGH;
 
 // Indices for motor current digipots (if any): First 4 are for digipot 1 (on duet), second 4 for digipot 2 (on expansion board)
 static const uint8_t POT_WIPES[DRIVES] = { 1, 3, 2, 0, 1, 3, 2, 0 };			// Only define as many entries as DRIVES are defined
@@ -112,17 +110,17 @@ static const size_t E2_DRIVE = 5;
 static const size_t E3_DRIVE = 6;
 static const size_t E4_DRIVE = 7;
 
-
 // AXES
 
-static const size_t X_AXIS = 0;
-static const size_t Y_AXIS = 1;
-static const size_t Z_AXIS = 2;
+static const size_t X_AXIS = 0, Y_AXIS = 1, Z_AXIS = 2, E0_AXIS = 3;		// The indices of the Cartesian axes in drive arrays
+static const size_t A_AXIS = 0, B_AXIS = 1, C_AXIS = 2;						// The indices of the 3 tower motors of a delta printer in drive arrays
 
 static const float AXIS_MINIMA[AXES] = { 0.0, 0.0, 0.0 };					// mm
 static const float AXIS_MAXIMA[AXES] = { 230.0, 210.0, 200.0 };				// mm
 static const float HOME_FEEDRATES[AXES] = { 50.0, 50.0, 100.0/60.0 };		// mm/sec (dc42 increased Z because we slow down z-homing when approaching the target height)
 
+static const float DEFAULT_PRINT_RADIUS = 50.0;								// mm
+static const float DEFAULT_DELTA_HOMED_HEIGHT = 200.0;						// mm
 
 // HEATERS
 
@@ -162,7 +160,7 @@ static const float DEFAULT_THERMISTOR_25_RS[HEATERS] = { 10000.0, 100000.0, 1000
 // This allows us to switch between PID and bang-bang using the M301 and M304 commands.
 
 // We use method 2 (see above)
-static const float DEFAULT_PID_KIS[HEATERS] = { 5.0, 0.1, 0.1, 0.1, 0.1, 0.1 };				// Integral PID constants
+static const float DEFAULT_PID_KIS[HEATERS] = { 5.0, 0.2, 0.2, 0.2, 0.2, 0.2 };				// Integral PID constants
 static const float DEFAULT_PID_KDS[HEATERS] = { 500.0, 100.0, 100.0, 100.0, 100.0, 100.0 };	// Derivative PID constants
 const float DEFAULT_PID_KPS[HEATERS] = { -1.0, 10.0, 10.0, 10.0, 10.0, 10.0 };				// Proportional PID constants, negative values indicate use bang-bang instead of PID
 static const float DEFAULT_PID_KTS[HEATERS] = { 2.7, 0.4, 0.4, 0.4, 0.4, 0.4 };				// Approximate PWM value needed to maintain temperature, per degC above room temperature
@@ -174,7 +172,7 @@ const float DEFAULT_PID_MAXES[HEATERS] = { 255.0, 180.0, 180.0, 180.0, 180.0, 18
 static const float STANDBY_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO }; // We specify one for the bed, though it's not needed
 static const float ACTIVE_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO };
 
-static const int8_t HOT_BED = 0;						// Index of the heated bed; set to -1 if there is no heated bed
+static const int8_t HOT_BED_HEATER = 0;					// Index of the heated bed
 static const int8_t E0_HEATER = 1;						// Index of the first extruder heater
 static const int8_t E1_HEATER = 2;						// Index of the second extruder heater
 static const int8_t E2_HEATER = 3;						// Index of the third extruder heater
@@ -185,7 +183,7 @@ static const int8_t E4_HEATER = 5;						// Index of the fifth extruder heater
 // COOLING FAN
 
 static const uint8_t COOLING_FAN_PIN = X6;				// Pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
-static const uint8_t COOLING_FAN_RPM_PIN = 36;			// Pin PC4
+static const uint8_t COOLING_FAN_RPM_PIN = 23;			// Pin PA15
 static const float COOLING_FAN_RPM_SAMPLE_TIME = 2.0;	// Seconds
 
 
@@ -213,21 +211,19 @@ static const int8_t Z_PROBE_MOD_PIN07 = X25;					// Digital pin number to turn t
 static const bool Z_PROBE_AXES[AXES] = { true, false, true };	// Axes for which the Z-probe is normally used
 static const unsigned int Z_PROBE_AVERAGE_READINGS = 8;			// We average this number of readings with IR on, and the same number with IR off
 
-
 // Inkjet (if any - no inkjet is flagged by INKJET_BITS negative)
 
-static const int8_t INKJET_BITS = 12;      // How many nozzles?
-static const int INKJET_FIRE_MICROSECONDS = 5; // How long to fire a nozzle
-static const int INKJET_DELAY_MICROSECONDS = 800; // How long to wait before the next bit
+static const int8_t INKJET_BITS = 12;							// How many nozzles? Set to -1 to disable this feature
+static const int INKJET_FIRE_MICROSECONDS = 5;					// How long to fire a nozzle
+static const int INKJET_DELAY_MICROSECONDS = 800;				// How long to wait before the next bit
 
 // Inkjet control pins
 
-static const int8_t INKJET_SERIAL_OUT = 65;    // Serial bitpattern into the shift register
-static const int8_t INKJET_SHIFT_CLOCK = 20;   // Shift the register
-static const int8_t INKJET_STORAGE_CLOCK = 67; // Put the pattern in the output register
-static const int8_t INKJET_OUTPUT_ENABLE = 66; // Make the output visible
-static const int8_t INKJET_CLEAR = 36;         // Clear the register to 0
-
+static const int8_t INKJET_SERIAL_OUT = 65;						// Serial bitpattern into the shift register
+static const int8_t INKJET_SHIFT_CLOCK = 20;					// Shift the register
+static const int8_t INKJET_STORAGE_CLOCK = 67;					// Put the pattern in the output register
+static const int8_t INKJET_OUTPUT_ENABLE = 66;					// Make the output visible
+static const int8_t INKJET_CLEAR = 36;							// Clear the register to 0
 
 /****************************************************************************************************/
 
@@ -235,7 +231,7 @@ static const int8_t INKJET_CLEAR = 36;         // Clear the register to 0
 
 static const size_t MAX_FILES = 10;				// Must be large enough to handle the max number of simultaneous web requests + files being printed
 
-static const size_t FILE_BUFFER_LENGTH = 256;
+static const size_t FILE_BUFFER_SIZE = 256;
 static const size_t FILENAME_LENGTH = 100;
 
 static const char *FS_PREFIX = "0:";
@@ -251,7 +247,8 @@ static const uint8_t MAC_ADDRESS[6] = { 0xBE, 0xEF, 0xDE, 0xAD, 0xFE, 0xED };
 // Miscellaneous...
 
 const unsigned int USB_BAUD_RATE = 115200;		// Default communication speed of the USB if needed
-const unsigned int AUX_BAUD_RATE = 57600;		// Ditto - for auxiliary UART devices
+const unsigned int AUX_BAUD_RATE = 57600;		// Ditto - for auxiliary UART device
+const unsigned int AUX2_BAUD_RATE = 115200;		// Ditto - for second auxiliary UART device
 
 const int8_t atxPowerPin = 12;					// Arduino Due pin number that controls the ATX power on/off
 
@@ -332,7 +329,7 @@ class MassStorage
 // This class handles input from, and output to, files.
 
 typedef uint32_t FilePosition;
-const FilePosition noFilePosition = 0xFFFFFFFF;
+static const FilePosition NO_FILE_POSITION = 0xFFFFFFFF;
 
 enum class IOStatus : uint8_t
 {
@@ -374,7 +371,7 @@ class FileStore
 
 	private:
 		bool inUse;
-		byte buf[FILE_BUFFER_LENGTH];
+		byte buf[FILE_BUFFER_SIZE];
 		int bufferPointer;
 		FilePosition bytesRead;
 
@@ -539,14 +536,15 @@ enum ErrorCode
 enum class SerialSource
 {
 	USB,
-	AUX
+	AUX,
+	AUX2
 };
-
 
 // Supported message destinations
 enum MessageType
 {
-	AUX_MESSAGE,						// Type byte of a message that is to be sent to an auxiliary device
+	AUX_MESSAGE,						// Type byte of a message that is to be sent to the first auxiliary device
+	AUX2_MESSAGE,						// Type byte of a message that is to be sent to the second auxiliary device
 	FLASH_LED,							// Type byte of a message that is to flash an LED; the next two bytes define the frequency and M/S ratio
 	DISPLAY_MESSAGE,					// Type byte of a message that is to appear on a local display; the L is not displayed; \f and \n should be supported
 	HOST_MESSAGE,						// Type byte of a message that is to be sent in non-blocking mode to the host via USB
@@ -565,6 +563,65 @@ enum class EndStopHit
 	lowNear								// Approaching Z-probe threshold
 };
 
+// The values of the following enumeration must tally with the definitions for the M574 command
+enum class EndStopType
+{
+	noEndStop = 0,
+	lowEndStop = 1,
+	highEndStop = 2
+};
+
+/********************************************************************************/
+
+// This class allows the RepRap firmware to transmit commands to a Roland mill
+// See: http://www.rolanddg.com/product/3d/3d/mdx-20_15/mdx-20_15.html
+//      http://altlab.org/d/content/m/pangelo/ideas/rml_command_guide_en_v100.pdf
+
+
+#define ROLAND_FACTOR 100.0
+#define ROLAND_RTS_PIN 75  // Expansion pin 29, SPI0_MOSI
+#define ROLAND_CTS_PIN 76 // Expansion pin 28, SPI0_SPCK
+#define ROLAND_BUFFER_SIZE 50
+
+// TX and RX
+// Expansion pin 11, PA13_TXD1
+// Expansion pin 12, PA12_RXD1
+
+#define ROLAND_BAUD 9600
+
+class Roland
+{
+	public:
+		Roland(Platform* p);
+		void Init();
+		void Spin();
+		bool ProcessHome();
+		bool ProcessDwell(long milliseconds);
+		bool ProcessG92(float v, size_t axis);
+		bool ProcessSpindle(float rpm);
+		bool RawWrite(const char* s);
+		bool Active();
+		void Activate();
+		bool Deactivate();
+
+	private:
+		void ProcessMove();
+		void Zero(bool feed);
+		bool Busy();
+
+		Platform* platform;
+		float move[DRIVES+1];
+		long coordinates[AXES+1];
+		long oldCoordinates[AXES+1];
+		long offset[AXES+1];
+		char buffer[ROLAND_BUFFER_SIZE];
+		int bufferPointer;
+		StringRef *sBuffer;
+		bool active;
+};
+
+/**************************************************************************************/
+
 // The main class that defines the RepRap machine for the benefit of the other classes
 
 class Platform
@@ -582,25 +639,25 @@ class Platform
 
 		// These are the functions that form the interface between Platform and the rest of the firmware.
 
-		void Init(); // Set the machine up after a restart.  If called subsequently this should set the machine up as if
-		// it has just been restarted; it can do this by executing an actual restart if you like, but beware the 
-		// loop of death...
-		void Spin(); // This gets called in the main loop and should do any housekeeping needed
-		void Exit(); // Shut down tidily. Calling Init after calling this should reset to the beginning
+		void Init();										// Set the machine up after a restart.  If called subsequently this should set the machine up as if
+															// it has just been restarted; it can do this by executing an actual restart if you like, but beware the loop of death...
+
+		void Spin();										// This gets called in the main loop and should do any housekeeping needed
+		void Exit();										// Shut down tidily. Calling Init after calling this should reset to the beginning
 		Compatibility Emulating() const;
 		void SetEmulating(Compatibility c);
 		void Diagnostics();
 		void DiagnosticTest(int d);
-		void ClassReport(float &lastTime);  // Called on Spin() return to check everything's live.
+		void ClassReport(float &lastTime);					// Called on Spin() return to check everything's live.
 		void SoftwareReset(uint16_t reason);
 		bool AtxPower() const;
 		void SetAtxPower(bool on);
 
 		// Timing
 
-		float Time(); // Returns elapsed seconds since some arbitrary time
-		void SetInterrupt(float s); // Set a regular interrupt going every s seconds; if s is -ve turn interrupt off
-		//void DisableInterrupts();
+		float Time();										// Returns elapsed seconds since some arbitrary time
+		static uint32_t GetInterruptClocks();				// Get the interrupt clock count
+		static bool ScheduleInterrupt(uint32_t tim);		// Schedule an interrupt at the specified clock count, or return true if it has passed already
 		void Tick();
 
 		// Communications
@@ -626,12 +683,12 @@ class Platform
 		MassStorage* GetMassStorage();
 		FileStore* GetFileStore(const char* directory, const char* fileName, bool write);
 		FileStore* GetFileStore(const char* filePath, bool write);
-		const char* GetWebDir() const;		// Where the htm etc files are
-		const char* GetGCodeDir() const;	// Where the gcodes are
-		const char* GetSysDir() const;		// Where the system files are
-		const char* GetMacroDir() const;	// Where the user-defined macros are
-		const char* GetConfigFile() const;	// Where the configuration is stored (in the system dir).
-		const char* GetDefaultFile() const;	// Where the default configuration is stored (in the system dir).
+		const char* GetWebDir() const;						// Where the htm etc files are
+		const char* GetGCodeDir() const;					// Where the gcodes are
+		const char* GetSysDir() const;						// Where the system files are
+		const char* GetMacroDir() const;					// Where the user-defined macros are
+		const char* GetConfigFile() const;					// Where the configuration is stored (in the system dir).
+		const char* GetDefaultFile() const;					// Where the default configuration is stored (in the system dir).
 
 		// Message output (see MessageType for further details)
 
@@ -647,15 +704,18 @@ class Platform
 		void SetDirection(size_t drive, bool direction);
 		void SetDirectionValue(size_t drive, bool dVal);
 		bool GetDirectionValue(size_t drive) const;
-		void Step(size_t drive);
+		void StepHigh(size_t drive);
+		void StepLow(size_t drive);
 		void EnableDrive(size_t drive);
 		void DisableDrive(size_t drive);
 		void SetDriveIdle(size_t drive);
+		void SetDrivesIdle();
 		void SetMotorCurrent(size_t drive, float current);
 		float MotorCurrent(size_t drive) const;
 		void SetIdleCurrentFactor(float f);
 		float GetIdleCurrentFactor() const { return idleCurrentFactor; }
 		float DriveStepsPerUnit(size_t drive) const;
+		const float *DriveStepsPerUnit() const { return driveStepsPerUnit; }
 		void SetDriveStepsPerUnit(size_t drive, float value);
 		float Acceleration(size_t drive) const;
 		const float* Accelerations() const;
@@ -663,17 +723,22 @@ class Platform
 		float MaxFeedrate(size_t drive) const;
 		const float* MaxFeedrates() const;
 		void SetMaxFeedrate(size_t drive, float value);
-		float InstantDv(size_t drive) const;
+		float ConfiguredInstantDv(size_t drive) const;
+		float ActualInstantDv(size_t drive) const;
 		void SetInstantDv(size_t drive, float value);
-		const float* InstantDvs() const;
 		float HomeFeedRate(size_t axis) const;
 		void SetHomeFeedRate(size_t axis, float value);
-		EndStopHit Stopped(size_t drive);
+		EndStopHit Stopped(size_t drive) const;
+		EndStopHit GetZProbeResult() const;
 		float AxisMaximum(size_t axis) const;
 		void SetAxisMaximum(size_t axis, float value);
 		float AxisMinimum(size_t axis) const;
 		void SetAxisMinimum(size_t axis, float value);
 		float AxisTotalLength(size_t axis) const;
+		float GetElasticComp(size_t drive) const;
+		void SetElasticComp(size_t drive, float factor);
+		void SetEndStopConfiguration(size_t axis, EndStopType endstopType, bool logicLevel);
+		void GetEndStopConfiguration(size_t axis, EndStopType& endstopType, bool& logicLevel) const;
 
 		// Z probe
 
@@ -736,13 +801,10 @@ class Platform
 		// So you can test for inkjet presence with if(platform->Inkjet(0))
 
 		bool Inkjet(int bitPattern);
-		
-		// Two functions to set and get any processor pin.
-        // Only for use by the M42 command with extreme caution.  Don't use these
-        // for anything else.
 
-		void SetOutputPin(int pin, bool value);
-		bool GetInputPin(int pin);
+		// Roland mill
+
+		Roland* GetRoland();
 
 	private:
 		void ResetChannel(size_t chan); // re-initialise a serial channel
@@ -798,7 +860,7 @@ class Platform
 		uint32_t errorCodeBits;
 
 		void InitialiseInterrupts();
-		int GetRawZHeight() const;
+		uint16_t GetRawZProbeReading() const;
 		void GetStackUsage(size_t* currentStack, size_t* maxStack, size_t* neverUsed) const;
 
 		// DRIVES
@@ -811,22 +873,24 @@ class Platform
 		int8_t enablePins[DRIVES];
 		volatile DriveStatus driveState[DRIVES];
 		bool directions[DRIVES];
-		int8_t lowStopPins[DRIVES];
-		int8_t highStopPins[DRIVES];
+		int8_t endStopPins[DRIVES];
 		float maxFeedrates[DRIVES];
 		float accelerations[DRIVES];
 		float driveStepsPerUnit[DRIVES];
 		float instantDvs[DRIVES];
+		float elasticComp[DRIVES];
 		float motorCurrents[DRIVES];
 		float idleCurrentFactor;
 		MCP4461 mcpDuet;
 		MCP4461 mcpExpansion;
 		size_t slowestDrive;
 
-
 		int8_t potWipes[DRIVES];
 		float senseResistor;
 		float maxStepperDigipotVoltage;
+
+		// Z-Probe
+
 		int8_t zProbePin;
 		int8_t zProbeModulationPin;
 
@@ -844,6 +908,8 @@ class Platform
 		float axisMaxima[AXES];
 		float axisMinima[AXES];
 		float homeFeedrates[AXES];
+		EndStopType endStopType[AXES+1];
+		bool endStopLogicLevel[AXES+1];
 
 		// HEATERS - Bed is assumed to be the first
 
@@ -864,8 +930,9 @@ class Platform
 
 		uint32_t baudRates[NUM_SERIAL_CHANNELS];
 		uint8_t commsParams[NUM_SERIAL_CHANNELS];
-		OutputBuffer *auxOutputBuffer;
-		OutputBuffer *usbOutputBuffer;
+		OutputBuffer * volatile auxOutputBuffer;
+		OutputBuffer * volatile aux2OutputBuffer;
+		OutputBuffer * volatile usbOutputBuffer;
 
 		// Files
 
@@ -908,6 +975,10 @@ class Platform
 		int8_t inkjetStorageClock;
 		int8_t inkjetOutputEnable;
 		int8_t inkjetClear;
+
+		// Roland
+
+		Roland* roland;
 };
 
 // Small class to hold an open file and data relating to it.
@@ -948,7 +1019,7 @@ class FileData
 		}
 
 		bool Write(const char *s, unsigned int len)
-		//pre(len <= 256)
+		//pre(len <= FILE_BUFFER_SIZE)
 		{
 			return f->Write(s, len);
 		}
@@ -1126,7 +1197,7 @@ inline void Platform::SetMaxFeedrate(size_t drive, float value)
 	maxFeedrates[drive] = value;
 }
 
-inline float Platform::InstantDv(size_t drive) const
+inline float Platform::ConfiguredInstantDv(size_t drive) const
 {
 	return instantDvs[drive];
 }
@@ -1140,11 +1211,6 @@ inline void Platform::SetInstantDv(size_t drive, float value)
 inline size_t Platform::SlowestDrive() const
 {
 	return slowestDrive;
-}
-
-inline const float* Platform::InstantDvs() const
-{
-	return instantDvs;
 }
 
 inline void Platform::SetDirectionValue(size_t drive, bool dVal)
@@ -1192,6 +1258,17 @@ inline float Platform::AxisTotalLength(size_t axis) const
 	return axisMaxima[axis] - axisMinima[axis];
 }
 
+// The A4988 requires 1us minimum pulse width, so we make separate StepHigh and StepLow calls so that we don't waste this time
+inline void Platform::StepHigh(size_t drive)
+{
+	digitalWrite(stepPins[drive], 1);
+}
+
+inline void Platform::StepLow(size_t drive)
+{
+	digitalWrite(stepPins[drive], 0);
+}
+
 //********************************************************************************************************
 
 // Drive the RepRap machine - Heat and temperature
@@ -1232,6 +1309,9 @@ inline bool Platform::GCodeAvailable(const SerialSource source) const
 
 		case SerialSource::AUX:
 			return Serial.available() > 0;
+
+		case SerialSource::AUX2:
+			return Serial1.available() > 0;
 	}
 
 	return false;
@@ -1246,6 +1326,9 @@ inline char Platform::ReadFromSource(const SerialSource source)
 
 		case SerialSource::AUX:
 			return static_cast<char>(Serial.read());
+
+		case SerialSource::AUX2:
+			return static_cast<char>(Serial1.read());
 	}
 
 	return 0;
@@ -1289,6 +1372,33 @@ inline const unsigned char* Platform::MACAddress() const
 	return nvData.macAddress;
 }
 
+inline float Platform::GetElasticComp(size_t drive) const
+{
+	return (drive < DRIVES) ? elasticComp[drive] : 0.0;
+}
+
+inline void Platform::SetEndStopConfiguration(size_t axis, EndStopType esType, bool logicLevel)
+//pre(axis < AXES)
+{
+	endStopType[axis] = esType;
+	endStopLogicLevel[axis] = logicLevel;
+}
+
+inline void Platform::GetEndStopConfiguration(size_t axis, EndStopType& esType, bool& logicLevel) const
+//pre(axis < AXES)
+{
+	esType = endStopType[axis];
+	logicLevel = endStopLogicLevel[axis];
+}
+
+// Get the interrupt clock count
+/*static*/ inline uint32_t Platform::GetInterruptClocks()
+{
+	//return TC_ReadCV(TC1, 0);
+	// sadly, the Arduino IDE does not provide the inlined version of TC_ReadCV, so use the following instead...
+	return TC1 ->TC_CHANNEL[0].TC_CV;
+}
+
 inline float Platform::GetFilamentWidth() const
 {
 	return filamentWidth;
@@ -1309,21 +1419,10 @@ inline void Platform::SetNozzleDiameter(float diameter)
 	nozzleDiameter = diameter;
 }
 
-// Two functions to set and get any processor pin.
-// Only for use by the M42 command with extreme caution.  Don't use these
-// for anything else.
-
-inline void Platform::SetOutputPin(int pin, bool value)
+inline Roland* Platform::GetRoland()
 {
-	pinMode(pin, OUTPUT);
-	digitalWrite(pin, value);	
+	return roland;
 }
-		
-inline bool Platform::GetInputPin(int pin)
-{
-	return digitalRead(pin);
-}
-
 
 //***************************************************************************************
 

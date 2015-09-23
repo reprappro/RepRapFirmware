@@ -436,8 +436,8 @@ bool ProtocolInterpreter::FlushUploadData()
 {
 	if (uploadState == uploadOK && uploadLength != 0)
 	{
-		// Write some uploaded data to file (never write more than 256 bytes at once)
-		unsigned int len = min<unsigned int>(uploadLength, 256);
+		// Write some uploaded data to file (never write more too much at once)
+		unsigned int len = min<unsigned int>(uploadLength, FILE_BUFFER_SIZE);
 		if (!fileBeingUploaded.Write(uploadPointer, len))
 		{
 			platform->Message(HOST_MESSAGE, "Could not flush upload data!\n");
@@ -502,7 +502,7 @@ void ProtocolInterpreter::FinishUpload(uint32_t fileLength)
 	{
 		while (uploadLength > 0)
 		{
-			unsigned int len = min<unsigned int>(uploadLength, 256);
+			unsigned int len = min<unsigned int>(uploadLength, FILE_BUFFER_SIZE);
 			if (!fileBeingUploaded.Write(uploadPointer, len))
 			{
 				uploadState = uploadError;
@@ -905,14 +905,12 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 					type = 1;
 				}
 
-				reprap.ReleaseOutput(response);
-				response = reprap.GetStatusResponse(type, true);
+				reprap.ReplaceOutput(response, reprap.GetStatusResponse(type, true));
 			}
 			else
 			{
 				// Deprecated
-				reprap.ReleaseOutput(response);
-				response = reprap.GetLegacyStatusResponse(1, 0);
+				reprap.ReplaceOutput(response, reprap.GetLegacyStatusResponse(1, 0));
 			}
 		}
 		else if (StringEquals(request, "gcode") && StringEquals(key, "gcode"))
@@ -975,13 +973,12 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 		else if (StringEquals(request, "files"))
 		{
 			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
-			reprap.ReleaseOutput(response);
-			response = reprap.GetFilesResponse(dir, false);
+			reprap.ReplaceOutput(response, reprap.GetFilesResponse(dir, false));
 		}
 		else if (StringEquals(request, "fileinfo"))
 		{
-			reprap.ReleaseOutput(response);
-			response = reprap.GetPrintMonitor()->GetFileInfoResponse((StringEquals(key, "name")) ? value : nullptr);
+			reprap.ReplaceOutput(response,
+					reprap.GetPrintMonitor()->GetFileInfoResponse((StringEquals(key, "name")) ? value : nullptr));
 		}
 		else if (StringEquals(request, "move"))
 		{
@@ -1008,8 +1005,7 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 		}
 		else if (StringEquals(request, "config"))
 		{
-			reprap.ReleaseOutput(response);
-			response = reprap.GetConfigResponse();
+			reprap.ReplaceOutput(response, reprap.GetConfigResponse());
 		}
 		else
 		{
@@ -1039,6 +1035,8 @@ bool Webserver::HttpInterpreter::NeedMoreData()
 {
 	if (state == doingPost)
 	{
+		// At this stage we've processed the first chunk of a POST upload request. Store the
+		// initial payload and reset the HTTP reader again in order to process new requests
 		StoreUploadData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
 		ResetState();
 		return false;
@@ -1274,7 +1272,7 @@ bool Webserver::HttpInterpreter::CharFromClient(char c)
 			}
 			else if (c >= 'A' && c <= 'F')
 			{
-				clientMessage[clientPointer++] = decodeChar | c - ('A' - 10);
+				clientMessage[clientPointer++] = decodeChar | (c - ('A' - 10));
 				state = (HttpState)(state - 2);
 			}
 			else
@@ -1584,7 +1582,7 @@ void Webserver::HttpInterpreter::UpdateAuthentication()
 void Webserver::HttpInterpreter::RemoveAuthentication()
 {
 	uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
-	for(int i=numActiveSessions - 1; i>=0; i--)
+	for(int i=(int)numActiveSessions - 1; i>=0; i--)
 	{
 		if (sessions[i].ip == remoteIP)
 		{
@@ -1757,11 +1755,13 @@ void Webserver::HttpInterpreter::HandleGCodeReply(const char *reply)
 	{
 		if (gcodeReply == nullptr)
 		{
-			if (!reprap.AllocateOutput(gcodeReply))
+			OutputBuffer *buffer;
+			if (!reprap.AllocateOutput(buffer))
 			{
 				// No more space available. Should never happen
 				return;
 			}
+			gcodeReply = buffer;
 			seq++;
 		}
 
@@ -1810,7 +1810,7 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 			// like FileZilla open a second connection for transfers for some reason.
 			if (req->GetLocalPort() == FTP_PORT)
 			{
-				req->Write("220 RepRapPro Ormerod\r\n");
+				req->Write("220 RepRapFirmware FTP server\r\n");
 				network->SendAndClose(nullptr, true);
 
 				ResetState();
@@ -1936,7 +1936,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 				char pass[SHORT_STRING_LENGTH];
 				int pass_length = 0;
 				bool reading_pass = false;
-				for(int i=4; i<clientPointer && i<SHORT_STRING_LENGTH +3; i++)
+				for(size_t i=4; i<clientPointer && i<SHORT_STRING_LENGTH +3; i++)
 				{
 					reading_pass |= (clientMessage[i] != ' ' && clientMessage[i] != '\t');
 					if (reading_pass)
@@ -1995,7 +1995,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			// switch transfer mode (sends response, but doesn't have any effects)
 			else if (StringStartsWith(clientMessage, "TYPE"))
 			{
-				for(int i=4; i<clientPointer; i++)
+				for(unsigned int i=4; i<clientPointer; i++)
 				{
 					if (clientMessage[i] == 'I')
 					{
@@ -2027,7 +2027,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 
 				/* send FTP response */
 				snprintf(ftpResponse, ftpResponseLength, "Entering Passive Mode (%d,%d,%d,%d,%d,%d)",
-						*ip_address++, *ip_address++, *ip_address++, *ip_address++,
+						ip_address[0], ip_address[1], ip_address[2], ip_address[3],
 						pasv_port / 256, pasv_port % 256);
 				SendReply(227, ftpResponse);
 			}
@@ -2216,7 +2216,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 							// "drwxr-xr-x    2 ftp      ftp             0 Apr 11 2013 bin\r\n"
 							char dirChar = (fileInfo.isDirectory) ? 'd' : '-';
 							const uint8_t month = (fileInfo.month == 0) ? 1 : fileInfo.month; // without this check FileZilla won't display incomplete uploads properly
-							snprintf(line, ARRAY_SIZE(line), "%crw-rw-rw- 1 ftp ftp %13d %s %02d %04d %s\r\n",
+							snprintf(line, ARRAY_SIZE(line), "%crw-rw-rw- 1 ftp ftp %13lu %s %02d %04d %s\r\n",
 									dirChar, fileInfo.size, platform->GetMassStorage()->GetMonthName(month),
 									fileInfo.day, fileInfo.year, fileInfo.fileName);
 
@@ -2360,7 +2360,7 @@ void Webserver::FtpInterpreter::ReadFilename(uint16_t start)
 {
 	int filenameLength = 0;
 	bool readingPath = false;
-	for(int i=start; i<clientPointer && filenameLength<FILENAME_LENGTH - 1; i++)
+	for(int i = start; i < (int)clientPointer && filenameLength < (int)(FILENAME_LENGTH - 1); i++)
 	{
 		switch (clientMessage[i])
 		{
@@ -2475,7 +2475,7 @@ Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws, Netw
 void Webserver::TelnetInterpreter::ConnectionEstablished()
 {
 	NetworkTransaction *req = network->GetTransaction();
-	req->Write("RepRapPro Ormerod Telnet Interface\r\n\r\n");
+	req->Write("RepRapFirmware Telnet interface\r\n\r\n");
 	req->Write("Please enter your password:\r\n");
 	req->Write("> ");
 	network->SendAndClose(nullptr, true);
@@ -2695,14 +2695,19 @@ void Webserver::TelnetInterpreter::HandleGCodeReply(OutputBuffer *reply)
 	if (reply != nullptr && state >= authenticated && network->AcquireTelnetTransaction())
 	{
 		// We need a valid OutputBuffer to start the conversion
-		if (gcodeReply == nullptr && !reprap.AllocateOutput(gcodeReply))
+		if (gcodeReply == nullptr)
 		{
-			// We cannot acquire a new buffer. Release everything and stop here
-			while (reply != nullptr)
+			OutputBuffer *buffer;
+			if (!reprap.AllocateOutput(buffer))
 			{
-				reply = reprap.ReleaseOutput(reply);
+				// We cannot acquire a new buffer. Release everything and stop here
+				while (reply != nullptr)
+				{
+					reply = reprap.ReleaseOutput(reply);
+				}
+				return;
 			}
-			return;
+			gcodeReply = buffer;
 		}
 
 		// Write entire content to new output buffers, but this time with \r\n instead of \n
@@ -2741,10 +2746,15 @@ void Webserver::TelnetInterpreter::HandleGCodeReply(const char *reply)
 	if (reply != nullptr && state >= authenticated && network->AcquireTelnetTransaction())
 	{
 		// We need a valid OutputBuffer to start the conversion
-		if (gcodeReply == nullptr && !reprap.AllocateOutput(gcodeReply))
+		if (gcodeReply == nullptr)
 		{
-			// Should never happen
-			return;
+			OutputBuffer *buffer;
+			if (!reprap.AllocateOutput(buffer))
+			{
+				// Should never happen
+				return;
+			}
+			gcodeReply = buffer;
 		}
 
 		// Write entire content to new output buffers, but this time with \r\n instead of \n

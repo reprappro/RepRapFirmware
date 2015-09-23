@@ -170,8 +170,8 @@ void watchdogSetup(void)
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap() : active(false), debug(0), stopped(false), spinningModule(noModule), ticksInSpinState(0),
-	resetting(false)
+RepRap::RepRap() : ticksInSpinState(0), spinningModule(noModule), debug(0), stopped(false), active(false),
+	resetting(false), usedOutputBuffers(0), maxUsedOutputBuffers(0)
 {
 	platform = new Platform();
 	network = new Network(platform);
@@ -234,7 +234,7 @@ void RepRap::Init()
 		configFile = platform->GetDefaultFile();
 	}
 
-	while (!gCodes->DoFileMacro(configFile))
+	while (!gCodes->DoFileMacro(nullptr, configFile))
 	{
 		// GCodes::Spin will read the macro and ensure DoFileMacro returns true when it's done
 		Spin();
@@ -341,15 +341,8 @@ void RepRap::Timing()
 void RepRap::Diagnostics()
 {
 	platform->Message(GENERIC_MESSAGE, "Diagnostics\n");
-
-	OutputBuffer *buff = freeOutputBuffers;
-	size_t freeOutputBuffers = 0;
-	while (buff != nullptr)
-	{
-		freeOutputBuffers++;
-		buff = buff->next;
-	}
-	platform->MessageF(GENERIC_MESSAGE, "Free output buffers: %d of %d\n", freeOutputBuffers, OUTPUT_BUFFER_COUNT);
+	platform->MessageF(GENERIC_MESSAGE, "Used output buffers: %d of %d (%d max)\n",
+			usedOutputBuffers, OUTPUT_BUFFER_COUNT, maxUsedOutputBuffers);
 
 	platform->Diagnostics();				// this includes a call to our Timing() function
 	move->Diagnostics();
@@ -421,11 +414,20 @@ void RepRap::PrintDebug()
 	if (debug != 0)
 	{
 		platform->Message(GENERIC_MESSAGE, "Debugging enabled for modules:");
-		for(size_t i=0; i<16;i++)
+		for(size_t i = 0; i < numModules; i++)
 		{
-			if (debug & (1 << i))
+			if ((debug & (1 << i)) != 0)
 			{
-				platform->MessageF(GENERIC_MESSAGE, " %s", moduleName[i]);
+				platform->MessageF(GENERIC_MESSAGE, " %s (%u)", moduleName[i], i);
+			}
+		}
+
+		platform->Message(GENERIC_MESSAGE, "\nDebugging disabled for modules:");
+		for(size_t i = 0; i < numModules; i++)
+		{
+			if ((debug & (1 << i)) == 0)
+			{
+				platform->MessageF(GENERIC_MESSAGE, " %s(%u)", moduleName[i], i);
 			}
 		}
 		platform->Message(GENERIC_MESSAGE, "\n");
@@ -559,7 +561,7 @@ void RepRap::StandbyTool(int toolNumber)
 	platform->MessageF(GENERIC_MESSAGE, "Error: Attempt to standby a non-existent tool: %d.\n", toolNumber);
 }
 
-Tool* RepRap::GetTool(int toolNumber)
+Tool* RepRap::GetTool(int toolNumber) const
 {
 	Tool* tool = toolList;
 
@@ -573,6 +575,11 @@ Tool* RepRap::GetTool(int toolNumber)
 		tool = tool->Next();
 	}
 	return nullptr; // Not an error
+}
+
+Tool* RepRap::GetOnlyTool() const
+{
+	return (toolList != nullptr && toolList->Next() == nullptr) ? toolList : nullptr;
 }
 
 /*Tool* RepRap::GetToolByDrive(int driveNumber)
@@ -688,11 +695,20 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 
 		// XYZ positions
 		response->cat("],\"xyz\":");
-		ch = '[';
-		for (size_t axis = 0; axis < AXES; axis++)
+		if (!gCodes->AllAxesAreHomed() && move->IsDeltaMode())
 		{
-			response->catf("%c%.2f", ch, liveCoordinates[axis]);
-			ch = ',';
+			// If in Delta mode, skip these coordinates if some axes are not homed
+			response->cat("[0.00,0.00,0.00");
+		}
+		else
+		{
+			// On Cartesian printers, the live coordinates are (usually) valid
+			ch = '[';
+			for (size_t axis = 0; axis < AXES; axis++)
+			{
+				response->catf("%c%.2f", ch, liveCoordinates[axis]);
+				ch = ',';
+			}
 		}
 	}
 
@@ -789,19 +805,21 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->cat(",\"temps\":{");
 
 		/* Bed */
-		if (HOT_BED != -1)
+		const int8_t bedHeater = heat->GetBedHeater();
+		if (bedHeater != -1)
 		{
 			response->catf("\"bed\":{\"current\":%.1f,\"active\":%.1f,\"state\":%d},",
-					heat->GetTemperature(HOT_BED), heat->GetActiveTemperature(HOT_BED),
-					heat->GetStatus(HOT_BED));
+					heat->GetTemperature(bedHeater), heat->GetActiveTemperature(bedHeater),
+					heat->GetStatus(bedHeater));
 		}
 
 		/* Chamber */
-		if (heat->GetChamberHeater() != -1)
+		const int8_t chamberHeater = heat->GetChamberHeater();
+		if (chamberHeater != -1)
 		{
-			response->catf("\"chamber\":{\"current\":%.1f,", heat->GetTemperature(heat->GetChamberHeater()));
-			response->catf("\"active\":%.1f,", heat->GetActiveTemperature(heat->GetChamberHeater()));
-			response->catf("\"state\":%d},", static_cast<int>(heat->GetStatus(heat->GetChamberHeater())));
+			response->catf("\"chamber\":{\"current\":%.1f,", heat->GetTemperature(chamberHeater));
+			response->catf("\"active\":%.1f,", heat->GetActiveTemperature(chamberHeater));
+			response->catf("\"state\":%d},", static_cast<int>(heat->GetStatus(chamberHeater)));
 		}
 
 		/* Heads */
@@ -861,7 +879,7 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->catf(",\"coldRetractTemp\":%1.f", heat->ColdExtrude() ? 0 : HOT_ENOUGH_TO_RETRACT);
 
 		// Delta configuration
-		response->cat(",\"geometry\":\"cartesian\"");	// TODO: Implement this with delta being an alternative
+		response->catf(",\"geometry\":\"%s\"", move->GetGeometryString());
 
 		// Machine name
 		response->cat(",\"name\":");
@@ -930,13 +948,13 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->catf(",\"currentLayerTime\":%.1f", printMonitor->GetCurrentLayerTime());
 
 		// Raw Extruder Positions
-		float rawExtruderPos[DRIVES - AXES];
-		move->GetRawExtruderPositions(rawExtruderPos);
+		float rawExtruderTotals[DRIVES - AXES];
+		move->RawExtruderTotals(rawExtruderTotals);
 		response->cat(",\"extrRaw\":");
 		ch = '[';
 		for (size_t extruder = 0; extruder < GetExtrudersInUse(); extruder++)		// loop through extruders
 		{
-			response->catf("%c%.1f", ch, rawExtruderPos[extruder]);
+			response->catf("%c%.1f", ch, rawExtruderTotals[extruder]);
 			ch = ',';
 		}
 		if (ch == '[')
@@ -1023,7 +1041,7 @@ OutputBuffer *RepRap::GetConfigResponse()
 	ch = '[';
 	for (size_t drive = 0; drive < DRIVES; drive++)
 	{
-		response->catf("%c%.2f", ch, platform->InstantDv(drive));
+		response->catf("%c%.2f", ch, platform->ConfiguredInstantDv(drive));
 		ch = ',';
 	}
 
@@ -1123,11 +1141,11 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 		response->printf("{\"status\":\"%c\",\"heaters\":", ch);
 
 		// Send the heater actual temperatures
-		const Heat *heat = reprap.GetHeat();
-		if (HOT_BED != -1)
+		const int8_t bedHeater = heat->GetBedHeater();
+		if (bedHeater != -1)
 		{
 			ch = ',';
-			response->catf("[%.1f", heat->GetTemperature(HOT_BED));
+			response->catf("[%.1f", heat->GetTemperature(bedHeater));
 		}
 		else
 		{
@@ -1142,10 +1160,10 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 
 		// Send the heater active temperatures
 		response->catf(",\"active\":");
-		if (HOT_BED != -1)
+		if (heat->GetBedHeater() != -1)
 		{
 			ch = ',';
-			response->catf("[%.1f", heat->GetActiveTemperature(HOT_BED));
+			response->catf("[%.1f", heat->GetActiveTemperature(heat->GetBedHeater()));
 		}
 		else
 		{
@@ -1160,10 +1178,10 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 
 		// Send the heater standby temperatures
 		response->catf(",\"standby\":");
-		if (HOT_BED != -1)
+		if (bedHeater != -1)
 		{
 			ch = ',';
-			response->catf("[%.1f", heat->GetStandbyTemperature(HOT_BED));
+			response->catf("[%.1f", heat->GetStandbyTemperature(bedHeater));
 		}
 		else
 		{
@@ -1178,10 +1196,10 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 
 		// Send the heater statuses (0=off, 1=standby, 2=active)
 		response->cat(",\"hstat\":");
-		if (HOT_BED != -1)
+		if (bedHeater != -1)
 		{
 			ch = ',';
-			response->catf("[%d", static_cast<int>(heat->GetStatus(HOT_BED)));
+			response->catf("[%d", static_cast<int>(heat->GetStatus(bedHeater)));
 		}
 		else
 		{
@@ -1326,7 +1344,7 @@ OutputBuffer *RepRap::GetLegacyStatusResponse(uint8_t type, int seq)
 		response->EncodeString(myName, ARRAY_SIZE(myName), false);
 	}
 
-	uint32_t newSeq = gCodes->GetAuxSeq();
+	int newSeq = (int)gCodes->GetAuxSeq();
 	if (type < 2 || (seq != -1 && seq != newSeq))
 	{
 		// Send the response to the last command. Do this last
@@ -1425,8 +1443,12 @@ OutputBuffer *RepRap::GetFilesResponse(const char *dir, bool flagsDirs)
 // Allocates an output buffer instance which can be used for (large) string outputs
 bool RepRap::AllocateOutput(OutputBuffer *&buf)
 {
+	const irqflags_t flags = cpu_irq_save();
+
 	if (freeOutputBuffers == nullptr)
 	{
+		cpu_irq_restore(flags);
+
 		buf = nullptr;
 		return false;
 	}
@@ -1434,9 +1456,17 @@ bool RepRap::AllocateOutput(OutputBuffer *&buf)
 	buf = freeOutputBuffers;
 	freeOutputBuffers = buf->next;
 
+	usedOutputBuffers++;
+	if (usedOutputBuffers > maxUsedOutputBuffers)
+	{
+		maxUsedOutputBuffers = usedOutputBuffers;
+	}
+
 	buf->next = nullptr;
 	buf->dataLength = buf->bytesLeft = 0;
 	buf->referenceCounter = 1; // Assume it's only used once by default
+
+	cpu_irq_restore(flags);
 
 	return true;
 }
@@ -1444,18 +1474,25 @@ bool RepRap::AllocateOutput(OutputBuffer *&buf)
 // Releases an output buffer instance and returns the next entry from the chain
 OutputBuffer *RepRap::ReleaseOutput(OutputBuffer *buf)
 {
+	const irqflags_t flags = cpu_irq_save();
+
 	OutputBuffer *nextBuffer = buf->next;
 
 	// If this one is reused by another piece of code, don't free it up
 	if (buf->referenceCounter > 1)
 	{
 		buf->referenceCounter--;
+		cpu_irq_restore(flags);
 		return nextBuffer;
 	}
 
 	// Otherwise prepend it to the list of free output buffers again
 	buf->next = freeOutputBuffers;
 	freeOutputBuffers = buf;
+
+	usedOutputBuffers--;
+
+	cpu_irq_restore(flags);
 
 	return nextBuffer;
 }
@@ -1503,7 +1540,7 @@ char RepRap::GetStatusCharacter() const
 		// Resuming
 		return 'R';
 	}
-	if (move->IsPaused())
+	if (gCodes->IsPaused())
 	{
 		// Paused / Stopped
 		return 'S';
@@ -1550,6 +1587,40 @@ void RepRap::SetName(const char* nm)
 
 	// Set new DHCP hostname
 	network->SetHostname(myName);
+}
+
+// Given that we want to extrude/etract the specified extruder drives, check if they are allowed.
+// For each disallowed one, log an error to report later and return a bit in the bitmap.
+// This may be called by an ISR!
+unsigned int RepRap::GetProhibitedExtruderMovements(unsigned int extrusions, unsigned int retractions)
+{
+	unsigned int result = 0;
+	Tool *tool = toolList;
+	while (tool != nullptr)
+	{
+		for(size_t driveNum = 0; driveNum < tool->DriveCount(); driveNum++)
+		{
+			const int extruderDrive = tool->Drive(driveNum);
+			unsigned int mask = 1 << extruderDrive;
+			if (extrusions & mask)
+			{
+				if (!tool->ToolCanDrive(true))
+				{
+					result |= mask;
+				}
+			}
+			else if (retractions & (1 << extruderDrive))
+			{
+				if (!tool->ToolCanDrive(false))
+				{
+					result |= mask;
+				}
+			}
+		}
+
+		tool = tool->Next();
+	}
+	return result;
 }
 
 //*************************************************************************************************
@@ -1740,7 +1811,7 @@ size_t OutputBuffer::copy(const char *src, size_t len)
 	if (len > OUTPUT_BUFFER_SIZE)
 	{
 		// No - copy what we can't write into a new chain
-		OutputBuffer *currentBuffer, *lastBuffer;
+		OutputBuffer *currentBuffer, *lastBuffer = nullptr;
 		size_t bytesCopied = OUTPUT_BUFFER_SIZE;
 		do {
 			if (!reprap.AllocateOutput(currentBuffer))
@@ -1793,7 +1864,10 @@ size_t OutputBuffer::cat(const char c)
 		// No - allocate a new item and link it
 		OutputBuffer *nextBuffer;
 		if (!reprap.AllocateOutput(nextBuffer))
-			return false;
+		{
+			// We cannot store any more data. Should never happen
+			return 0;
+		}
 		nextBuffer->copy(c);
 
 		lastBuffer->next = nextBuffer;
@@ -1804,6 +1878,7 @@ size_t OutputBuffer::cat(const char c)
 		lastBuffer->data[lastBuffer->dataLength++] = c;
 		lastBuffer->bytesLeft++;
 	}
+	return 1;
 }
 
 size_t OutputBuffer::cat(const char *src)
@@ -1824,31 +1899,31 @@ size_t OutputBuffer::cat(const char *src, size_t len)
 	if (lastBuffer->dataLength + len > OUTPUT_BUFFER_SIZE)
 	{
 		size_t copyLength = OUTPUT_BUFFER_SIZE - lastBuffer->dataLength;
+		size_t bytesCopied = copyLength;
+		bytesCopied = copyLength;
 
 		// Yes - copy what we can't write into a new chain
 		OutputBuffer *nextBuffer;
 		if (!reprap.AllocateOutput(nextBuffer))
 		{
 			// We cannot store any more data. Should never happen
-			return false;
+			return 0;
 		}
-		nextBuffer->copy(src + copyLength, len - copyLength);
+		bytesCopied += nextBuffer->copy(src + copyLength, len - copyLength);
 		lastBuffer->next = nextBuffer;
 
 		// Then copy the rest into this one
 		memcpy(lastBuffer->data + lastBuffer->dataLength, src, copyLength);
 		lastBuffer->dataLength += copyLength;
 		lastBuffer->bytesLeft += copyLength;
-	}
-	else
-	{
-		// No - reuse this one instead
-		memcpy(lastBuffer->data + lastBuffer->dataLength, src, len);
-		lastBuffer->dataLength += len;
-		lastBuffer->bytesLeft += len;
+		return bytesCopied;
 	}
 
-	return true;
+	// No - reuse this one instead
+	memcpy(lastBuffer->data + lastBuffer->dataLength, src, len);
+	lastBuffer->dataLength += len;
+	lastBuffer->bytesLeft += len;
+	return len;
 }
 
 size_t OutputBuffer::cat(StringRef &str)

@@ -17,6 +17,7 @@ M555 P2                             ; Set output to look like Marlin
 G21                                 ; Work in millimetres
 G90                                 ; Send absolute corrdinates...
 M83                                 ; ...but relative extruder moves
+M574 X0 Y1 Z0 S1                    ; set endstop configuration (Y endstop only, at low end, active high)
 M906 X600 Y600 Z600 E600            ; Set motor currents (mA)
 ;M305 P0 R4700 H0 L0                 ; Set the heated bed thermistor series resistor to 4K7
 ;M305 P1 R4700 H0 L0                 ; Set the hot end thermistor series resistor to 4K7

@@ -1,0 +1,554 @@
+DDA.cpp:			platform->ExtrudeOn();
+DDA.cpp:			platform->ExtrudeOff();
+DDA.cpp:		return platform->ScheduleInterrupt(firstDM->nextStepTime + moveStartTime);
+GCodes.cpp:	platform->Message(GENERIC_MESSAGE, "GCodes class exited.\n");
+GCodes.cpp:	longWait = platform->Time();
+GCodes.cpp:	if (serialGCode->WritingFileDirectory() == platform->GetWebDir())
+GCodes.cpp:		while (i++ < GCODE_LENGTH && platform->GCodeAvailable(SerialSource::USB))
+GCodes.cpp:			char b = platform->ReadFromSource(SerialSource::USB);
+GCodes.cpp:	else if (!serialGCode->Active() && platform->GCodeAvailable(SerialSource::USB))
+GCodes.cpp:			char b = platform->ReadFromSource(SerialSource::USB);
+GCodes.cpp:		} while (++i < GCODE_LENGTH && platform->GCodeAvailable(SerialSource::USB));
+GCodes.cpp:	if (!auxGCode->Active() && platform->GCodeAvailable(SerialSource::AUX))
+GCodes.cpp:			char b = platform->ReadFromSource(SerialSource::AUX);
+GCodes.cpp:		} while (++i < GCODE_LENGTH && platform->GCodeAvailable(SerialSource::AUX));
+GCodes.cpp:	platform->ClassReport(longWait);
+GCodes.cpp:	platform->Message(GENERIC_MESSAGE, "GCodes Diagnostics:\n");
+GCodes.cpp:	platform->MessageF(GENERIC_MESSAGE, "Move available? %s\n", moveAvailable ? "yes" : "no");
+GCodes.cpp:	platform->MessageF(GENERIC_MESSAGE, "Internal code queue is %s\n", (internalCodeQueue == nullptr) ? "empty." : "not empty:");
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Total moves: %d, moves completed: %d\n", totalMoves, movesCompleted);
+GCodes.cpp:			platform->MessageF(GENERIC_MESSAGE, "Queued '%s' for move %d\n", item->GetCode(), item->ExecuteAtMove());
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "%d of %d codes have been queued.\n", queueLength, CODE_QUEUE_LENGTH);
+GCodes.cpp:	platform->MessageF(GENERIC_MESSAGE, "Stack pointer: %u of %u\n", stackPointer, STACK);
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Push() stack overflow!\n");
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Pop() stack underflow!\n");
+GCodes.cpp:			platform->Message(GENERIC_MESSAGE, "Error: Attempting to extrude with no tool selected.\n");
+GCodes.cpp:					platform->MessageF(GENERIC_MESSAGE, "Error: Wrong number of extruder drives for the selected tool: %s\n", gb->Buffer());
+GCodes.cpp:					if (moveArg < platform->AxisMinimum(axis))
+GCodes.cpp:						moveArg = platform->AxisMinimum(axis);
+GCodes.cpp:					else if (moveArg > platform->AxisMaximum(axis))
+GCodes.cpp:						moveArg = platform->AxisMaximum(axis);
+GCodes.cpp:		moveBuffer[Z_AXIS] = max<float>(platform->AxisMinimum(Z_AXIS),
+GCodes.cpp:		f = platform->GetFileStore(fileName, false);
+GCodes.cpp:			f = platform->GetFileStore(FS_PREFIX, fileName, false);
+GCodes.cpp:			f = platform->GetFileStore(platform->GetSysDir(), fileName, false);
+GCodes.cpp:				f = platform->GetFileStore(platform->GetMacroDir(), fileName, false);
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Macro file %s not found.\n", fileName);
+GCodes.cpp:		if (platform->MustHomeXYBeforeZ() && (!axisIsHomed[X_AXIS] || !axisIsHomed[Y_AXIS]))
+GCodes.cpp:			moveToDo[Z_AXIS] = platform->GetZProbeDiveHeight();
+GCodes.cpp:			moveToDo[DRIVES] = platform->MaxFeedrate(Z_AXIS);
+GCodes.cpp:			moveToDo[DRIVES] = platform->MaxFeedrate(X_AXIS);
+GCodes.cpp:					? 2 * platform->GetZProbeDiveHeight()			// Z axis has been homed, so no point in going very far
+GCodes.cpp:					: 1.1 * platform->AxisTotalLength(Z_AXIS);		// Z axis not homed yet, so treat this as a homing move
+GCodes.cpp:						platform->Message(GENERIC_MESSAGE, "Z probe warning: probe already triggered at start of probing move\n");
+GCodes.cpp:						reprap.GetMove()->SetZBedProbePoint(probePointIndex, platform->GetZProbeDiveHeight(), true, true);
+GCodes.cpp:							lastProbedZ = moveBuffer[Z_AXIS] - (platform->ZProbeStopHeight() + heightAdjust);
+GCodes.cpp:							moveBuffer[Z_AXIS] = platform->ZProbeStopHeight() + heightAdjust;
+GCodes.cpp:			moveToDo[Z_AXIS] = platform->GetZProbeDiveHeight();
+GCodes.cpp:			moveToDo[DRIVES] = platform->MaxFeedrate(Z_AXIS);
+GCodes.cpp:	switch (DoZProbe(1.1 * platform->AxisTotalLength(Z_AXIS)))
+GCodes.cpp:				moveBuffer[Z_AXIS] = platform->ZProbeStopHeight() + heightAdjust;
+GCodes.cpp:	if (platform->GetZProbeType() == 5)
+GCodes.cpp:		const ZProbeParameters& params = platform->GetZProbeParameters();
+GCodes.cpp:		return reprap.GetMove()->DoDeltaProbe(params.param1, params.param2, platform->HomeFeedRate(Z_AXIS), distance);
+GCodes.cpp:		moveToDo[DRIVES] = platform->HomeFeedRate(Z_AXIS);
+GCodes.cpp:	const char *absoluteBedGPath = platform->GetMassStorage()->CombineName(SYS_DIR, BED_EQUATION_G);
+GCodes.cpp:	if (platform->GetMassStorage()->FileExists(absoluteBedGPath))
+GCodes.cpp:	const ZProbeParameters& rp = platform->GetZProbeParameters();
+GCodes.cpp:	ZProbeParameters params = platform->GetZProbeParameters();
+GCodes.cpp:			params.calibTemperature = platform->GetTemperature(reprap.GetHeat()->GetBedHeater());
+GCodes.cpp:		platform->SetZProbeParameters(params);
+GCodes.cpp:		int v0 = platform->ZProbe();
+GCodes.cpp:		switch (platform->GetZProbeSecondaryValues(v1, v2))
+GCodes.cpp:	fileBeingWritten = platform->GetFileStore(directory, fileName, true);
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't open GCode file \"%s\" for writing.\n", fileName);
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Attempt to write to a null file.\n");
+GCodes.cpp:			const char* r = (platform->Emulating() == marlin) ? "Done saving file.\n" : "";
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write to a null file.\n");
+GCodes.cpp:			const char* r = (platform->Emulating() == marlin) ? "Done saving file.\n" : "";
+GCodes.cpp:	FileStore *f = platform->GetFileStore(platform->GetGCodeDir(), fileName, false);
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: GCode file \"%s\" not found\n", fileName);
+GCodes.cpp:	if (!platform->GetMassStorage()->Delete(platform->GetGCodeDir(), fileName))
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Could not delete file \"%s\"\n", fileName);
+GCodes.cpp:		if (platform->Time() - dwellTime >= 0.0)
+GCodes.cpp:	dwellTime = platform->Time() + dwell;
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Tool number must be positive!\n");
+GCodes.cpp:		platform->DisableDrive(drive);
+GCodes.cpp:				platform->MessageF(GENERIC_MESSAGE, "Error: Dud IP address: %s\n", gb->Buffer());
+GCodes.cpp:				platform->SetIPAddress(eth);
+GCodes.cpp:				platform->SetNetMask(eth);
+GCodes.cpp:				platform->SetGateWay(eth);
+GCodes.cpp:				platform->Message(GENERIC_MESSAGE, "Error: Setting ether parameter - dud code.\n");
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Dud IP address: %s\n", gb->Buffer());
+GCodes.cpp:				platform->MessageF(GENERIC_MESSAGE, "Error: Dud MAC address: %s\n", gb->Buffer());
+GCodes.cpp:		platform->SetMACAddress(mac);
+GCodes.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Dud MAC address: %s\n", gb->Buffer());
+GCodes.cpp:			platform->Message(AUX_MESSAGE, reply);
+GCodes.cpp:	const Compatibility c = (gb == serialGCode || gb == telnetGCode) ? platform->Emulating() : me;
+GCodes.cpp:				platform->Message(type, "Error: ");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, "Begin file list\n");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, "End file list\n");
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, " ");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:		platform->MessageF(type, "Emulation of %s is not yet supported.\n", emulationType);	// don't send this one to the web as well, it concerns only the USB interface
+GCodes.cpp:			platform->Message(AUX_MESSAGE, reply);
+GCodes.cpp:	const Compatibility c = (gb == serialGCode || gb == telnetGCode) ? platform->Emulating() : me;
+GCodes.cpp:				platform->Message(type, "Error: ");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, "Begin file list\n");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, "End file list\n");
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, " ");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:				platform->Message(type, reply);
+GCodes.cpp:				platform->Message(type, response);
+GCodes.cpp:				platform->Message(type, "\n");
+GCodes.cpp:		platform->MessageF(type, "Emulation of %s is not yet supported.\n", emulationType);	// don't send this one to the web as well, it concerns only the USB interface
+GCodes.cpp:		PidParameters pp = platform->GetPidParameters(heater);
+GCodes.cpp:			pp.kI = gb->GetFValue() / platform->HeatSampleTime();
+GCodes.cpp:			pp.kD = gb->GetFValue() * platform->HeatSampleTime();
+GCodes.cpp:			platform->SetPidParameters(heater, pp);
+GCodes.cpp:					    heater, pp.kP, pp.kI * platform->HeatSampleTime(), pp.kD / platform->HeatSampleTime(), pp.kT, pp.kS, pp.pidMax, pp.fullBand);
+GCodes.cpp:			PidParameters pp = platform->GetPidParameters(heater);
+GCodes.cpp:					platform->SetThermistorNumber(heater, thermistor);
+GCodes.cpp:					platform->MessageF(GENERIC_MESSAGE, "Error: Thermistor number %d is out of range\n", thermistor);
+GCodes.cpp:				platform->SetPidParameters(heater, pp);
+GCodes.cpp:						r25, beta, pp.thermistorSeriesR, pp.adcLowOffset, pp.adcHighOffset, platform->GetThermistorNumber(heater));
+GCodes.cpp:			platform->MessageF(GENERIC_MESSAGE, "Error: Heater number %d is out of range\n", heater);
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Setting temperature: no tool selected.\n");
+GCodes.cpp:			if (code == 1 && (gb == serialGCode || gb == telnetGCode) && platform->Emulating() == marlin)
+GCodes.cpp:						platform->SetDriveIdle(drive);
+GCodes.cpp:						platform->DisableDrive(axis);
+GCodes.cpp:						platform->DisableDrive(AXES + eDrive[i]);
+GCodes.cpp:				const char* dir = (gb->Seen('P')) ? gb->GetString() : platform->GetGCodeDir();
+GCodes.cpp:					if (platform->Emulating() == me || platform->Emulating() == reprapFirmware)
+GCodes.cpp:					bool encapsulateList = ((gb != serialGCode && gb != telnetGCode) || platform->Emulating() != marlin);
+GCodes.cpp:					if (platform->GetMassStorage()->FindFirst(dir, fileInfo))
+GCodes.cpp:						} while (platform->GetMassStorage()->FindNext(fileInfo));
+GCodes.cpp:					if (platform->Emulating() == marlin)
+GCodes.cpp:							platform->MessageF(GENERIC_MESSAGE, "Paused print, file offset=%u\n", fPos);
+GCodes.cpp:				bool ok = OpenFileToWrite(platform->GetGCodeDir(), str, gb);
+GCodes.cpp:			platform->SetAtxPower(code == 80);
+GCodes.cpp:						platform->SetDriveStepsPerUnit(axis, gb->GetFValue());
+GCodes.cpp:						platform->SetDriveStepsPerUnit(AXES + e, eVals[e]);
+GCodes.cpp:							platform->DriveStepsPerUnit(X_AXIS), platform->DriveStepsPerUnit(Y_AXIS),
+GCodes.cpp:							platform->DriveStepsPerUnit(Z_AXIS));
+GCodes.cpp:						reply.catf("%.3f", platform->DriveStepsPerUnit(drive));
+GCodes.cpp:						platform->SetFanValue((f <= 1.0 ? 1.0 : 255.0) - f);
+GCodes.cpp:						platform->SetFanValue(f);
+GCodes.cpp:					f = coolingInverted ? (1.0 - platform->GetFanValue()) : platform->GetFanValue();
+GCodes.cpp:			platform->SetFanValue(coolingInverted ? 255.0 : 0.0);
+GCodes.cpp:					switch(platform->Stopped(axis))
+GCodes.cpp:					platform->DiagnosticTest(val);
+GCodes.cpp:				platform->SetHeatSampleTime(gb->GetFValue() * 0.001);  // Value is in milliseconds; we want seconds
+GCodes.cpp:				reply.printf("Heat sample time is %.3f seconds.\n", platform->HeatSampleTime());
+GCodes.cpp:		//			platform->SetMixingDrives(gb->GetIValue());
+GCodes.cpp:						platform->SetAcceleration(axis, gb->GetFValue() * distanceScale);
+GCodes.cpp:						platform->SetAcceleration(AXES + e, eVals[e] * distanceScale);
+GCodes.cpp:							platform->Acceleration(X_AXIS)/distanceScale,
+GCodes.cpp:							platform->Acceleration(Y_AXIS)/distanceScale,
+GCodes.cpp:							platform->Acceleration(Z_AXIS)/distanceScale);
+GCodes.cpp:						reply.catf("%.1f", platform->Acceleration(drive)/distanceScale);
+GCodes.cpp:						platform->SetMaxFeedrate(axis, gb->GetFValue() * distanceScale * SECONDS_TO_MINUTES); // G Code feedrates are in mm/minute; we need mm/sec
+GCodes.cpp:						platform->SetMaxFeedrate(AXES + e, eVals[e] * distanceScale * SECONDS_TO_MINUTES);
+GCodes.cpp:							platform->MaxFeedrate(X_AXIS)/(distanceScale * SECONDS_TO_MINUTES),
+GCodes.cpp:							platform->MaxFeedrate(Y_AXIS)/(distanceScale * SECONDS_TO_MINUTES),
+GCodes.cpp:							platform->MaxFeedrate(Z_AXIS)/(distanceScale * SECONDS_TO_MINUTES));
+GCodes.cpp:						reply.catf("%.1f", platform->MaxFeedrate(drive) / (distanceScale * SECONDS_TO_MINUTES));
+GCodes.cpp:							platform->SetAxisMinimum(axis, value);
+GCodes.cpp:							platform->SetAxisMaximum(axis, value);
+GCodes.cpp:								platform->AxisMinimum(axis), platform->AxisMaximum(axis), comma);
+GCodes.cpp:						platform->SetHomeFeedRate(axis, value);
+GCodes.cpp:								platform->HomeFeedRate(axis) * 60.0 / distanceScale, comma);
+GCodes.cpp:					platform->SetFilamentWidth(gb->GetFValue());
+GCodes.cpp:					platform->SetNozzleDiameter(gb->GetFValue());
+GCodes.cpp:					reply.printf("Filament width: %.2fmm, nozzle diameter: %.2fmm\n", platform->GetFilamentWidth(), platform->GetNozzleDiameter());
+GCodes.cpp:			platform->WriteNvData();
+GCodes.cpp:			platform->ReadNvData();
+GCodes.cpp:				platform->SetAutoSave(gb->GetIValue() > 0);
+GCodes.cpp:			platform->ResetNvData();
+GCodes.cpp:				FileStore *f = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
+GCodes.cpp:				const byte* mac = platform->MACAddress();
+GCodes.cpp:					const byte *config_ip = platform->IPAddress();
+GCodes.cpp:				const byte *nm = platform->NetMask();
+GCodes.cpp:				const byte *gw = platform->GateWay();
+GCodes.cpp:				platform->SetEmulating((Compatibility) gb->GetIValue());
+GCodes.cpp:				switch(platform->Emulating())
+GCodes.cpp:						reply.catf("Unknown: (%d)", platform->Emulating());
+GCodes.cpp:				platform->GetZProbeAxes(zProbeAxes);
+GCodes.cpp:					platform->SetZProbeAxes(zProbeAxes);
+GCodes.cpp:					platform->SetZProbeType(gb->GetIValue());
+GCodes.cpp:					platform->SetZProbeDiveHeight(gb->GetIValue());
+GCodes.cpp:					platform->SetZProbeChannel(gb->GetIValue());
+GCodes.cpp:					ZProbeParameters params = platform->GetZProbeParameters();
+GCodes.cpp:					platform->SetZProbeParameters(params);
+GCodes.cpp:					ZProbeParameters params = platform->GetZProbeParameters();
+GCodes.cpp:					platform->SetZProbeParameters(params);
+GCodes.cpp:					reply.printf("Z Probe type %d, channel %d, dive height %.1f", platform->GetZProbeType(), platform->GetZProbeChannel(), platform->GetZProbeDiveHeight());
+GCodes.cpp:					if (platform->GetZProbeType() == 5)
+GCodes.cpp:						ZProbeParameters params = platform->GetZProbeParameters();
+GCodes.cpp:				const char* str = (gb->Seen('P') ? gb->GetString() : platform->GetConfigFile());
+GCodes.cpp:				bool ok = OpenFileToWrite(platform->GetSysDir(), str, gb);
+GCodes.cpp:				bool ok = OpenFileToWrite(platform->GetWebDir(), str, gb);
+GCodes.cpp:						platform->SetInstantDv(axis, gb->GetFValue() * distanceScale * SECONDS_TO_MINUTES); // G Code feedrates are in mm/minute; we need mm/sec
+GCodes.cpp:						platform->SetInstantDv(AXES + e, eVals[e] * distanceScale * SECONDS_TO_MINUTES);
+GCodes.cpp:							platform->ConfiguredInstantDv(X_AXIS) / (distanceScale * SECONDS_TO_MINUTES),
+GCodes.cpp:							platform->ConfiguredInstantDv(Y_AXIS) / (distanceScale * SECONDS_TO_MINUTES),
+GCodes.cpp:							platform->ConfiguredInstantDv(Z_AXIS) / (distanceScale * SECONDS_TO_MINUTES));
+GCodes.cpp:						reply.catf("%.1f%c", platform->ConfiguredInstantDv(drive) / (distanceScale * SECONDS_TO_MINUTES),
+GCodes.cpp:				platform->SetTimeToHot(gb->GetFValue());
+GCodes.cpp:				reply.printf("Time allowed to get to temperature: %.1f seconds.\n", platform->TimeToHot());
+GCodes.cpp:				platform->SetExtrusionAncilliaryPWM(gb->GetFValue());
+GCodes.cpp:				reply.printf("Extrusion ancillary PWM: %.3f.\n", platform->GetExtrusionAncilliaryPWM());
+GCodes.cpp:					platform->SetElasticComp(drive, gb->GetFValue());
+GCodes.cpp:					reply.printf("Elastic compensation for drive %u is %.3f seconds\n", drive, platform->GetElasticComp(drive));
+GCodes.cpp:							platform->SetEndStopConfiguration(axis, (EndStopType) ival, logicLevel);
+GCodes.cpp:						platform->GetEndStopConfiguration(axis, config, logic);
+GCodes.cpp:						platform->SetBaudRate(chan, gb->GetIValue());
+GCodes.cpp:						platform->SetCommsProperties(chan, val);
+GCodes.cpp:						uint32_t cp = platform->GetCommsProperties(chan);
+GCodes.cpp:						reply.printf("Channel %d: baud rate %d, %s checksum\n", chan, platform->GetBaudRate(chan),
+GCodes.cpp:						if (platform->Stopped(axis) != triggerCondition)
+GCodes.cpp:						if (platform->Stopped(eDrive) != triggerCondition)
+GCodes.cpp:				platform->Inkjet(gb->GetIValue());
+GCodes.cpp:						platform->SetMotorCurrent(axis, gb->GetFValue());
+GCodes.cpp:						platform->SetMotorCurrent(AXES + e, eVals[e]);
+GCodes.cpp:						platform->SetIdleCurrentFactor(idleFactor/100.0);
+GCodes.cpp:					reply.printf("Axis currents (mA) - X:%d, Y:%d, Z:%d, E:", (int) platform->MotorCurrent(X_AXIS),
+GCodes.cpp:							(int) platform->MotorCurrent(Y_AXIS), (int) platform->MotorCurrent(Z_AXIS));
+GCodes.cpp:						reply.catf("%d%c", (int) platform->MotorCurrent(drive), (drive < DRIVES - 1) ? ':' : ',');
+GCodes.cpp:					reply.catf(" idle factor %d\n", (int)(platform->GetIdleCurrentFactor() * 100.0));
+GCodes.cpp:						platform->SetDirectionValue(drive, gb->GetIValue());
+GCodes.cpp:						reply.printf("Drive %d is going %s.\n", drive, (platform->GetDirectionValue(drive) == FORWARDS) ? "forwards" : "backwards");
+GCodes.cpp:				platform->SoftwareReset(SoftwareResetReason::user);			// doesn't return
+GCodes.cpp:			platform->MessageF(GENERIC_MESSAGE, "Error: Tool change - dud sequence number: %d\n", toolChangeSequence);
+GCodes.cpp:			platform->MessageF(HOST_MESSAGE, "%s%s\n", identity, gcodeBuffer);
+GCodes.cpp:			platform->Message(GENERIC_MESSAGE, "Error: G-Code buffer length overflow.\n");
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode float before a search.\n");
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode float array before a search.\n");
+GCodes.cpp:			platform->MessageF(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode float array that is too long: %s\n", gcodeBuffer);
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode long array before a search.\n");
+GCodes.cpp:			platform->MessageF(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode long array that is too long: %s\n", gcodeBuffer);
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode string before a search.\n");
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: GCodes: String expected but not seen.\n");
+GCodes.cpp:		platform->Message(GENERIC_MESSAGE, "Error: GCodes: Attempt to read a GCode int before a search.\n");
+GCodes.h:				platform->GCodeAvailable(SerialSource::USB) ||
+GCodes.h:				platform->GCodeAvailable(SerialSource::AUX);
+Heat.cpp:	lastTime = platform->Time();
+Heat.cpp:	platform->Message(HOST_MESSAGE, "Heat class exited.\n");
+Heat.cpp:	float t = platform->Time();
+Heat.cpp:	if (t - lastTime < platform->HeatSampleTime())
+Heat.cpp:	platform->ClassReport(longWait);
+Heat.cpp:	platform->Message(GENERIC_MESSAGE, "Heat Diagnostics:\n");
+Heat.cpp:			platform->MessageF(GENERIC_MESSAGE, "Heater %d: I-accumulator = %.1f\n", heater, pids[heater]->temp_iState);
+Heat.cpp:	platform->SetHeater(heater, 0.0);
+Heat.cpp:	temperature = platform->GetTemperature(heater);
+Heat.cpp://		platform->MessageF(BOTH_MESSAGE, "Heater %d switched on.\n", heater);
+Heat.cpp:	temperature = platform->GetTemperature(heater);
+Heat.cpp:		platform->SetHeater(heater, 0.0); // Make sure...
+Heat.cpp:			platform->SetHeater(heater, 0.0);
+Heat.cpp:			platform->MessageF(GENERIC_MESSAGE, "Temperature fault on heater %d, T = %.1f\n", heater, temperature);
+Heat.cpp:			float tim = platform->Time() - timeSetHeating;
+Heat.cpp:			float limit = platform->TimeToHot();
+Heat.cpp:			if (tim > platform->TimeToHot() && limit > 0.0)
+Heat.cpp:				platform->SetHeater(heater, 0.0);
+Heat.cpp:				platform->MessageF(GENERIC_MESSAGE, "Heating fault on heater %d, T = %.1f C; still not at temperature %.1f after %f seconds.\n",heater, temperature, tmp, tim);
+Heat.cpp:	const PidParameters& pp = platform->GetPidParameters(heater);
+Heat.cpp:		platform->SetHeater(heater, (error > 0.0) ? pp.kS : 0.0);
+Heat.cpp:			platform->SetHeater(heater, pp.kS);
+Heat.cpp:			platform->SetHeater(heater, 0.0);
+Heat.cpp:		platform->SetHeater(heater, 0.0);
+Heat.cpp:		platform->SetHeater(heater, pp.kS);
+Heat.cpp:	float sampleInterval = platform->HeatSampleTime();
+Heat.cpp:		platform->SetHeater(heater, result * pp.kS);
+Heat.h:		platform->MessageF(GENERIC_MESSAGE, "Error: Temperature %.1f too high for heater %d!\n", t, heater);
+Heat.h:		platform->MessageF(GENERIC_MESSAGE, "Error: Temperature %.1f too high for heater %d!\n", t, heater);
+Heat.h:		timeSetHeating = platform->Time();
+Heat.h:		timeSetHeating = platform->Time();
+Heat.h:	timeSetHeating = platform->Time();		// otherwise we will get another timeout immediately
+Heat.h:	platform->SetHeater(heater, 0.0);
+Move.cpp:			platform->SetDirection(X_AXIS, dir);
+Move.cpp:			platform->SetDirection(Y_AXIS, dir);
+Move.cpp:			platform->SetDirection(Z_AXIS, dir);
+Move.cpp:			platform->StepHigh(X_AXIS);
+Move.cpp:			platform->StepHigh(Y_AXIS);
+Move.cpp:			platform->StepHigh(Z_AXIS);
+Move.cpp:			platform->StepLow(X_AXIS);
+Move.cpp:			platform->StepLow(Y_AXIS);
+Move.cpp:			platform->StepLow(Z_AXIS);
+Move.cpp:			again = (tim != 0xFFFFFFFF && platform->ScheduleInterrupt(tim + deltaProbingStartTime));
+Move.cpp:			platform->EnableDrive(X_AXIS);
+Move.cpp:			platform->EnableDrive(Y_AXIS);
+Move.cpp:			platform->EnableDrive(Z_AXIS);
+Move.cpp:			deltaProbingStartTime = platform->GetInterruptClocks();
+Move.cpp:			if (platform->ScheduleInterrupt(firstInterruptTime + deltaProbingStartTime))
+Network.cpp:	longWait = platform->Time();
+Network.cpp:		platform->ClassReport(longWait);
+Network.cpp:		start_ethernet(platform->IPAddress(), platform->NetMask(), platform->GateWay());
+Network.cpp:	platform->ClassReport(longWait);
+Network.cpp:	platform->Message(GENERIC_MESSAGE, "Network Diagnostics:\n");
+Network.cpp:	platform->MessageF(GENERIC_MESSAGE, "Free connections: %d of %d\n", numFreeConnections, MEMP_NUM_TCP_PCB);
+Network.cpp:	platform->MessageF(GENERIC_MESSAGE, "Free transactions: %d of %d\n", numFreeTransactions, NETWORK_TRANSACTION_COUNT);
+Network.cpp:		init_ethernet(platform->MACAddress(), hostname);
+Network.cpp:		platform->Message(HOST_MESSAGE, "Network::ConnectionAccepted() - no free ConnectionStates!\n");
+Network.cpp:		platform->Message(HOST_MESSAGE, "Network::ConnectionAccepted() - no free transactions!\n");
+Network.cpp:		platform->Message(HOST_MESSAGE, "Network::ConnectionClosedGracefully() - no free transactions!\n");
+Network.cpp:		platform->Message(HOST_MESSAGE, "Network::ReceiveInput() - no free transactions!\n");
+Network.cpp:			platform->Message(HOST_MESSAGE, "Network: Could not acquire free transaction!\n");
+Platform.cpp:// So you can test for inkjet presence with if(platform->Inkjet(0))
+Platform.cpp:			abort = (err == SD_MMC_ERR_NO_CARD && platform->Time() > 5.0);
+Platform.cpp:			platform->Message(HOST_MESSAGE, "Cannot initialize the SD card: ");
+Platform.cpp:					platform->Message(HOST_MESSAGE, "Card not found\n");
+Platform.cpp:					platform->Message(HOST_MESSAGE, "Card is unusable, try another one\n");
+Platform.cpp:					platform->Message(HOST_MESSAGE, "Slot unknown\n");
+Platform.cpp:					platform->Message(HOST_MESSAGE, "General communication error\n");
+Platform.cpp:					platform->Message(HOST_MESSAGE, "Illegal input parameter\n");
+Platform.cpp:					platform->Message(HOST_MESSAGE, "Card write protected\n");
+Platform.cpp:					platform->MessageF(HOST_MESSAGE, "Unknown (code %d)\n", err);
+Platform.cpp:	/*platform->MessageF(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
+Platform.cpp:	platform->MessageF(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
+Platform.cpp:	platform->MessageF(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
+Platform.cpp:			platform->Message(HOST_MESSAGE, "SDHC\n");
+Platform.cpp:			platform->Message(HOST_MESSAGE, "SD\n");
+Platform.cpp:			platform->Message(HOST_MESSAGE, "MMC High Density\n");
+Platform.cpp:			platform->Message(HOST_MESSAGE, "MMC\n");
+Platform.cpp:			platform->Message(HOST_MESSAGE, "SDIO\n");
+Platform.cpp:			platform->Message(HOST_MESSAGE, "SD COMBO\n");
+Platform.cpp:			platform->Message(HOST_MESSAGE, "Unknown\n");
+Platform.cpp:		platform->MessageF(HOST_MESSAGE, "Can't mount filesystem 0: code %d\n", mounted);
+Platform.cpp:				platform->Message(GENERIC_MESSAGE, "Error: CombineName() buffer overflow.\n");
+Platform.cpp:			platform->Message(GENERIC_MESSAGE, "Error: CombineName() buffer overflow.\n");
+Platform.cpp:							? platform->GetMassStorage()->CombineName(directory, fileName)
+Platform.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't delete file %s\n", location);
+Platform.cpp:	const char* location = platform->GetMassStorage()->CombineName(parentDir, dirName);
+Platform.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't create directory %s\n", location);
+Platform.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't create directory %s\n", directory);
+Platform.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't rename file or directory %s to %s\n", oldFilename, newFilename);
+Platform.cpp:							? platform->GetMassStorage()->CombineName(directory, subDirectory)
+Platform.cpp:							? platform->GetMassStorage()->CombineName(directory, fileName)
+Platform.cpp:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't open %s to %s, error code %d\n", location, (writing) ? "write" : "read", openReturn);
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to dup a non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to close a non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to seek on a non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to size non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to read from a non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to read from a non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
+Platform.cpp:			platform->Message(GENERIC_MESSAGE, "Error: Cannot write to file. Disc may be full.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write byte to a non-open file.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write block to a non-open file.\n");
+Platform.cpp: 		platform->Message(GENERIC_MESSAGE, "Error: Cannot write to file. Disc may be full.\n");
+Platform.cpp:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to flush a non-open file.\n");
+Platform.cpp~:// So you can test for inkjet presence with if(platform->Inkjet(0))
+Platform.cpp~:			abort = (err == SD_MMC_ERR_NO_CARD && platform->Time() > 5.0);
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "Cannot initialize the SD card: ");
+Platform.cpp~:					platform->Message(HOST_MESSAGE, "Card not found\n");
+Platform.cpp~:					platform->Message(HOST_MESSAGE, "Card is unusable, try another one\n");
+Platform.cpp~:					platform->Message(HOST_MESSAGE, "Slot unknown\n");
+Platform.cpp~:					platform->Message(HOST_MESSAGE, "General communication error\n");
+Platform.cpp~:					platform->Message(HOST_MESSAGE, "Illegal input parameter\n");
+Platform.cpp~:					platform->Message(HOST_MESSAGE, "Card write protected\n");
+Platform.cpp~:					platform->MessageF(HOST_MESSAGE, "Unknown (code %d)\n", err);
+Platform.cpp~:	/*platform->MessageF(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
+Platform.cpp~:	platform->MessageF(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
+Platform.cpp~:	platform->MessageF(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "SDHC\n");
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "SD\n");
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "MMC High Density\n");
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "MMC\n");
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "SDIO\n");
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "SD COMBO\n");
+Platform.cpp~:			platform->Message(HOST_MESSAGE, "Unknown\n");
+Platform.cpp~:		platform->MessageF(HOST_MESSAGE, "Can't mount filesystem 0: code %d\n", mounted);
+Platform.cpp~:				platform->Message(GENERIC_MESSAGE, "Error: CombineName() buffer overflow.\n");
+Platform.cpp~:			platform->Message(GENERIC_MESSAGE, "Error: CombineName() buffer overflow.\n");
+Platform.cpp~:							? platform->GetMassStorage()->CombineName(directory, fileName)
+Platform.cpp~:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't delete file %s\n", location);
+Platform.cpp~:	const char* location = platform->GetMassStorage()->CombineName(parentDir, dirName);
+Platform.cpp~:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't create directory %s\n", location);
+Platform.cpp~:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't create directory %s\n", directory);
+Platform.cpp~:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't rename file or directory %s to %s\n", oldFilename, newFilename);
+Platform.cpp~:							? platform->GetMassStorage()->CombineName(directory, subDirectory)
+Platform.cpp~:							? platform->GetMassStorage()->CombineName(directory, fileName)
+Platform.cpp~:		platform->MessageF(GENERIC_MESSAGE, "Error: Can't open %s to %s, error code %d\n", location, (writing) ? "write" : "read", openReturn);
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to dup a non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to close a non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to seek on a non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to size non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to read from a non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to read from a non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
+Platform.cpp~:			platform->Message(GENERIC_MESSAGE, "Error: Cannot write to file. Disc may be full.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write byte to a non-open file.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write block to a non-open file.\n");
+Platform.cpp~: 		platform->Message(GENERIC_MESSAGE, "Error: Cannot write to file. Disc may be full.\n");
+Platform.cpp~:		platform->Message(GENERIC_MESSAGE, "Error: Attempt to flush a non-open file.\n");
+Platform.h:		// So you can test for inkjet presence with if(platform->Inkjet(0))
+Platform.h~:		// So you can test for inkjet presence with if(platform->Inkjet(0))
+PrintMonitor.cpp:	longWait = platform->Time();
+PrintMonitor.cpp:		platform->ClassReport(longWait);
+PrintMonitor.cpp:				lastLayerTime = platform->Time();
+PrintMonitor.cpp:				if (liveCoords[Z_AXIS] < platform->GetNozzleDiameter() * 1.1 && !gCodes->DoingFileMacro())
+PrintMonitor.cpp:					firstLayerDuration = platform->Time() - lastLayerTime;
+PrintMonitor.cpp:					const float now = platform->Time();
+PrintMonitor.cpp:	platform->ClassReport(longWait);
+PrintMonitor.cpp:	fileInfoDetected = GetFileInfo(platform->GetGCodeDir(), filename, currentFileInfo);
+PrintMonitor.cpp:	printStartTime = platform->Time();
+PrintMonitor.cpp:				currentFileInfo.generatedBy, (int)((platform->Time() - printStartTime) * 1000.0), fileBeingPrinted);
+PrintMonitor.cpp:	float realPrintDuration = (platform->Time() - printStartTime) - warmUpDuration;
+PrintMonitor.cpp:				float timeLeft = layerEstimatedTimeLeft - (platform->Time() - lastLayerTime);
+PrintMonitor.cpp:			filamentUsed[filamentsFound++] = filamentCMM / (PI * (platform->GetFilamentWidth() / 2.0) * (platform->GetFilamentWidth() / 2.0));
+PrintMonitor.h:inline float PrintMonitor::GetCurrentLayerTime() const { return (lastLayerTime > 0.0) ? (platform->Time() - lastLayerTime) : 0.0; }
+PrintMonitor.h:inline float PrintMonitor::GetPrintDuration() const { return (printStartTime > 0.0) ? (platform->Time() - printStartTime) : 0.0; }
+RepRapFirmware.cpp:	platform->Init();
+RepRapFirmware.cpp:	platform->MessageF(HOST_MESSAGE, "%s Version %s dated %s\n", NAME, VERSION, DATE);
+RepRapFirmware.cpp:	const char *configFile = platform->GetConfigFile();
+RepRapFirmware.cpp:	FileStore *startup = platform->GetFileStore(platform->GetSysDir(), configFile, false);
+RepRapFirmware.cpp:	platform->Message(HOST_MESSAGE, "\nExecuting ");
+RepRapFirmware.cpp:		platform->MessageF(HOST_MESSAGE, "%s... ", platform->GetConfigFile());
+RepRapFirmware.cpp:		platform->MessageF(HOST_MESSAGE, "%s (no configuration file found)... ", platform->GetDefaultFile());
+RepRapFirmware.cpp:		configFile = platform->GetDefaultFile();
+RepRapFirmware.cpp:	platform->Message(HOST_MESSAGE, "Done!\n");
+RepRapFirmware.cpp:		platform->Message(HOST_MESSAGE, "Network disabled.\n");
+RepRapFirmware.cpp:	platform->MessageF(HOST_MESSAGE, "%s is up and running.\n\n", NAME);
+RepRapFirmware.cpp:	lastTime = platform->Time();
+RepRapFirmware.cpp:	platform->Message(GENERIC_MESSAGE, "RepRap class exited.\n");
+RepRapFirmware.cpp:	platform->Exit();
+RepRapFirmware.cpp:	platform->Spin();
+RepRapFirmware.cpp:			platform->MessageF(GENERIC_MESSAGE, "Warning: Tool %d was not driven because its heater temperatures were not high enough\n", t->Number());
+RepRapFirmware.cpp:	float t = platform->Time();
+RepRapFirmware.cpp:	platform->MessageF(GENERIC_MESSAGE, "Slowest main loop (seconds): %f; fastest: %f\n", slowLoop, fastLoop);
+RepRapFirmware.cpp:	platform->Message(GENERIC_MESSAGE, "Diagnostics\n");
+RepRapFirmware.cpp:	platform->MessageF(GENERIC_MESSAGE, "Used output buffers: %d of %d (%d max)\n",
+RepRapFirmware.cpp:	platform->Diagnostics();				// this includes a call to our Timing() function
+RepRapFirmware.cpp:	platform->SetAtxPower(false);		// turn off the ATX power if we can
+RepRapFirmware.cpp:	//platform->DisableInterrupts();
+RepRapFirmware.cpp:		platform->SetHeater(heater, 0.0);
+RepRapFirmware.cpp:			platform->SetMotorCurrent(drive, 0.0);
+RepRapFirmware.cpp:			platform->DisableDrive(drive);
+RepRapFirmware.cpp:		platform->Message(GENERIC_MESSAGE, "Debugging enabled for modules:");
+RepRapFirmware.cpp:				platform->MessageF(GENERIC_MESSAGE, " %s (%u)", moduleName[i], i);
+RepRapFirmware.cpp:		platform->Message(GENERIC_MESSAGE, "\nDebugging disabled for modules:");
+RepRapFirmware.cpp:				platform->MessageF(GENERIC_MESSAGE, " %s(%u)", moduleName[i], i);
+RepRapFirmware.cpp:		platform->Message(GENERIC_MESSAGE, "\n");
+RepRapFirmware.cpp:		platform->Message(GENERIC_MESSAGE, "Debugging disabled\n");
+RepRapFirmware.cpp:	platform->MessageF(GENERIC_MESSAGE, "Error: Attempt to standby a non-existent tool: %d.\n", toolNumber);
+RepRapFirmware.cpp:	platform->MessageF(GENERIC_MESSAGE, "Error: Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
+RepRapFirmware.cpp:		platform->Tick();
+RepRapFirmware.cpp:				platform->SetHeater(i, 0.0);
+RepRapFirmware.cpp:				platform->DisableDrive(i);
+RepRapFirmware.cpp:			platform->SoftwareReset(SoftwareResetReason::stuckInSpin);
+RepRapFirmware.cpp:		response->catf(",\"params\":{\"atxPower\":%d", platform->AtxPower() ? 1 : 0);
+RepRapFirmware.cpp:		float fanValue = (gCodes->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
+RepRapFirmware.cpp:		int v0 = platform->ZProbe();
+RepRapFirmware.cpp:		switch (platform->GetZProbeSecondaryValues(v1, v2))
+RepRapFirmware.cpp:		response->catf(",\"fanRPM\":%d}", static_cast<unsigned int>(platform->GetFanRPM()));
+RepRapFirmware.cpp:	response->catf(",\"time\":%.1f", platform->Time());
+RepRapFirmware.cpp:			const ZProbeParameters probeParams = platform->GetZProbeParameters();
+RepRapFirmware.cpp:			response->catf(",\"type\":%d}", platform->GetZProbeType());
+RepRapFirmware.cpp:		response->catf("%c%.2f", ch, platform->AxisMinimum(axis));
+RepRapFirmware.cpp:		response->catf("%c%.2f", ch, platform->AxisMaximum(axis));
+RepRapFirmware.cpp:		response->catf("%c%.2f", ch, platform->Acceleration(drive));
+RepRapFirmware.cpp:		response->catf("%c%.2f", ch, platform->ConfiguredInstantDv(drive));
+RepRapFirmware.cpp:		response->catf("%c%.2f", ch, platform->MaxFeedrate(drive));
+RepRapFirmware.cpp:	FileStore *configFile = platform->GetFileStore(platform->GetSysDir(), platform->GetConfigFile(), false);
+RepRapFirmware.cpp:	int v0 = platform->ZProbe();
+RepRapFirmware.cpp:	switch (platform->GetZProbeSecondaryValues(v1, v2))
+RepRapFirmware.cpp:	response->catf(",\"fanRPM\":%u", static_cast<unsigned int>(platform->GetFanRPM()));
+RepRapFirmware.cpp:	bool gotFile = platform->GetMassStorage()->FindFirst(dir, fileInfo);
+RepRapFirmware.cpp:		gotFile = platform->GetMassStorage()->FindNext(fileInfo);
+RepRapFirmware.cpp:		platform->Beep(freq, ms);
+Webserver.cpp:	lastTime = platform->Time();
+Webserver.cpp:			platform->ClassReport(longWait);
+Webserver.cpp:				platform->MessageF(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
+Webserver.cpp:		platform->ClassReport(longWait);
+Webserver.cpp:	platform->Message(GENERIC_MESSAGE, "Webserver class exited.\n");
+Webserver.cpp:	platform->Message(GENERIC_MESSAGE, "Webserver Diagnostics:\n");
+Webserver.cpp:			platform->MessageF(HOST_MESSAGE, "Error: Webserver should handle disconnect event at local port %d, but no handler was found!\n", localPort);
+Webserver.cpp:		platform->MessageF(HOST_MESSAGE, "Webserver: ConnectionLost called with port %d\n", localPort);
+Webserver.cpp:	platform->Message(HOST_MESSAGE, "Could not open file while starting upload!\n");
+Webserver.cpp:			platform->Message(HOST_MESSAGE, "Could not flush upload data!\n");
+Webserver.cpp:			platform->GetMassStorage()->Delete("0:/", filenameBeingUploaded);
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Webserver: Closing invalid data connection\n");
+Webserver.cpp:				platform->Message(HOST_MESSAGE, "Could not write remaining data while finishing upload!\n");
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Could not flush remaining data while finishing upload!\n");
+Webserver.cpp:		platform->MessageF(HOST_MESSAGE, "Uploaded file size is different (%u vs. expected %u Bytes)!\n", fileBeingUploaded.Length(), fileLength);
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Could not close the upload file while finishing upload!\n");
+Webserver.cpp:		platform->GetMassStorage()->Delete("0:/", filenameBeingUploaded);
+Webserver.cpp:			sessions[i].lastQueryTime = platform->Time();
+Webserver.cpp:	FileStore *fileToSend = platform->GetFileStore(platform->GetWebDir(), nameOfFileToSend, false);
+Webserver.cpp:		fileToSend = platform->GetFileStore(platform->GetWebDir(), nameOfFileToSend, false);
+Webserver.cpp:			platform->MessageF(HOST_MESSAGE, "KnockOut request: %s not recognised\n", command);
+Webserver.cpp:			FileStore *file = platform->GetFileStore("0:/", value, true);
+Webserver.cpp:			bool ok = platform->GetMassStorage()->Delete("0:/", value);
+Webserver.cpp:			const char* dir = (StringEquals(key, "dir")) ? value : platform->GetGCodeDir();
+Webserver.cpp:					response->printf("{\"err\":%d}", platform->GetMassStorage()->Rename(value, qualifiers[1].value) ? 1 : 0);
+Webserver.cpp:			bool ok = (platform->GetMassStorage()->MakeDirectory(value));
+Webserver.cpp:					platform->MessageF(HOST_MESSAGE, "POST upload for '%s' has been cancelled!\n", filenameBeingUploaded);
+Webserver.cpp:						sessions[i].lastQueryTime = platform->Time();
+Webserver.cpp:		platform->MessageF(HOST_MESSAGE, "HTTP requests with %d command words:", numCommandWords);
+Webserver.cpp:			platform->MessageF(HOST_MESSAGE, " %s", commandWords[i]);
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "\n");
+Webserver.cpp:					FileStore *file = platform->GetFileStore("0:/", qualifiers[0].value, true);
+Webserver.cpp:	platform->MessageF(HOST_MESSAGE, "Webserver: rejecting message with: %s\n", response);
+Webserver.cpp:		sessions[numActiveSessions].lastQueryTime = platform->Time();
+Webserver.cpp:			sessions[i].lastQueryTime = platform->Time();
+Webserver.cpp:	const float time = platform->Time();
+Webserver.cpp:					platform->Message(HOST_MESSAGE, "Error: GCode local buffer overflow in HTTP webserver.\n");
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Error: GCode buffer overflow in HTTP Webserver!\n");
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Webserver: FTP connection established!\n");
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Webserver: Buffer overflow in FTP server!\n");
+Webserver.cpp:				platform->MessageF(HOST_MESSAGE, "FtpInterpreter::ProcessLine called with state %d:\n%s\n", state, clientMessage);
+Webserver.cpp:				platform->Message(HOST_MESSAGE, "FtpInterpreter::ProcessLine call finished.\n");
+Webserver.cpp:				portOpenTime = platform->Time();
+Webserver.cpp:					ok = platform->GetMassStorage()->Delete(nullptr, filename);
+Webserver.cpp:					ok = platform->GetMassStorage()->Delete(currentDir, filename);
+Webserver.cpp:					ok = platform->GetMassStorage()->Delete(nullptr, filename);
+Webserver.cpp:					ok = platform->GetMassStorage()->Delete(currentDir, filename);
+Webserver.cpp:											: platform->GetMassStorage()->CombineName(currentDir, filename);
+Webserver.cpp:				if (platform->GetMassStorage()->MakeDirectory(location))
+Webserver.cpp:					const char *temp = platform->GetMassStorage()->CombineName(currentDir, filename);
+Webserver.cpp:				if (platform->GetMassStorage()->FileExists(filename))
+Webserver.cpp:					if (platform->GetMassStorage()->Rename(oldFilename, filename))
+Webserver.cpp:					const char *newFilename = platform->GetMassStorage()->CombineName(currentDir, filename);
+Webserver.cpp:					if (platform->GetMassStorage()->Rename(oldFilename, newFilename))
+Webserver.cpp:			if (!reprap.Debug(moduleWebserver) && platform->Time() - portOpenTime > pasvPortTimeout)
+Webserver.cpp:					if (platform->GetMassStorage()->FindFirst(currentDir, fileInfo))
+Webserver.cpp:									dirChar, fileInfo.size, platform->GetMassStorage()->GetMonthName(month),
+Webserver.cpp:						} while (platform->GetMassStorage()->FindNext(fileInfo));
+Webserver.cpp:					file = platform->GetFileStore(nullptr, filename, true);
+Webserver.cpp:					file = platform->GetFileStore(currentDir, filename, true);
+Webserver.cpp:					fs = platform->GetFileStore(nullptr, filename, false);
+Webserver.cpp:					fs = platform->GetFileStore(currentDir, filename, false);
+Webserver.cpp:		if (platform->GetMassStorage()->DirectoryExists(combinedPath))
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Webserver: Buffer overflow in Telnet server!\n");
+Webserver.cpp:					platform->Message(HOST_MESSAGE, "Error: GCode local buffer overflow in Telnet webserver.\n");
+Webserver.cpp:		platform->Message(HOST_MESSAGE, "Error: GCode buffer overflow in Telnet Webserver!\n");

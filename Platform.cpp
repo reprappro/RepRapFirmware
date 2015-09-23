@@ -32,6 +32,16 @@ const uint32_t fanMaxInterruptCount = 32;			// number of fan interrupts that we 
 static volatile uint32_t fanLastResetTime = 0;		// time (microseconds) at which we last reset the interrupt count, accessed inside and outside ISR
 static volatile uint32_t fanInterval = 0;			// written by ISR, read outside the ISR
 
+//#define MOVE_DEBUG
+
+#ifdef MOVE_DEBUG
+unsigned int numInterruptsScheduled = 0;
+unsigned int numInterruptsExecuted = 0;
+uint32_t nextInterruptTime = 0;
+uint32_t nextInterruptScheduledAt = 0;
+uint32_t lastInterruptTime = 0;
+#endif
+
 // Arduino initialise and loop functions
 // Put nothing in these other than calls to the RepRap equivalents
 
@@ -95,8 +105,8 @@ bool PidParameters::operator==(const PidParameters& other) const
 // Platform class
 
 Platform::Platform() :
-		tickState(0), fileStructureInitialised(false), active(false), errorCodeBits(0), debugCode(0),
-		autoSaveEnabled(false), auxOutputBuffer(nullptr), usbOutputBuffer(nullptr)
+		autoSaveEnabled(false), active(false), errorCodeBits(0), auxOutputBuffer(nullptr), aux2OutputBuffer(nullptr),
+		usbOutputBuffer(nullptr), fileStructureInitialised(false), tickState(0), debugCode(0)
 {
 	// Files
 
@@ -119,11 +129,14 @@ void Platform::Init()
 
 	baudRates[0] = USB_BAUD_RATE;
 	baudRates[1] = AUX_BAUD_RATE;
+	baudRates[2] = AUX2_BAUD_RATE;
 	commsParams[0] = 0;
 	commsParams[1] = 1;							// by default we require a checksum on data from the aux port, to guard against overrun errors
+	// The third serial channel isn't a G-Code source
 
 	SerialUSB.begin(baudRates[0]);
 	Serial.begin(baudRates[1]);					// this can't be done in the constructor because the Arduino port initialisation isn't complete at that point
+	// Commented out by AB Serial1.begin(baudRates[2]);
 
 	static_assert(sizeof(FlashData) + sizeof(SoftwareResetData) <= 1024, "NVData too large");
 
@@ -156,8 +169,7 @@ void Platform::Init()
 	ARRAY_INIT(directionPins, DIRECTION_PINS);
 	ARRAY_INIT(directions, DIRECTIONS);
 	ARRAY_INIT(enablePins, ENABLE_PINS);
-	ARRAY_INIT(lowStopPins, LOW_STOP_PINS);
-	ARRAY_INIT(highStopPins, HIGH_STOP_PINS);
+	ARRAY_INIT(endStopPins, END_STOP_PINS);
 	ARRAY_INIT(maxFeedrates, MAX_FEEDRATES);
 	ARRAY_INIT(accelerations, ACCELERATIONS);
 	ARRAY_INIT(driveStepsPerUnit, DRIVE_STEPS_PER_UNIT);
@@ -213,17 +225,19 @@ void Platform::Init()
 		{
 			pinMode(enablePins[drive], OUTPUT);
 		}
-		if (lowStopPins[drive] >= 0)
+		if (endStopPins[drive] >= 0)
 		{
-			pinMode(lowStopPins[drive], INPUT_PULLUP);
-		}
-		if (highStopPins[drive] >= 0)
-		{
-			pinMode(highStopPins[drive], INPUT_PULLUP);
+			pinMode(endStopPins[drive], INPUT_PULLUP);
 		}
 		motorCurrents[drive] = 0.0;
 		DisableDrive(drive);
 		driveState[drive] = DriveStatus::disabled;
+		SetElasticComp(drive, 0.0);
+		if (drive <= AXES)
+		{
+			endStopType[drive] = EndStopType::lowEndStop;	// assume all endstops are low endstops
+			endStopLogicLevel[drive] = true;				// assume all endstops use active high logic e.g. normally-closed switch to ground
+		}
 	}
 
 	extrusionAncilliaryPWM = 0.0;
@@ -264,7 +278,7 @@ void Platform::Init()
 	// Inkjet
 
 	inkjetBits = INKJET_BITS;
-	if(inkjetBits >= 0)
+	if (inkjetBits >= 0)
 	{
 		inkjetFireMicroseconds = INKJET_FIRE_MICROSECONDS;
 		inkjetDelayMicroseconds = INKJET_DELAY_MICROSECONDS;
@@ -289,6 +303,11 @@ void Platform::Init()
 		pinMode(inkjetClear, OUTPUT);
 		digitalWrite(inkjetClear, HIGH);
 	}
+
+	// Roland
+
+	roland = new Roland(this);
+	roland->Init();
 
 	// Get the show on the road...
 
@@ -327,7 +346,7 @@ void Platform::SetSlowestDrive()
 	slowestDrive = 0;
 	for(size_t drive = 1; drive < DRIVES; drive++)
 	{
-		if(InstantDv(drive) < InstantDv(slowestDrive))
+		if (ConfiguredInstantDv(drive) < ConfiguredInstantDv(slowestDrive))
 		{
 			slowestDrive = drive;
 		}
@@ -339,17 +358,33 @@ void Platform::InitZProbe()
 	zProbeOnFilter.Init(0);
 	zProbeOffFilter.Init(0);
 
-	if (nvData.zProbeType >= 1)
+	if (nvData.zProbeType >= 1 && nvData.zProbeType <= 3)
 	{
 		zProbeModulationPin = (nvData.zProbeChannel == 1) ? Z_PROBE_MOD_PIN07 : Z_PROBE_MOD_PIN;
 		pinMode(zProbeModulationPin, OUTPUT);
 		digitalWrite(zProbeModulationPin, (nvData.zProbeType <= 2) ? HIGH : LOW);	// enable the IR LED or alternate sensor
 	}
+	else if (nvData.zProbeType == 4)
+	{
+		pinMode(endStopPins[E0_AXIS], INPUT_PULLUP);
+	}
 }
 
-int Platform::GetRawZHeight() const
+uint16_t Platform::GetRawZProbeReading() const
 {
-	return (nvData.zProbeType != 0) ? analogRead(zProbePin) : 0;
+	if (nvData.zProbeType == 4)
+	{
+		bool b = (bool)digitalRead(endStopPins[E0_AXIS]);
+		if (!endStopLogicLevel[AXES])
+		{
+			b = !b;
+		}
+		return (b) ? 4000 : 0;
+	}
+	else
+	{
+		return GetAdcReading(zProbeAdcChannel);
+	}
 }
 
 // Return the Z probe data.
@@ -360,9 +395,9 @@ int Platform::ZProbe() const
 	{
 		switch (nvData.zProbeType)
 		{
-			case 1:
-			case 3:
-				// Simple IR sensor, or direct-mode ultrasonic sensor
+			case 1:		// Simple or intelligent IR sensor
+			case 3:		// Alternate sensor
+			case 4:		// Mechanical Z probe
 				return (int) ((zProbeOnFilter.GetSum() + zProbeOffFilter.GetSum()) / (8 * Z_PROBE_AVERAGE_READINGS));
 
 			case 2:
@@ -408,7 +443,7 @@ int Platform::GetZProbeChannel() const
 
 void Platform::SetZProbeAxes(const bool axes[AXES])
 {
-	for(int axis=0; axis<AXES; axis++)
+	for(size_t axis=0; axis<AXES; axis++)
 	{
 		nvData.zProbeAxes[axis] = axes[axis];
 	}
@@ -421,7 +456,7 @@ void Platform::SetZProbeAxes(const bool axes[AXES])
 
 void Platform::GetZProbeAxes(bool (&axes)[AXES])
 {
-	for(int axis=0; axis<AXES; axis++)
+	for(size_t axis=0; axis<AXES; axis++)
 	{
 		axes[axis] = nvData.zProbeAxes[axis];
 	}
@@ -432,6 +467,7 @@ float Platform::ZProbeStopHeight() const
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			return nvData.switchZProbeParameters.GetStopHeight(GetTemperature(0));
 		case 1:
 		case 2:
@@ -448,6 +484,7 @@ float Platform::GetZProbeDiveHeight() const
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			return nvData.switchZProbeParameters.diveHeight;
 		case 1:
 		case 2:
@@ -463,6 +500,7 @@ void Platform::SetZProbeDiveHeight(float height)
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			nvData.switchZProbeParameters.diveHeight = height;
 			break;
 		case 1:
@@ -477,7 +515,7 @@ void Platform::SetZProbeDiveHeight(float height)
 
 void Platform::SetZProbeType(int pt)
 {
-	int newZProbeType = (pt >= 0 && pt <= 3) ? pt : 0;
+	int newZProbeType = (pt >= 0 && pt <= 4) ? pt : 0;
 	if (newZProbeType != nvData.zProbeType)
 	{
 		nvData.zProbeType = newZProbeType;
@@ -518,6 +556,7 @@ const ZProbeParameters& Platform::GetZProbeParameters() const
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 		default:
 			return nvData.switchZProbeParameters;
 
@@ -535,6 +574,7 @@ bool Platform::SetZProbeParameters(const struct ZProbeParameters& params)
 	switch (nvData.zProbeType)
 	{
 		case 0:
+		case 4:
 			if (nvData.switchZProbeParameters != params)
 			{
 				nvData.switchZProbeParameters = params;
@@ -647,12 +687,10 @@ void Platform::SetAutoSave(bool enabled)
 #endif
 }
 
-// AUX device
+// Send beep message to the AUX device
 void Platform::Beep(int freq, int ms)
 {
-	// Send the beep command to the aux channel. There is no flow control on this port, so it can't block for long.
-	scratchString.printf("{\"beep_freq\":%d,\"beep_length\":%d}\n", freq, ms);
-	Serial.print(scratchString.Pointer());
+	MessageF(AUX_MESSAGE, "{\"beep_freq\":%d,\"beep_length\":%d}\n", freq, ms);
 }
 
 // Note: the use of floating point time will cause the resolution to degrade over time.
@@ -756,20 +794,53 @@ void Platform::Spin()
 		}
 	}
 
+/* Commented out by AB
+	// Write non-blocking data to the second AUX line
+	if (aux2OutputBuffer != nullptr)
+	{
+		size_t bytesToWrite = min<size_t>(Serial1.canWrite(), aux2OutputBuffer->BytesLeft());
+		if (bytesToWrite > 0)
+		{
+			Serial1.write(aux2OutputBuffer->Read(bytesToWrite), bytesToWrite);
+		}
+
+		if (aux2OutputBuffer->BytesLeft() == 0)
+		{
+			aux2OutputBuffer = reprap.ReleaseOutput(aux2OutputBuffer);
+		}
+	}
+*/
+
 	// Write non-blocking data to the USB line
 	if (usbOutputBuffer != nullptr)
 	{
-		size_t bytesToWrite = min<size_t>(SerialUSB.canWrite(), usbOutputBuffer->BytesLeft());
-		if (bytesToWrite > 0)
+		if (!SerialUSB)
 		{
-			SerialUSB.write(usbOutputBuffer->Read(bytesToWrite), bytesToWrite);
-		}
+			// If the USB port is not opened, free the data left for writing
+			OutputBuffer *buffer = usbOutputBuffer;
+			usbOutputBuffer = nullptr;
 
-		if (usbOutputBuffer->BytesLeft() == 0)
+			do {
+				buffer = reprap.ReleaseOutput(buffer);
+			} while (buffer != nullptr);
+		}
+		else
 		{
-			usbOutputBuffer = reprap.ReleaseOutput(usbOutputBuffer);
+			// Write as much data as we can...
+			size_t bytesToWrite = min<size_t>(SerialUSB.canWrite(), usbOutputBuffer->BytesLeft());
+			if (bytesToWrite > 0)
+			{
+				SerialUSB.write(usbOutputBuffer->Read(bytesToWrite), bytesToWrite);
+			}
+
+			if (usbOutputBuffer->BytesLeft() == 0)
+			{
+				usbOutputBuffer = reprap.ReleaseOutput(usbOutputBuffer);
+			}
 		}
 	}
+
+	roland->Spin();
 
 	// Diagnostics test
 	if (debugCode == DiagnosticTest::TestSpinLockup)
@@ -792,7 +863,7 @@ void Platform::SoftwareReset(uint16_t reason)
 		{
 			reason |= SoftwareResetReason::inLwipSpin;
 		}
-		if (!Serial.canWrite())
+		if (!Serial.canWrite()) // Commented out by AB || !Serial1.canWrite())
 		{
 			reason |= SoftwareResetReason::inAuxOutput;	// if we are resetting because we are stuck in a Spin function, record whether we are trying to send to aux
 		}
@@ -818,7 +889,11 @@ void Platform::SoftwareReset(uint16_t reason)
 
 void TC3_Handler()
 {
-	TC_GetStatus(TC1, 0);
+	TC1->TC_CHANNEL[0].TC_IDR = TC_IER_CPAS;	// disable the interrupt
+#ifdef MOVE_DEBUG
+	++numInterruptsExecuted;
+	lastInterruptTime = Platform::GetInterruptClocks();
+#endif
 	reprap.Interrupt();
 }
 
@@ -842,23 +917,31 @@ void FanInterrupt()
 
 void Platform::InitialiseInterrupts()
 {
+	// Set the tick interrupt to the highest priority. We need to to monitor the heaters and kick the watchdog.
+	NVIC_SetPriority (SysTick_IRQn, 0);						// set priority for tick interrupts
+
 	// Timer interrupt for stepper motors
+	// The clock rate we use is a compromise. Too fast and the 64-bit square roots take a long time to execute. Too slow and we lose resolution.
+	// We choose a clock divisor of 32, which gives us 0.38us resolution. The next option is 128 which would give 1.524us resolution.
 	pmc_set_writeprotect(false);
 	pmc_enable_periph_clk((uint32_t) TC3_IRQn);
-	TC_Configure(TC1, 0, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK4);
-	TC1 ->TC_CHANNEL[0].TC_IER = TC_IER_CPCS;
-	TC1 ->TC_CHANNEL[0].TC_IDR = ~TC_IER_CPCS;
-	SetInterrupt(STANDBY_INTERRUPT_RATE);
+	TC_Configure(TC1, 0, TC_CMR_WAVE | TC_CMR_WAVSEL_UP | TC_CMR_TCCLKS_TIMER_CLOCK3);
+	TC1 ->TC_CHANNEL[0].TC_IDR = ~(uint32_t)0;				// interrupts disabled for now
+	TC_Start(TC1, 0);
+	TC_GetStatus(TC1, 0);									// clear any pending interrupt
+	NVIC_SetPriority(TC3_IRQn, 2);							// set high priority for this IRQ; it's time-critical
+	NVIC_EnableIRQ(TC3_IRQn);
 
 	// Timer interrupt to keep the networking timers running (called at 16Hz)
 	pmc_enable_periph_clk((uint32_t) TC4_IRQn);
 	TC_Configure(TC1, 1, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK2);
-	uint32_t rc = VARIANT_MCK/8/16; // 8 because we selected TIMER_CLOCK2 above
-	TC_SetRA(TC1, 1, rc/2); // 50% high, 50% low
+	uint32_t rc = (VARIANT_MCK/8)/16;						// 8 because we selected TIMER_CLOCK2 above
+	TC_SetRA(TC1, 1, rc/2);									// 50% high, 50% low
 	TC_SetRC(TC1, 1, rc);
 	TC_Start(TC1, 1);
 	TC1 ->TC_CHANNEL[1].TC_IER = TC_IER_CPCS;
 	TC1 ->TC_CHANNEL[1].TC_IDR = ~TC_IER_CPCS;
+	NVIC_SetPriority(TC4_IRQn, 4);							// Ethernet isn't as critical as the step interrupt
 	NVIC_EnableIRQ(TC4_IRQn);
 
 	// Interrupt for 4-pin PWM fan sense line
@@ -871,26 +954,42 @@ void Platform::InitialiseInterrupts()
 	active = true;							// this enables the tick interrupt, which keeps the watchdog happy
 }
 
-void Platform::SetInterrupt(float s) // Seconds
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
+
+// Schedule an interrupt at the specified clock count, or return true if that time is imminent or has passed already
+/*static*/ bool Platform::ScheduleInterrupt(uint32_t tim)
 {
-	if (s <= 0.0)
+	irqflags_t flags = cpu_irq_save();						// disable interrupts
+	TC_SetRA(TC1, 0, tim);									// set up the compare register
+	TC_GetStatus(TC1, 0);									// clear any pending interrupt
+	int32_t diff = (int32_t)(tim - TC_ReadCV(TC1, 0));		// see how long we have to go
+	bool ret;
+	if (diff < 3)											// if less than about 1us or already passed
 	{
-		//NVIC_DisableIRQ(TC3_IRQn);
-		Message(GENERIC_MESSAGE, "Error: Negative interrupt!\n");
-		s = STANDBY_INTERRUPT_RATE;
+		ret = true;											// tell the caller to simulate an interrupt instead
 	}
-	uint32_t rc = (uint32_t)( (((long)(TIME_TO_REPRAP*s))*84l)/128l );
-	TC_SetRA(TC1, 0, rc/2); //50% high, 50% low
-	TC_SetRC(TC1, 0, rc);
-	TC_Start(TC1, 0);
-	NVIC_EnableIRQ(TC3_IRQn);
+	else
+	{
+		ret = false;
+		TC1 ->TC_CHANNEL[0].TC_IER = TC_IER_CPAS;			// enable the interrupt
+#ifdef MOVE_DEBUG
+		++numInterruptsScheduled;
+		nextInterruptTime = tim;
+		nextInterruptScheduledAt = Platform::GetInterruptClocks();
+#endif
+	}
+	cpu_irq_restore(flags);									// restore interrupt enable status
+	return ret;
 }
 
-//void Platform::DisableInterrupts()
-//{
-//	NVIC_DisableIRQ(TC3_IRQn);
-///	NVIC_DisableIRQ(TC4_IRQn);
-//}
+#if 0	// not used
+void Platform::DisableInterrupts()
+{
+	NVIC_DisableIRQ(TC3_IRQn);
+	NVIC_DisableIRQ(TC4_IRQn);
+}
+#endif
 
 // Process a 1ms tick interrupt
 // This function must be kept fast so as not to disturb the stepper timing, so don't do any floating point maths in here.
@@ -913,32 +1012,32 @@ void Platform::Tick()
 	{
 		case 1:			// last conversion started was a thermistor
 		case 3:
-		{
-			ThermistorAveragingFilter& currentFilter = const_cast<ThermistorAveragingFilter&>(thermistorFilters[currentHeater]);
-			currentFilter.ProcessReading(GetAdcReading(heaterAdcChannels[currentHeater]));
-			StartAdcConversion(zProbeAdcChannel);
-			if (currentFilter.IsValid())
 			{
-				uint32_t sum = currentFilter.GetSum();
-				if (sum < thermistorOverheatSums[currentHeater] || sum >= AD_DISCONNECTED_REAL * THERMISTOR_AVERAGE_READINGS)
+				ThermistorAveragingFilter& currentFilter = const_cast<ThermistorAveragingFilter&>(thermistorFilters[currentHeater]);
+				currentFilter.ProcessReading(GetAdcReading(heaterAdcChannels[currentHeater]));
+				StartAdcConversion(zProbeAdcChannel);
+				if (currentFilter.IsValid())
 				{
-					// We have an over-temperature or bad reading from this thermistor, so turn off the heater
-					// NB - the SetHeater function we call does floating point maths, but this is an exceptional situation so we allow it
-					SetHeater(currentHeater, 0.0);
-					errorCodeBits |= ErrorBadTemp;
+					uint32_t sum = currentFilter.GetSum();
+					if (sum < thermistorOverheatSums[currentHeater] || sum >= AD_DISCONNECTED_REAL * THERMISTOR_AVERAGE_READINGS)
+					{
+						// We have an over-temperature or bad reading from this thermistor, so turn off the heater
+						// NB - the SetHeater function we call does floating point maths, but this is an exceptional situation so we allow it
+						SetHeater(currentHeater, 0.0);
+						errorCodeBits |= ErrorBadTemp;
+					}
 				}
+				++currentHeater;
+				if (currentHeater == HEATERS)
+				{
+					currentHeater = 0;
+				}
+				++tickState;
+				break;
 			}
-			++currentHeater;
-			if (currentHeater == HEATERS)
-			{
-				currentHeater = 0;
-			}
-			++tickState;
-			break;
-		}
 
 		case 2:			// last conversion started was the Z probe, with IR LED on
-			const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
+			const_cast<ZProbeAveragingFilter&>(zProbeOnFilter).ProcessReading(GetRawZProbeReading());
 			StartAdcConversion(heaterAdcChannels[currentHeater]);	// read a thermistor
 			if (currentZProbeType == 2)								// if using a modulated IR sensor
 			{
@@ -948,7 +1047,7 @@ void Platform::Tick()
 			break;
 
 		case 4:			// last conversion started was the Z probe, with IR LED off if modulation is enabled
-			const_cast<ZProbeAveragingFilter&>(zProbeOffFilter).ProcessReading(GetAdcReading(zProbeAdcChannel));
+			const_cast<ZProbeAveragingFilter&>(zProbeOffFilter).ProcessReading(GetRawZProbeReading());
 			// no break
 		case 0:			// this is the state after initialisation, no conversion has been started
 		default:
@@ -994,6 +1093,8 @@ void Platform::Tick()
 	}
 	return (adc_channel_num_t) (int) g_APinDescription[pin].ulADCChannelNumber;
 }
+
+#pragma GCC pop_options
 
 //*************************************************************************************************
 
@@ -1059,6 +1160,11 @@ void Platform::Diagnostics()
 	MessageF(GENERIC_MESSAGE, "Longest block write time: %.1fms\n", FileStore::GetAndClearLongestWriteTime());
 
 	reprap.Timing();
+
+#ifdef MOVE_DEBUG
+	MessageF(GENERIC_MESSAGE, "Interrupts scheduled %u, done %u, last %u, next %u sched at %u, now %u\n",
+			numInterruptsScheduled, numInterruptsExecuted, lastInterruptTime, nextInterruptTime, nextInterruptScheduledAt, GetInterruptClocks());
+#endif
 }
 
 void Platform::DiagnosticTest(int d)
@@ -1147,7 +1253,7 @@ float Platform::GetTemperature(size_t heater) const
 	{
 		rawTemp -= (int) p.adcHighOffset;
 	}
-	if (rawTemp >= AD_DISCONNECTED_VIRTUAL)
+	if (rawTemp >= (int)AD_DISCONNECTED_VIRTUAL)
 	{
 		return ABS_ZERO;		// thermistor is disconnected
 	}
@@ -1192,34 +1298,34 @@ void Platform::SetHeater(size_t heater, float power)
 	analogWrite(heatOnPins[heater], (HEAT_ON == 0) ? 255 - p : p);
 }
 
-EndStopHit Platform::Stopped(size_t drive)
+EndStopHit Platform::Stopped(size_t drive) const
 {
 	if (nvData.zProbeType > 0 && drive < AXES && nvData.zProbeAxes[drive])
 	{
-		int zProbeVal = ZProbe();
-		int zProbeADValue = (nvData.zProbeType == 3) ?
-								nvData.alternateZProbeParameters.adcValue :
-								nvData.irZProbeParameters.adcValue;
-
-		if (zProbeVal >= zProbeADValue)
-			return EndStopHit::lowHit;
-		else if (zProbeVal * 10 >= zProbeADValue * 9)	// if we are at/above 90% of the target value
-			return EndStopHit::lowNear;
-		else
-			return EndStopHit::noStop;
+		return GetZProbeResult();
 	}
 
-	if (lowStopPins[drive] >= 0)
+	if (endStopPins[drive] >= 0 && endStopType[drive] != EndStopType::noEndStop)
 	{
-		if (digitalRead(lowStopPins[drive]) == ENDSTOP_HIT)
-			return EndStopHit::lowHit;
-	}
-	if (highStopPins[drive] >= 0)
-	{
-		if (digitalRead(highStopPins[drive]) == ENDSTOP_HIT)
-			return EndStopHit::highHit;
+		if (digitalRead(endStopPins[drive]) == ((endStopLogicLevel[drive]) ? 1 : 0))
+		{
+			return (endStopType[drive] == EndStopType::highEndStop) ? EndStopHit::highHit : EndStopHit::lowHit;
+		}
 	}
 	return EndStopHit::noStop;
+}
+
+// Return the Z probe result. We assume that if the Z probe is used as an endstop, it is used as the low stop.
+EndStopHit Platform::GetZProbeResult() const
+{
+	const int zProbeVal = ZProbe();
+	const int zProbeADValue =
+		(nvData.zProbeType == 4) ? nvData.switchZProbeParameters.adcValue
+		: (nvData.zProbeType == 3) ? nvData.alternateZProbeParameters.adcValue
+		: nvData.irZProbeParameters.adcValue;
+	return (zProbeVal >= zProbeADValue) ? EndStopHit::lowHit
+		: (zProbeVal * 10 >= zProbeADValue * 9) ? EndStopHit::lowNear   // if we are at/above 90% of the target value
+		: EndStopHit::noStop;
 }
 
 // This is called from the step ISR as well as other places, so keep it fast, especially in the case where the motor is already enabled
@@ -1274,6 +1380,18 @@ void Platform::SetDriveIdle(size_t drive)
 	}
 }
 
+void Platform::SetDrivesIdle()
+{
+	for(size_t drive = 0; drive < DRIVES; drive++)
+	{
+		if (driveState[drive] == DriveStatus::enabled)
+		{
+			driveState[drive] = DriveStatus::idle;
+			UpdateMotorCurrent(drive);
+		}
+	}
+}
+
 // Set the current for a motor. Current is in mA.
 void Platform::SetMotorCurrent(size_t drive, float current)
 {
@@ -1323,15 +1441,6 @@ void Platform::SetIdleCurrentFactor(float f)
 		{
 			UpdateMotorCurrent(drive);
 		}
-	}
-}
-
-void Platform::Step(size_t drive)
-{
-	if (stepPins[drive] >= 0)
-	{
-		digitalWrite(stepPins[drive], 0);
-		digitalWrite(stepPins[drive], 1);
 	}
 }
 
@@ -1428,10 +1537,25 @@ void Platform::Message(MessageType type, const char *message)
 			break;
 
 		case AUX_MESSAGE:
-			// Message that is to be sent to an auxiliary device (blocking)
-			Serial.write(message);
-			Serial.flush();
+			// Message that is to be sent to the first auxiliary device
+			if (auxOutputBuffer != nullptr)
+			{
+				// If we're still busy sending a response to the UART device, append this message to the output buffer
+				auxOutputBuffer->cat(message);
+			}
+			else
+			{
+				// Send the beep command to the aux channel. There is no flow control on this port, so it can't block for long.
+				Serial.write(message);
+				Serial.flush();
+			}
 			break;
+
+		case AUX2_MESSAGE:
+			// Message that is to be sent to the second auxiliary device (blocking)
+                        // vvv Commented out by AB
+			//Serial1.write(message);
+			//Serial1.flush();
 
 		case DISPLAY_MESSAGE:
 			// Message that is to appear on a local display;  \f and \n should be supported.
@@ -1447,35 +1571,38 @@ void Platform::Message(MessageType type, const char *message)
 		case HOST_MESSAGE:
 			// Message that is to be sent via the USB line (non-blocking)
 			//
-			// Allow this type of message only if the USB port is opened
-			if (SerialUSB)
+			// Ensure we have a valid buffer to write to
+			if (usbOutputBuffer == nullptr)
 			{
-				// Ensure we have a valid buffer to write to
-				if (usbOutputBuffer == nullptr && !reprap.AllocateOutput(usbOutputBuffer))
+				OutputBuffer *buffer;
+				if (!reprap.AllocateOutput(buffer))
 				{
 					// Should never happen
 					return;
 				}
+				usbOutputBuffer = buffer;
+			}
 
-				// Check if we need to write the indentation chars first
+			// Check if we need to write the indentation chars first
+			{
 				const size_t stackPointer = reprap.GetGCodes()->GetStackPointer();
 				if (stackPointer > 0)
 				{
 					// First, make sure we get the indentation right
-					char indentation[STACK + 1];
-					for(size_t i = 0; i < stackPointer; i++)
+					char indentation[STACK * 2 + 1];
+					for(size_t i = 0; i < stackPointer * 2; i++)
 					{
 						indentation[i] = ' ';
 					}
-					indentation[stackPointer] = 0;
+					indentation[stackPointer * 2] = 0;
 
 					// Append the indentation string to our chain, or allocate a new buffer if there is none
 					usbOutputBuffer->cat(indentation);
 				}
-
-				// Append the message string to the output buffer chain
-				usbOutputBuffer->cat(message);
 			}
+
+			// Append the message string to the output buffer chain
+			usbOutputBuffer->cat(message);
 			break;
 
 		case HTTP_MESSAGE:
@@ -1527,6 +1654,17 @@ void Platform::Message(const MessageType type, OutputBuffer *buffer)
 				auxOutputBuffer->Append(buffer);
 			}
 			break;
+
+		case AUX2_MESSAGE:
+			// Send this message to the second UART device
+			if (aux2OutputBuffer == nullptr)
+			{
+				aux2OutputBuffer = buffer;
+			}
+			else
+			{
+				aux2OutputBuffer->Append(buffer);
+			}
 
 		case DEBUG_MESSAGE:
 			// Probably rarely used, but supported.
@@ -1618,6 +1756,22 @@ void Platform::SetAtxPower(bool on)
 	digitalWrite(atxPowerPin, (on) ? HIGH : LOW);
 }
 
+void Platform::SetElasticComp(size_t drive, float factor)
+{
+	if (drive < DRIVES)
+	{
+		elasticComp[drive] = factor;
+	}
+}
+
+float Platform::ActualInstantDv(size_t drive) const
+{
+	float idv = instantDvs[drive];
+	float eComp = elasticComp[drive];
+	// If we are using elastic compensation then we need to limit the instantDv to avoid velocity mismatches
+	return (eComp <= 0.0) ? idv : min<float>(idv, 1.0/(eComp * driveStepsPerUnit[drive]));
+}
+
 void Platform::SetBaudRate(size_t chan, uint32_t br)
 {
 	if (chan < NUM_SERIAL_CHANNELS)
@@ -1673,38 +1827,38 @@ void Platform::ResetChannel(size_t chan)
 
 bool Platform::Inkjet(int bitPattern)
 {
-	if(inkjetBits < 0)
+	if (inkjetBits < 0)
 		return false;
-	if(!bitPattern)
+	if (!bitPattern)
 		return true;
 
-    for(int8_t i = 0; i < inkjetBits; i++)
+	for(int8_t i = 0; i < inkjetBits; i++)
 	{
-			if(bitPattern & 1)
+		if (bitPattern & 1)
+		{
+			digitalWrite(inkjetSerialOut, 1);			// Write data to shift register
+
+			for(int8_t j = 0; j <= i; j++)
 			{
-        		digitalWrite(inkjetSerialOut, 1); //Write data to shift register
-            
-        		for(int8_t j = 0; j <= i; j++)
-				{
-					digitalWrite(inkjetShiftClock, HIGH);
-					digitalWrite(inkjetShiftClock,LOW);
-            		digitalWrite(inkjetSerialOut,0);
-        		}
-
-				digitalWrite(inkjetStorageClock, HIGH); //Transfers data from shift register to output register
-				digitalWrite(inkjetStorageClock,LOW);
-            
-				digitalWrite(inkjetOutputEnable, LOW);  // Fire the droplet out
-				delayMicroseconds(inkjetFireMicroseconds);
-				digitalWrite(inkjetOutputEnable,HIGH);
-
-				digitalWrite(inkjetClear, LOW);         // Clear to 0
-				digitalWrite(inkjetClear,HIGH);
-            
-        		delayMicroseconds(inkjetDelayMicroseconds); // Wait for the next bit
+				digitalWrite(inkjetShiftClock, HIGH);
+				digitalWrite(inkjetShiftClock, LOW);
+				digitalWrite(inkjetSerialOut, 0);
 			}
 
-			bitPattern >>= 1; // Put the next bit in the units column
+			digitalWrite(inkjetStorageClock, HIGH);		// Transfers data from shift register to output register
+			digitalWrite(inkjetStorageClock, LOW);
+
+			digitalWrite(inkjetOutputEnable, LOW);		// Fire the droplet out
+			delayMicroseconds(inkjetFireMicroseconds);
+			digitalWrite(inkjetOutputEnable, HIGH);
+
+			digitalWrite(inkjetClear, LOW);				// Clear to 0
+			digitalWrite(inkjetClear, HIGH);
+
+			delayMicroseconds(inkjetDelayMicroseconds); // Wait for the next bit
+		}
+
+		bitPattern >>= 1; // Put the next bit in the units column
 	}
 
 	return true;
@@ -1776,9 +1930,9 @@ void MassStorage::Init()
 
 	// Print some card details (optional)
 
-	/*platform->Message(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
-	platform->Message(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
-	platform->Message(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
+	/*platform->MessageF(HOST_MESSAGE, "SD card detected!\nCapacity: %d\n", sd_mmc_get_capacity(0));
+	platform->MessageF(HOST_MESSAGE, "Bus clock: %d\n", sd_mmc_get_bus_clock(0));
+	platform->MessageF(HOST_MESSAGE, "Bus width: %d\nCard type: ", sd_mmc_get_bus_width(0));
 	switch (sd_mmc_get_type(0))
 	{
 		case CARD_TYPE_SD | CARD_TYPE_HC:
@@ -1816,8 +1970,8 @@ void MassStorage::Init()
 
 const char* MassStorage::CombineName(const char* directory, const char* fileName)
 {
-	int out = 0;
-	int in = 0;
+	size_t out = 0;
+	size_t in = 0;
 
 	if (directory != nullptr)
 	{
@@ -2053,7 +2207,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 							? platform->GetMassStorage()->CombineName(directory, fileName)
 							: fileName;
 	writing = write;
-	lastBufferEntry = FILE_BUFFER_LENGTH - 1;
+	lastBufferEntry = FILE_BUFFER_SIZE - 1;
 	bytesRead = 0;
 
 	FRESULT openReturn = f_open(&file, location, (writing) ? FA_CREATE_ALWAYS | FA_WRITE : FA_OPEN_EXISTING | FA_READ);
@@ -2063,7 +2217,7 @@ bool FileStore::Open(const char* directory, const char* fileName, bool write)
 		return false;
 	}
 
-	bufferPointer = (writing) ? 0 : FILE_BUFFER_LENGTH;
+	bufferPointer = (writing) ? 0 : FILE_BUFFER_SIZE;
 	inUse = true;
 	openCount = 1;
 	return true;
@@ -2122,7 +2276,7 @@ bool FileStore::Seek(FilePosition pos)
 	FRESULT fr = f_lseek(&file, pos);
 	if (fr == FR_OK)
 	{
-		bufferPointer = (writing) ? 0 : FILE_BUFFER_LENGTH;
+		bufferPointer = (writing) ? 0 : FILE_BUFFER_SIZE;
 		bytesRead = pos;
 		return true;
 	}
@@ -2160,10 +2314,10 @@ IOStatus FileStore::Status() const
 	if (!inUse)
 		return IOStatus::nothing;
 
-	if (lastBufferEntry == FILE_BUFFER_LENGTH)
+	if (lastBufferEntry == FILE_BUFFER_SIZE)
 		return IOStatus::byteAvailable;
 
-	if (bufferPointer < lastBufferEntry)
+	if (bufferPointer < (int)lastBufferEntry)
 		return IOStatus::byteAvailable;
 
 	return IOStatus::nothing;
@@ -2171,7 +2325,7 @@ IOStatus FileStore::Status() const
 
 bool FileStore::ReadBuffer()
 {
-	FRESULT readStatus = f_read(&file, buf, FILE_BUFFER_LENGTH, &lastBufferEntry);	// Read a chunk of file
+	FRESULT readStatus = f_read(&file, buf, FILE_BUFFER_SIZE, &lastBufferEntry);	// Read a chunk of file
 	if (readStatus)
 	{
 		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
@@ -2190,7 +2344,7 @@ bool FileStore::Read(char& b)
 		return false;
 	}
 
-	if (bufferPointer >= FILE_BUFFER_LENGTH)
+	if (bufferPointer >= (int)FILE_BUFFER_SIZE)
 	{
 		bool ok = ReadBuffer();
 		if (!ok)
@@ -2199,7 +2353,7 @@ bool FileStore::Read(char& b)
 		}
 	}
 
-	if (bufferPointer >= lastBufferEntry)
+	if (bufferPointer >= (int)lastBufferEntry)
 	{
 		b = 0;  // Good idea?
 		return false;
@@ -2222,18 +2376,15 @@ int FileStore::Read(char* extBuf, unsigned int nBytes)
 		return -1;
 	}
 
-	bufferPointer = FILE_BUFFER_LENGTH;	// invalidate the buffer
-	UINT bytes_read;
-	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytes_read);
-
+	size_t bytesRead;
+	FRESULT readStatus = f_read(&file, extBuf, nBytes, &bytesRead);
 	if (readStatus)
 	{
 		platform->Message(GENERIC_MESSAGE, "Error: Cannot read file.\n");
 		return -1;
 	}
 
-	bytesRead += bytes_read;
-	return (int)bytes_read;
+	return bytesRead;
 }
 
 bool FileStore::WriteBuffer()
@@ -2260,7 +2411,7 @@ bool FileStore::Write(char b)
 	}
 	buf[bufferPointer] = b;
 	bufferPointer++;
-	if (bufferPointer >= FILE_BUFFER_LENGTH)
+	if (bufferPointer >= (int)FILE_BUFFER_SIZE)
 	{
 		return WriteBuffer();
 	}
@@ -2269,20 +2420,7 @@ bool FileStore::Write(char b)
 
 bool FileStore::Write(const char* b)
 {
-	if (!inUse)
-	{
-		platform->Message(GENERIC_MESSAGE, "Error: Attempt to write string to a non-open file.\n");
-		return false;
-	}
-	int i = 0;
-	while (b[i])
-	{
-		if (!Write(b[i++]))
-		{
-			return false;
-		}
-	}
-	return true;
+	return Write(b, strlen(b));
 }
 
 // Direct block write that bypasses the buffer. Used when uploading files.
@@ -2342,3 +2480,197 @@ float FileStore::GetAndClearLongestWriteTime()
 uint32_t FileStore::longestWriteTime = 0;
 
 // vim: ts=4:sw=4
+
+/*****************************************************************************************/
+
+// This class allows the RepRap firmware to transmit commands to a Roland mill
+// See: http://www.rolanddg.com/product/3d/3d/mdx-20_15/mdx-20_15.html
+//      http://altlab.org/d/content/m/pangelo/ideas/rml_command_guide_en_v100.pdf
+
+
+
+Roland::Roland(Platform* p)
+{
+	platform = p;
+}
+
+
+void Roland::Init()
+{
+	pinMode(ROLAND_RTS_PIN, OUTPUT);
+	pinMode(ROLAND_CTS_PIN, INPUT);
+	digitalWrite(ROLAND_RTS_PIN, HIGH);
+	Serial1.begin(ROLAND_BAUD); //For serial comms to mill
+	sBuffer = new StringRef(buffer, ARRAY_SIZE(buffer));
+	sBuffer->Clear();
+	bufferPointer = 0;
+	Zero(1);
+	active = false;
+}
+
+void Roland::Spin()
+{
+	if(!Active())
+		return;
+
+	// Are we sending something to the Roland?
+
+	if(buffer[bufferPointer])
+	{ // Yes.
+		/*platform->Message(HOST_MESSAGE, "Roland: ");
+                platform->Message(HOST_MESSAGE, buffer);
+		platform->Message(HOST_MESSAGE, "\n");
+		sBuffer->Clear();*/
+		if(digitalRead(ROLAND_CTS_PIN))
+			return;
+		Serial1.write(buffer[bufferPointer]);
+		Serial1.flush();
+		//platform->Message(HOST_MESSAGE, "b");
+		bufferPointer++;
+	} else
+	{ // No.
+		// Finished talking to the Roland
+
+		sBuffer->Clear();
+		bufferPointer = 0;
+
+		// Anything new to do?
+
+		EndstopChecks endStopsToCheck;
+		uint8_t moveType;
+		FilePosition filePos;
+		if (reprap.GetGCodes()->ReadMove(move, endStopsToCheck, moveType, filePos))
+		{
+			move[AXES] = move[DRIVES]; // Roland doesn't have extruders etc.
+			ProcessMove();
+		}
+	}
+}
+
+void Roland::Zero(bool feed)
+{
+  platform->Message(HOST_MESSAGE, "Roland zero\n");
+  size_t lim = AXES;
+  if(feed) lim = AXES + 1;
+  for(size_t axis = 0; axis < lim; axis++)
+  {
+    coordinates[axis] = 0;
+    oldCoordinates[axis] = 0;
+    offset[axis] = 0;
+  }
+}
+
+bool Roland::Busy()
+{
+	return buffer[bufferPointer] != 0;
+}
+
+bool Roland::ProcessHome()
+{
+   if(Busy())
+	return false;
+   platform->Message(HOST_MESSAGE, "Roland home\n");
+   sBuffer->printf("H;\n"); 
+   Zero(0);
+   return true;
+}
+
+bool Roland::ProcessDwell(long milliseconds)
+{
+   if(Busy())
+	return false;
+   platform->Message(HOST_MESSAGE, "Roland dwell\n");
+   sBuffer->printf("W%ld;", milliseconds);
+   sBuffer->catf("PD%ld,%ld;", oldCoordinates[0], oldCoordinates[1]);
+   sBuffer->catf("W0;\n");
+   return true;
+}
+
+bool Roland::ProcessG92(float v, size_t axis)
+{
+  if(Busy())
+	return false;
+  platform->Message(HOST_MESSAGE, "Roland G92\n");
+  offset[axis] = oldCoordinates[axis];
+  oldCoordinates[axis] = v;
+  return true;
+}
+
+bool Roland::ProcessSpindle(float rpm)
+{
+   if(Busy())
+	return false;
+   platform->Message(HOST_MESSAGE, "Roland spindle\n");
+   sBuffer->printf("!RC%ld;", (long)(rpm + 100.0));
+   return true;
+
+}
+
+void Roland::ProcessMove()
+{
+  platform->Message(HOST_MESSAGE, "Roland move\n");
+  for(size_t i = 0; i < AXES; i++)
+    coordinates[i] = round(move[i]*ROLAND_FACTOR) + offset[i];
+  coordinates[AXES] = round(move[AXES]);
+
+  // Start with feedrate
+
+  if(coordinates[AXES] != oldCoordinates[AXES])
+    sBuffer->printf("VS%ld;", coordinates[AXES]);
+
+  // Now any Z move
+
+  if(coordinates[Z_AXIS] != oldCoordinates[Z_AXIS])
+  {
+    sBuffer->catf("!PZ%ld;", coordinates[Z_AXIS]);
+    sBuffer->catf("PD%ld,%ld;", oldCoordinates[X_AXIS], oldCoordinates[Y_AXIS]);
+  }
+
+  // Finally any XY move
+
+  if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || (coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]))
+    sBuffer->catf("PD%ld,%ld;", coordinates[0], coordinates[1]);
+
+  
+  sBuffer->catf("\n");
+  
+  for(size_t i = 0; i <= AXES; i++)
+    oldCoordinates[i] = coordinates[i];
+}
+
+
+bool Roland::RawWrite(const char* s)
+{
+  if(Busy())
+	return false;
+  platform->Message(HOST_MESSAGE, "Roland rawwrite\n");
+  sBuffer->copy(s);
+  return true;
+}
+
+bool Roland::Active()
+{
+	return active;
+}
+
+void Roland::Activate()
+{
+	platform->Message(HOST_MESSAGE, "Roland started\n");
+	digitalWrite(ROLAND_RTS_PIN, LOW);
+Serial1.write('a');
+Serial1.flush();
+	active = true;
+}
+
+bool Roland::Deactivate()
+{
+  if(Busy())
+	return false;
+  digitalWrite(ROLAND_RTS_PIN, HIGH);
+  active = false;
+  platform->Message(HOST_MESSAGE, "Roland stopped\n");
+  return true;
+}
+
+
+

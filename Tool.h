@@ -33,10 +33,10 @@ public:
 	Tool(int toolNumber, long d[], int dCount, long h[], int hCount);
 	const float *GetOffset() const;
 	void SetOffset(const float offs[AXES]);
-	int DriveCount() const;
+	size_t DriveCount() const;
 	int Drive(int driveNumber) const;
 	bool ToolCanDrive(bool extrude);
-	int HeaterCount() const;
+	size_t HeaterCount() const;
 	int Heater(int heaterNumber) const;
 	int Number() const;
 	void SetVariables(float* standby, float* active);
@@ -72,17 +72,17 @@ private:
 	int* drives;
 	float* mix;
 	bool mixing;
-	int driveCount;
+	size_t driveCount;
 	int* heaters;
 	float* activeTemperatures;
 	float* standbyTemperatures;
-	int heaterCount;
+	size_t heaterCount;
 	Tool* next;
 	bool active;
 	bool heaterFault;
 	float offset[AXES];
 
-    volatile bool displayColdExtrudeWarning;
+	volatile bool displayColdExtrudeWarning;
 };
 
 inline int Tool::Drive(int driveNumber) const
@@ -90,7 +90,7 @@ inline int Tool::Drive(int driveNumber) const
 	return drives[driveNumber];
 }
 
-inline int Tool::HeaterCount() const
+inline size_t Tool::HeaterCount() const
 {
 	return heaterCount;
 }
@@ -112,7 +112,7 @@ inline int Tool::Number() const
 
 inline void Tool::DefineMix(float* m)
 {
-	for(int8_t drive = 0; drive < driveCount; drive++)
+	for(size_t drive = 0; drive < driveCount; drive++)
 	{
 		mix[drive] = m[drive];
 	}
@@ -138,7 +138,7 @@ inline bool Tool::Mixing() const
 	return mixing;
 }
 
-inline int Tool::DriveCount() const
+inline size_t Tool::DriveCount() const
 {
 	return driveCount;
 }

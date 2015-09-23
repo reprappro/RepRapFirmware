@@ -22,7 +22,7 @@ Additional features in comparison to dc42's and/or RRP's official firmware:
 
 * Reduced Z-probe height for automatic bed compensation from 8mm to 5mm
 
-* Added interrupt to pin 25 (Duet) / pin 10 (Duex4) on the expansion header for 4-pin PWM tacho line (can be viewed with my web interface fork)
+* Added interrupt to pin 10 (Duet) / pin 18 (Duex4) on the expansion header for 4-pin PWM tacho line (can be viewed with my web interface)
 
 * Firmware binaries are built with -O3 optimization enabled
 

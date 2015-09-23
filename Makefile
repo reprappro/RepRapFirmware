@@ -6,7 +6,7 @@
 #
 
 # Referenced component versions
-ARDUINO_VERSION := 1.6.4
+ARDUINO_VERSION := 1.6.5
 GCC_VERSION := 4.8.3-2014q1
 BOSSAC_VERSION := 1.3a-arduino
 
@@ -28,31 +28,31 @@ DUET_PORT := /dev/ttyACM0
 # Determine Arduino path
 UNAME := $(shell uname -s)
 ifeq ($(UNAME),Linux)
- ARDUINO_PATH := $(HOME)/.arduino15
+    ARDUINO_PATH := $(HOME)/.arduino15
 endif
 ifeq ($(UNAME),Darwin)
- ARDUINO_PATH := $(HOME)/Library/Arduino15
+   ARDUINO_PATH := $(HOME)/Library/Arduino15
 endif
 ifeq (,$(wildcard $(ARDUINO_PATH)/.))
- $(error Arduino directory not found! Are you using Arduino $(ARDUINO_VERSION)?)
+   $(error Arduino directory not found! Are you using Arduino $(ARDUINO_VERSION)?)
 endif
 
 # Detect Duet board path
 DUET_BOARD_PATH := $(ARDUINO_PATH)/packages/RepRap/hardware/sam/$(DUET_BOARD_VERSION)
 ifeq (,$(wildcard $(DUET_BOARD_PATH)/.))
- $(error Duet board not found! Install it first via Arduino''s Boards Manager.)
+   $(error Duet board not found! Install it first via Arduino''s Boards Manager.)
 endif
 
 # Detect GCC path
 GCC_PATH := $(ARDUINO_PATH)/packages/arduino/tools/arm-none-eabi-gcc/$(GCC_VERSION)
 ifeq (,$(wildcard $(GCC_PATH)/.))
- $(error GCC toolchain not found! Check your installation.)
+   $(error GCC toolchain not found! Check your installation.)
 endif
 
 # Detect bossac path
 BOSSAC_PATH := $(ARDUINO_PATH)/packages/arduino/tools/bossac/$(BOSSAC_VERSION)/bossac
 ifeq (,$(wildcard $(BOSSAC_PATH)))
- $(warning Bossac not found! Uploading compiled binaries will not work.)
+   $(warning Bossac not found! Uploading compiled binaries will not work.)
 endif
 
 
@@ -68,8 +68,8 @@ INCLUDES := $(PWD)/Libraries/Flash $(PWD)/Libraries/EMAC $(PWD)/Libraries/Lwip $
 INCLUDES += $(DUET_BOARD_PATH)/cores/arduino $(DUET_BOARD_PATH)/variants/duet
 INCLUDES += $(DUET_BOARD_PATH)/system/libsam $(DUET_BOARD_PATH)/system/libsam/include $(DUET_BOARD_PATH)/system/CMSIS/CMSIS/Include $(DUET_BOARD_PATH)/system/CMSIS/Device/ATMEL
 
-CFLAGS += -c -g $(OPTIMIZATION) -w -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single=500 -Dprintf=iprintf -MMD -MP -std=gnu99
-CPPFLAGS += -c -g $(OPTIMIZATION) -w -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single=500 -fno-rtti -fno-exceptions -Dprintf=iprintf -MMD -MP -std=gnu++11
+CFLAGS += -c -g $(OPTIMIZATION) -Wall -Wno-unused-variable -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single=500 -Dprintf=iprintf -MMD -MP -std=gnu99
+CPPFLAGS += -c -g $(OPTIMIZATION) -Wall -Wno-unused-variable -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single=500 -fno-rtti -fno-exceptions -Dprintf=iprintf -MMD -MP -std=gnu++11
 
 DEVICE_FLAGS = -mcpu=cortex-m3 -DF_CPU=84000000L -DARDUINO=$(subst .,,$(ARDUINO_VERSION)) -DARDUINO_SAM_DUE -DARDUINO_ARCH_SAM -D__SAM3X8E__ -mthumb -DUSB_VID=0x2341 -DUSB_PID=0x003e -DUSBCON -DUSB_MANUFACTURER=\"Unknown\" -DUSB_PRODUCT=\"Duet\"
 
