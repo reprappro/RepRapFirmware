@@ -578,7 +578,7 @@ enum class EndStopType
 //      http://altlab.org/d/content/m/pangelo/ideas/rml_command_guide_en_v100.pdf
 
 
-#define ROLAND_FACTOR 100.0
+#define ROLAND_FACTOR (100.0/2.54) // Roland units are 0.001"
 #define ROLAND_RTS_PIN 75  // Expansion pin 29, SPI0_MOSI
 #define ROLAND_CTS_PIN 76 // Expansion pin 28, SPI0_SPCK
 #define ROLAND_BUFFER_SIZE 50
