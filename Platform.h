@@ -600,6 +600,7 @@ class Roland
 		bool ProcessG92(float v, size_t axis);
 		bool ProcessSpindle(float rpm);
 		bool RawWrite(const char* s);
+		void GetCurrentRolandPosition(float moveBuffer[]);
 		bool Active();
 		void Activate();
 		bool Deactivate();

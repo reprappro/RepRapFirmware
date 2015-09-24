@@ -660,7 +660,14 @@ int GCodes::SetUpMove(GCodeBuffer *gb, StringRef& reply)
 	}
 
 	// Load the last position and feed rate into moveBuffer
-	reprap.GetMove()->GetCurrentUserPosition(moveBuffer, moveType);
+
+	if(reprap.GetPlatform()->GetRoland()->Active())
+	{
+		reprap.GetPlatform()->GetRoland()->GetCurrentRolandPosition(moveBuffer);
+	} else
+	{
+	     reprap.GetMove()->GetCurrentUserPosition(moveBuffer, moveType);
+	}
 
 	// Load the move buffer with either the absolute movement required or the relative movement required
 	moveAvailable = LoadMoveBufferFromGCode(gb, false, limitAxes && moveType == 0);
@@ -949,7 +956,12 @@ bool GCodes::DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error)
 	}
 
 	if(reprap.GetPlatform()->GetRoland()->Active())
-		return reprap.GetPlatform()->GetRoland()->ProcessHome();
+	{
+		bool rolHome = reprap.GetPlatform()->GetRoland()->ProcessHome();
+		if(rolHome)
+			axisIsHomed[X_AXIS] = axisIsHomed[Y_AXIS] = axisIsHomed[Z_AXIS] = true;
+		return rolHome;
+	}
 
 	// Homing procedure for delta printers
 	if (reprap.GetMove()->IsDeltaMode())

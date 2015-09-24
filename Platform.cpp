@@ -2504,7 +2504,7 @@ void Roland::Init()
 	sBuffer = new StringRef(buffer, ARRAY_SIZE(buffer));
 	sBuffer->Clear();
 	bufferPointer = 0;
-	Zero(1);
+	Zero(true);
 	active = false;
 }
 
@@ -2513,10 +2513,16 @@ void Roland::Spin()
 	if(!Active())
 		return;
 
+	// 'U' is 01010101 in binary (nice for an oscilloscope...)
+
+	//Serial1.write('U');
+	//Serial1.flush();
+	//return;
+
 	// Are we sending something to the Roland?
 
-	if(buffer[bufferPointer])
-	{ // Yes.
+	if(Busy()) // Busy means we are sending something
+	{
 		/*platform->Message(HOST_MESSAGE, "Roland: ");
                 platform->Message(HOST_MESSAGE, buffer);
 		platform->Message(HOST_MESSAGE, "\n");
@@ -2528,7 +2534,7 @@ void Roland::Spin()
 		//platform->Message(HOST_MESSAGE, "b");
 		bufferPointer++;
 	} else
-	{ // No.
+	{ // Not sending.
 		// Finished talking to the Roland
 
 		sBuffer->Clear();
@@ -2551,9 +2557,10 @@ void Roland::Zero(bool feed)
 {
   platform->Message(HOST_MESSAGE, "Roland zero\n");
   size_t lim = AXES;
-  if(feed) lim = AXES + 1;
+  if(feed) lim++;
   for(size_t axis = 0; axis < lim; axis++)
   {
+    move[axis] = 0.0;
     coordinates[axis] = 0;
     oldCoordinates[axis] = 0;
     offset[axis] = 0;
@@ -2591,8 +2598,10 @@ bool Roland::ProcessG92(float v, size_t axis)
   if(Busy())
 	return false;
   platform->Message(HOST_MESSAGE, "Roland G92\n");
+  move[axis] = v;
+  coordinates[axis] = round(move[axis]*ROLAND_FACTOR) + offset[axis];
   offset[axis] = oldCoordinates[axis];
-  oldCoordinates[axis] = v;
+  oldCoordinates[axis] = coordinates[axis];
   return true;
 }
 
@@ -2606,17 +2615,28 @@ bool Roland::ProcessSpindle(float rpm)
 
 }
 
+void Roland::GetCurrentRolandPosition(float moveBuffer[])
+{
+    for(size_t axis = 0; axis < AXES; axis++)
+	moveBuffer[axis] = move[axis];
+    for(size_t axis = AXES; axis < DRIVES; axis++)
+	moveBuffer[axis] = 0.0;
+    moveBuffer[DRIVES] = move[AXES];
+}
+
 void Roland::ProcessMove()
 {
   platform->Message(HOST_MESSAGE, "Roland move\n");
-  for(size_t i = 0; i < AXES; i++)
-    coordinates[i] = round(move[i]*ROLAND_FACTOR) + offset[i];
+  for(size_t axis = 0; axis < AXES; axis++)
+    coordinates[axis] = round(move[axis]*ROLAND_FACTOR) + offset[axis];
   coordinates[AXES] = round(move[AXES]);
 
   // Start with feedrate
 
   if(coordinates[AXES] != oldCoordinates[AXES])
     sBuffer->printf("VS%ld;", coordinates[AXES]);
+  else
+    sBuffer->Clear();
 
   // Now any Z move
 
@@ -2628,14 +2648,14 @@ void Roland::ProcessMove()
 
   // Finally any XY move
 
-  if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || (coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]))
+  if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || (coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]) )
     sBuffer->catf("PD%ld,%ld;", coordinates[0], coordinates[1]);
 
   
   sBuffer->catf("\n");
   
-  for(size_t i = 0; i <= AXES; i++)
-    oldCoordinates[i] = coordinates[i];
+  for(size_t axis = 0; axis <= AXES; axis++)
+    oldCoordinates[axis] = coordinates[axis];
 }
 
 
@@ -2657,8 +2677,8 @@ void Roland::Activate()
 {
 	platform->Message(HOST_MESSAGE, "Roland started\n");
 	digitalWrite(ROLAND_RTS_PIN, LOW);
-Serial1.write('a');
-Serial1.flush();
+//Serial1.write('a');
+//Serial1.flush();
 	active = true;
 }
 
