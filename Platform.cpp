@@ -2521,6 +2521,9 @@ void Roland::Spin()
 
 	// Are we sending something to the Roland?
 
+	char rol[2];
+	rol[1] = 0;
+
 	if(Busy()) // Busy means we are sending something
 	{
 		/*platform->Message(HOST_MESSAGE, "Roland: ");
@@ -2531,7 +2534,8 @@ void Roland::Spin()
 			return;
 		Serial1.write(buffer[bufferPointer]);
 		Serial1.flush();
-		//platform->Message(HOST_MESSAGE, "b");
+		rol[0]= buffer[bufferPointer];
+		platform->Message(HOST_MESSAGE, rol);
 		bufferPointer++;
 	} else
 	{ // Not sending.
@@ -2610,7 +2614,13 @@ bool Roland::ProcessSpindle(float rpm)
    if(Busy())
 	return false;
    platform->Message(HOST_MESSAGE, "Roland spindle\n");
-   sBuffer->printf("!RC%ld;", (long)(rpm + 100.0));
+   if(rpm < 0.5)
+   { // Stop
+	sBuffer->printf("!MC 0;");
+   } else
+   { // Go
+   	sBuffer->printf("!RC%ld;!MC 1;", (long)(rpm + 100.0));
+   }
    return true;
 
 }
