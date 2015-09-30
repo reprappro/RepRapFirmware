@@ -19,6 +19,7 @@
 #ifndef _WIRING_ANALOG_
 #define _WIRING_ANALOG_
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,7 +38,7 @@ typedef enum _eAnalogReference
  *
  * \param ulMmode Should be set to AR_DEFAULT.
  */
-extern void analogReference( eAnalogReference ulMode ) ;
+extern void analogReference(eAnalogReference ulMode);
 
 /*
  * \brief Writes an analog value (PWM wave) to a pin.
@@ -46,8 +47,8 @@ extern void analogReference( eAnalogReference ulMode ) ;
  * \param ulValue
  * \param Optional: Enable fast PWM (25kHz instead of 1kHz)
  */
-extern void analogWriteDuet( uint32_t ulPin, uint32_t ulValue, bool fastPwm ) ;
-extern void analogWrite( uint32_t ulPin, uint32_t ulValue );
+extern void analogWriteDuet(uint32_t ulPin, uint32_t ulValue, bool fastPwm);
+extern void analogWrite(uint32_t ulPin, uint32_t ulValue);
 
 /*
  * \brief Reads the value from the specified analog pin.
@@ -73,6 +74,13 @@ extern void analogReadResolution(int res);
 extern void analogWriteResolution(int res);
 
 //extern void analogOutputInit( void ) ;
+
+/*
+ * \brief Convert an analog pin number to an ADC channel
+ * 
+ * \param pin
+ */
+extern enum adc_channel_num_t PinToAdcChannel(int pin);
 
 #ifdef __cplusplus
 }

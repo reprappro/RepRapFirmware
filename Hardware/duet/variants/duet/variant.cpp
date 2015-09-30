@@ -210,7 +210,6 @@ extern const PinDescription g_APinDescription[]=
   { PIOB, PIO_PB21,          ID_PIOB, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,                  NO_ADC, NO_ADC, NOT_ON_PWM,  NOT_ON_TIMER }, // PIN 52
   { PIOB, PIO_PB14,          ID_PIOB, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,                  NO_ADC, NO_ADC, NOT_ON_PWM,  NOT_ON_TIMER }, // PIN 53
 
-
   // 54 .. 65 - Analog pins
   // ----------------------
   { PIOA, PIO_PA16X1_AD7,    ID_PIOA, PIO_INPUT,    PIO_DEFAULT, PIN_ATTR_ANALOG,                   ADC0,   ADC7,   NOT_ON_PWM,  NOT_ON_TIMER }, // AD0
@@ -290,19 +289,28 @@ extern const PinDescription g_APinDescription[]=
   { PIOB, PIO_PB15A_CANRX1|PIO_PB14A_CANTX1, ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, (PIN_ATTR_DIGITAL|PIN_ATTR_COMBO), NO_ADC, NO_ADC, NOT_ON_PWM,  NOT_ON_TIMER },
 
   // 92 .. 96 - PIN X0 - X4
-  { PIOA, PIO_PA5,			ID_PIOA, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X0
-  { PIOC, PIO_PC27,			ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X1
-  { PIOA, PIO_PA0,			ID_PIOA, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X2
-  { PIOA, PIO_PA1,			ID_PIOA, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X3
-  { PIOC, PIO_PC11,         ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X4
+  { PIOA, PIO_PA5,     ID_PIOA, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,				NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X0
+  { PIOC, PIO_PC27,    ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,				NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X1
+  { PIOA, PIO_PA0,     ID_PIOA, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,				NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X2
+  { PIOA, PIO_PA1,     ID_PIOA, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,				NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X3
+  { PIOC, PIO_PC11,    ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,				NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X4
 
-  // 97 .. 100 - PWM X5 - X8
+  // 97 .. 109 - PWM X5 - X17
   { PIOC, PIO_PC8B_PWML3,   ID_PIOC, PIO_PERIPH_B, PIO_DEFAULT, (PIN_ATTR_DIGITAL|PIN_ATTR_PWM),	NO_ADC, NO_ADC, PWM_CH3,    NOT_ON_TIMER }, // PWM X5
   { PIOC, PIO_PC2B_PWML0,   ID_PIOC, PIO_PERIPH_B, PIO_DEFAULT, (PIN_ATTR_DIGITAL|PIN_ATTR_PWM),	NO_ADC, NO_ADC, PWM_CH0,    NOT_ON_TIMER }, // PWM X6
   { PIOC, PIO_PC6B_PWML2,   ID_PIOC, PIO_PERIPH_B, PIO_DEFAULT, (PIN_ATTR_DIGITAL|PIN_ATTR_PWM),	NO_ADC, NO_ADC, PWM_CH2,    NOT_ON_TIMER }, // PWM X7
-  { PIOC, PIO_PC20,			ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PWM X8
+  { PIOC, PIO_PC20,         ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X8
+  { PIOD, PIO_PD9,          ID_PIOD, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X9
+  { PIOC, PIO_PC29,         ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X10
+  { PIOC, PIO_PC30,         ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X11
+  { PIOC, PIO_PC10,         ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X12
+  { PIOC, PIO_PC28,         ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X13
+  { PIOB, PIO_PB22,         ID_PIOB, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X14
+  { PIOB, PIO_PB23,         ID_PIOB, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X15
+  { PIOB, PIO_PB24,         ID_PIOB, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,			NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X16
+  { PIOC, PIO_PC4B_PWML1,   ID_PIOC, PIO_PERIPH_B, PIO_DEFAULT, (PIN_ATTR_DIGITAL|PIN_ATTR_PWM),	NO_ADC, NO_ADC, PWM_CH1,    NOT_ON_TIMER }, // PWM X17
 
-  // 101 .. 106 - HSMCI
+  // 110 .. 115 - HSMCI
   { PIOA, PIO_PA20A_MCCDA,  ID_PIOA, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,   				NO_ADC, NO_ADC, NOT_ON_PWM,	NOT_ON_TIMER }, // PIN_HSMCI_MCCDA_GPIO
   { PIOA, PIO_PA19A_MCCK,	ID_PIOA, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN_HSMCI_MCCK_GPIO
   { PIOA, PIO_PA21A_MCDA0,  ID_PIOA, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN_HSMCI_MCDA0_GPIO
@@ -321,9 +329,6 @@ extern const PinDescription g_APinDescription[]=
   { PIOB, PIO_PB7A_ERXER,   ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // ERXER
   { PIOB, PIO_PB8A_EMDC,	ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // EMDC
   { PIOB, PIO_PB9A_EMDIO,   ID_PIOB, PIO_PERIPH_A, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // EMDIO
-
-  // 117 - PIN X25
-  { PIOC, PIO_PC10,			ID_PIOC, PIO_OUTPUT_0, PIO_DEFAULT, PIN_ATTR_DIGITAL,					NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }, // PIN X25
 
   // END
   { NULL, 0, 0, PIO_NOT_A_PIN, PIO_DEFAULT, 0, NO_ADC, NO_ADC, NOT_ON_PWM, NOT_ON_TIMER }
@@ -496,19 +501,20 @@ void init( void )
   digitalWrite(PIN_HSMCI_MCDA3_GPIO, HIGH);
 
   // Initialize Ethernet pins
-  PIO_Configure(g_APinDescription[PIN_EMAC_EREFCK].pPort,g_APinDescription[PIN_EMAC_EREFCK].ulPinType,g_APinDescription[PIN_EMAC_EREFCK].ulPin,g_APinDescription[PIN_EMAC_EREFCK].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ETXEN].pPort,g_APinDescription[PIN_EMAC_ETXEN].ulPinType,g_APinDescription[PIN_EMAC_ETXEN].ulPin,g_APinDescription[PIN_EMAC_ETXEN].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ETX0].pPort,g_APinDescription[PIN_EMAC_ETX0].ulPinType,g_APinDescription[PIN_EMAC_ETX0].ulPin,g_APinDescription[PIN_EMAC_ETX0].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ETX1].pPort,g_APinDescription[PIN_EMAC_ETX1].ulPinType,g_APinDescription[PIN_EMAC_ETX1].ulPin,g_APinDescription[PIN_EMAC_ETX1].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ECRSDV].pPort,g_APinDescription[PIN_EMAC_ECRSDV].ulPinType,g_APinDescription[PIN_EMAC_ECRSDV].ulPin,g_APinDescription[PIN_EMAC_ECRSDV].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ERX0].pPort,g_APinDescription[PIN_EMAC_ERX0].ulPinType,g_APinDescription[PIN_EMAC_ERX0].ulPin,g_APinDescription[PIN_EMAC_ERX0].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ERX1].pPort,g_APinDescription[PIN_EMAC_ERX1].ulPinType,g_APinDescription[PIN_EMAC_ERX1].ulPin,g_APinDescription[PIN_EMAC_ERX1].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_ERXER].pPort,g_APinDescription[PIN_EMAC_ERXER].ulPinType,g_APinDescription[PIN_EMAC_ERXER].ulPin,g_APinDescription[PIN_EMAC_ERXER].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_EMDC].pPort,g_APinDescription[PIN_EMAC_EMDC].ulPinType,g_APinDescription[PIN_EMAC_EMDC].ulPin,g_APinDescription[PIN_EMAC_EMDC].ulPinConfiguration);
-  PIO_Configure(g_APinDescription[PIN_EMAC_EMDIO].pPort,g_APinDescription[PIN_EMAC_EMDIO].ulPinType,g_APinDescription[PIN_EMAC_EMDIO].ulPin,g_APinDescription[PIN_EMAC_EMDIO].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_EREFCK].pPort, g_APinDescription[PIN_EMAC_EREFCK].ulPinType, g_APinDescription[PIN_EMAC_EREFCK].ulPin, g_APinDescription[PIN_EMAC_EREFCK].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ETXEN].pPort, g_APinDescription[PIN_EMAC_ETXEN].ulPinType, g_APinDescription[PIN_EMAC_ETXEN].ulPin, g_APinDescription[PIN_EMAC_ETXEN].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ETX0].pPort, g_APinDescription[PIN_EMAC_ETX0].ulPinType, g_APinDescription[PIN_EMAC_ETX0].ulPin, g_APinDescription[PIN_EMAC_ETX0].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ETX1].pPort, g_APinDescription[PIN_EMAC_ETX1].ulPinType, g_APinDescription[PIN_EMAC_ETX1].ulPin, g_APinDescription[PIN_EMAC_ETX1].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ECRSDV].pPort, g_APinDescription[PIN_EMAC_ECRSDV].ulPinType, g_APinDescription[PIN_EMAC_ECRSDV].ulPin, g_APinDescription[PIN_EMAC_ECRSDV].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ERX0].pPort, g_APinDescription[PIN_EMAC_ERX0].ulPinType, g_APinDescription[PIN_EMAC_ERX0].ulPin, g_APinDescription[PIN_EMAC_ERX0].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ERX1].pPort, g_APinDescription[PIN_EMAC_ERX1].ulPinType, g_APinDescription[PIN_EMAC_ERX1].ulPin, g_APinDescription[PIN_EMAC_ERX1].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_ERXER].pPort, g_APinDescription[PIN_EMAC_ERXER].ulPinType, g_APinDescription[PIN_EMAC_ERXER].ulPin, g_APinDescription[PIN_EMAC_ERXER].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_EMDC].pPort, g_APinDescription[PIN_EMAC_EMDC].ulPinType, g_APinDescription[PIN_EMAC_EMDC].ulPin, g_APinDescription[PIN_EMAC_EMDC].ulPinConfiguration);
+  PIO_Configure(g_APinDescription[PIN_EMAC_EMDIO].pPort, g_APinDescription[PIN_EMAC_EMDIO].ulPinType, g_APinDescription[PIN_EMAC_EMDIO].ulPin, g_APinDescription[PIN_EMAC_EMDIO].ulPinConfiguration);
 }
 
 #ifdef __cplusplus
 }
 #endif
 
+// End

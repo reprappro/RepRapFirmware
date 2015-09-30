@@ -106,6 +106,9 @@ class Move
 		float GetSpeedFactor() const;													// Factor by which we changed the speed factor since the last move
 		void SetSpeedFactor(float factor);
 
+		float GetCoreAxisFactor(size_t axis) const { return axisFactors[axis]; }
+		void SetCoreAxisFactor(size_t axis, float f) { axisFactors[axis] = f; }
+
 	private:
 
 		enum class IdleState : uint8_t { idle, busy, timing };
@@ -173,6 +176,7 @@ class Move
 
 		float extrusionFactors[DRIVES - AXES];											// Extrusion factors (normally 1.0)
 		float speedFactor;																// Speed factor, changed feedrates are multiplied by this
+		float axisFactors[AXES];                               							// Scale XYZ coordinates by this factor
 };
 
 //******************************************************************************************************

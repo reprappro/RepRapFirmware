@@ -235,6 +235,8 @@ static const uint8_t CAN1TX = 89;
 /*
  * Duet pins
  */
+
+// 2015-09-29 chrishamm: I don't see any reason to change the order of NonDue pins here...
 static const uint8_t X0  = 92;
 static const uint8_t X1  = 93;
 static const uint8_t X2  = 94;
@@ -244,31 +246,37 @@ static const uint8_t X5  = 97;
 static const uint8_t X6  = 98;
 static const uint8_t X7  = 99;
 static const uint8_t X8  = 100;
+static const uint8_t X9  = 101;
+static const uint8_t X10  = 102;
+static const uint8_t X11  = 103;
+static const uint8_t X12  = 104; //probe
+static const uint8_t X13  = 105;
+static const uint8_t X14  = 106;
+static const uint8_t X15  = 106;
+static const uint8_t X16  = 108;
+static const uint8_t X17  = 109;
 
 //HSMCI
-static const uint8_t PIN_HSMCI_MCCDA_GPIO  = 101;
-static const uint8_t PIN_HSMCI_MCCK_GPIO  = 102;
-static const uint8_t PIN_HSMCI_MCDA0_GPIO  = 103;
-static const uint8_t PIN_HSMCI_MCDA1_GPIO  = 104;
-static const uint8_t PIN_HSMCI_MCDA2_GPIO  = 105;
-static const uint8_t PIN_HSMCI_MCDA3_GPIO  = 106;
+static const uint8_t PIN_HSMCI_MCCDA_GPIO  = 110;
+static const uint8_t PIN_HSMCI_MCCK_GPIO  = 111;
+static const uint8_t PIN_HSMCI_MCDA0_GPIO  = 112;
+static const uint8_t PIN_HSMCI_MCDA1_GPIO  = 113;
+static const uint8_t PIN_HSMCI_MCDA2_GPIO  = 114;
+static const uint8_t PIN_HSMCI_MCDA3_GPIO  = 115;
 
 //EMAC
-static const uint8_t PIN_EMAC_EREFCK  = 107;
-static const uint8_t PIN_EMAC_ETXEN  = 108;
-static const uint8_t PIN_EMAC_ETX0  = 109;
-static const uint8_t PIN_EMAC_ETX1  = 110;
-static const uint8_t PIN_EMAC_ECRSDV  = 111;
-static const uint8_t PIN_EMAC_ERX0  = 112;
-static const uint8_t PIN_EMAC_ERX1  = 113;
-static const uint8_t PIN_EMAC_ERXER  = 114;
-static const uint8_t PIN_EMAC_EMDC  = 115;
-static const uint8_t PIN_EMAC_EMDIO  = 116;
+static const uint8_t PIN_EMAC_EREFCK  = 116;
+static const uint8_t PIN_EMAC_ETXEN  = 117;
+static const uint8_t PIN_EMAC_ETX0  = 118;
+static const uint8_t PIN_EMAC_ETX1  = 119;
+static const uint8_t PIN_EMAC_ECRSDV  = 120;
+static const uint8_t PIN_EMAC_ERX0  = 121;
+static const uint8_t PIN_EMAC_ERX1  = 122;
+static const uint8_t PIN_EMAC_ERXER  = 123;
+static const uint8_t PIN_EMAC_EMDC  = 124;
+static const uint8_t PIN_EMAC_EMDIO  = 125;
 
-//PROBE RIG
-static const uint8_t X25  = 117;
-
-static const uint32_t MaxPinNumber = 117; // X25
+static const uint32_t MaxPinNumber = 109; // X17
 static const unsigned int pwmFastFrequency = 25000;		// fast PWM frequency for Intel spec PWM fans
 
 #ifdef __cplusplus

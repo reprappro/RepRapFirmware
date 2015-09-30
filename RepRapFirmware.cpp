@@ -753,7 +753,8 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 		response->catf(",\"params\":{\"atxPower\":%d", platform->AtxPower() ? 1 : 0);
 
 		// Cooling fan value
-		float fanValue = (gCodes->CoolingInverted() ? 1.0 - platform->GetFanValue() : platform->GetFanValue());
+		//@TODO T3P3 only reports first PWM fan
+		float fanValue = (gCodes->CoolingInverted() ? 1.0 - platform->GetFanValue(0) : platform->GetFanValue(0));
 		response->catf(",\"fanPercent\":%.2f", fanValue * 100.0);
 
 		// Speed and Extrusion factors

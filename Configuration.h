@@ -24,9 +24,10 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.09g-zpl"
+#define VERSION "1.09h-ch"
 #define DATE "2015-08-25"
-#define AUTHORS "reprappro, dc42, zpl"
+
+#define AUTHORS "reprappro, dc42, chrishamm, t3p3, dnewman"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
 #define FLASH_SAVE_ENABLED
@@ -76,6 +77,9 @@ static const size_t MAX_PROBE_POINTS = 16;					// Maximum number of probe points
 static const size_t MAX_DELTA_PROBE_POINTS = 8;				// Must be <= MaxProbePoints, may be smaller to reduce matrix storage requirements. Preferably a power of 2.
 
 static const float DEFAULT_Z_DIVE = 5.0;					// Millimetres
+static const float DEFAULT_PROBE_SPEED = 2.0;				// Default Z probing speed
+static const float DEFAULT_TRAVEL_SPEED = 100.0;			// Default speed for travel to probe points
+
 static const float TRIANGLE_ZERO = -0.001;					// Millimetres
 static const float SILLY_Z_VALUE = -9999.0;					// Millimetres
 

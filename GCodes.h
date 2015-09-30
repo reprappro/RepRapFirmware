@@ -262,7 +262,7 @@ class GCodes
 		bool axisIsHomed[AXES];										// These record which of the axes have been homed
 		bool waitingForMoveToComplete;
 		bool coolingInverted;
-		float lastFanValue;
+		float lastFan0Value, lastFan1Value;
 		float lastProbedZ;											// The last height at which the Z probe stopped
 		int8_t toolChangeSequence;									// Steps through the tool change procedure
 		CodeQueueItem *internalCodeQueue;							// Linked list of all the queued codes
@@ -381,6 +381,7 @@ inline size_t GCodes::GetStackPointer() const
 	return stackPointer;
 }
 
+//@TODO T3P3 cooling inverted applies for both PWM fans
 inline bool GCodes::CoolingInverted() const
 {
 	return coolingInverted;

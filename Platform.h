@@ -66,9 +66,9 @@ static const float TIME_FROM_REPRAP = 1.0e-6;			// Convert the units used by the
 
 // The physical capabilities of the machine
 
-static const size_t DRIVES = 8;							// The number of drives in the machine, including X, Y, and Z plus extruder drives
+static const size_t DRIVES = 9;							// The number of drives in the machine, including X, Y, and Z plus extruder drives
 static const size_t AXES = 3;							// The number of movement axes in the machine, usually just X, Y and Z. <= DRIVES
-static const int8_t HEATERS = 6;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
+static const int8_t HEATERS = 7;						// The number of heaters in the machine; 0 is the heated bed even if there isn't one
 static const size_t NUM_SERIAL_CHANNELS = 3;			// The number of serial IO channels (USB and two auxiliary UARTs)
 
 // The numbers of entries in each array must correspond with the values of DRIVES,
@@ -77,38 +77,38 @@ static const size_t NUM_SERIAL_CHANNELS = 3;			// The number of serial IO channe
 
 // DRIVES
 
-static const bool ENABLE_DRIVE = false;					// What to send to enable...
-static const bool DISABLE_DRIVE = !ENABLE_DRIVE;		// ... and disable a drive
-
-static const int8_t ENABLE_PINS[DRIVES] = { 29, 27, X1, X0, 37, X8, 50, 47 };
-static const int8_t STEP_PINS[DRIVES] = { 14, 25, 5, X2, 41, 39, X4, 49 };
-static const int8_t DIRECTION_PINS[DRIVES] = { 15, 26, 4, X3, 35, 53, 51, 48 };
+static const int8_t ENABLE_PINS[DRIVES] = { 29, 27, X1, X0, 37, X8, 50, 47, X13 };
+static const bool ENABLE_VALUES[DRIVES] = { false, false, false, false, false, false, false, false, false };	// what to send to enable a drive
+static const int8_t STEP_PINS[DRIVES] = { 14, 25, 5, X2, 41, 39, X4, 49, X10 };
+//static const int8_t STEP_PINS[DRIVES] = { 41, 39, X4, 49, X10, 14, 25, 5, X2  }; // DEBUG!
+static const int8_t DIRECTION_PINS[DRIVES] = { 15, 26, 4, X3, 35, 53, 51, 48, X11 };
 
 static const float DEFAULT_IDLE_CURRENT_FACTOR = 0.3;	// Proportion of normal motor current that we use for idle hold
-static const bool DISABLE_DRIVES[DRIVES] = { false, false, false, true, true, true, true, true };								// Set true to disable a drive when it becomes idle
 
-static const int8_t END_STOP_PINS[DRIVES] = { 11, 28, 60, 31, 24, 46, 45, 44 };
+static const int8_t END_STOP_PINS[DRIVES] = { 11, 28, 60, 31, 24, 46, 45, 44, X9 };
 static const int ENDSTOP_HIT = HIGH;
 
 static const bool FORWARDS = true;
 static const bool BACKWARDS = !FORWARDS;
-static const bool DIRECTIONS[DRIVES] = { BACKWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS };		// What each axis needs to make it go forwards - defaults
+static const bool DIRECTIONS[DRIVES] = { BACKWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS, FORWARDS };		// What each axis needs to make it go forwards - defaults
 
 // Indices for motor current digipots (if any): First 4 are for digipot 1 (on duet), second 4 for digipot 2 (on expansion board)
 static const uint8_t POT_WIPES[DRIVES] = { 1, 3, 2, 0, 1, 3, 2, 0 };			// Only define as many entries as DRIVES are defined
 static const float SENSE_RESISTOR = 0.1;										// Stepper motor current sense resistor
 static const float MAX_STEPPER_DIGIPOT_VOLTAGE = (3.3 * 2.5 / (2.7 + 2.5));		// Stepper motor current reference voltage
+static const float MAX_STEPPER_DAC_VOLTAGE = 2.12;								// Stepper motor current reference voltage for E1 if using a DAC
 
-static const float MAX_FEEDRATES[DRIVES] = { 100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0 };						// mm/sec
-static const float ACCELERATIONS[DRIVES] = { 500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0 };				// mm/sec^2
-static const float DRIVE_STEPS_PER_UNIT[DRIVES] = { 87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0 };	// steps/mm
-static const float INSTANT_DVS[DRIVES] = { 15.0, 15.0, 0.2, 2.0, 2.0, 2.0, 2.0, 2.0 };								// mm/sec
+static const float MAX_FEEDRATES[DRIVES] = { 100.0, 100.0, 3.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0 };						// mm/sec
+static const float ACCELERATIONS[DRIVES] = { 500.0, 500.0, 20.0, 250.0, 250.0, 250.0, 250.0, 250.0, 250.0 };				// mm/sec^2
+static const float DRIVE_STEPS_PER_UNIT[DRIVES] = { 87.4890, 87.4890, 4000.0, 420.0, 420.0, 420.0, 420.0, 420.0, 420.0 };	// steps/mm
+static const float INSTANT_DVS[DRIVES] = { 15.0, 15.0, 0.2, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0 };									// mm/sec
 
 static const size_t E0_DRIVE = 3;
 static const size_t E1_DRIVE = 4;
 static const size_t E2_DRIVE = 5;
 static const size_t E3_DRIVE = 6;
 static const size_t E4_DRIVE = 7;
+static const size_t E5_DRIVE = 8;
 
 // AXES
 
@@ -117,7 +117,6 @@ static const size_t A_AXIS = 0, B_AXIS = 1, C_AXIS = 2;						// The indices of t
 
 static const float AXIS_MINIMA[AXES] = { 0.0, 0.0, 0.0 };					// mm
 static const float AXIS_MAXIMA[AXES] = { 230.0, 210.0, 200.0 };				// mm
-static const float HOME_FEEDRATES[AXES] = { 50.0, 50.0, 100.0/60.0 };		// mm/sec (dc42 increased Z because we slow down z-homing when approaching the target height)
 
 static const float DEFAULT_PRINT_RADIUS = 50.0;								// mm
 static const float DEFAULT_DELTA_HOMED_HEIGHT = 200.0;						// mm
@@ -126,14 +125,14 @@ static const float DEFAULT_DELTA_HOMED_HEIGHT = 200.0;						// mm
 
 static const bool HEAT_ON = false;											// false for inverted heater (eg Duet v0.6), true for not (e.g. Duet v0.4)
 
-static const int8_t TEMP_SENSE_PINS[HEATERS] = { 5, 4, 0, 7, 8, 9 };		// Analogue pin numbers
-static const int8_t HEAT_ON_PINS[HEATERS] = { 6, X5, X7, 7, 8, 9 };			// Pin D38 is PWM capable but not an Arduino PWM pin
+static const int8_t TEMP_SENSE_PINS[HEATERS] = { 5, 4, 0, 7, 8, 9, 11 };	// Analogue pin numbers
+static const int8_t HEAT_ON_PINS[HEATERS] = { 6, X5, X7, 7, 8, 9, -1 };		// Heater Channel 7 (pin X17) is shared with Fan1. Only define 1 or the other
 
 // Bed thermistor: http://uk.farnell.com/epcos/b57863s103f040/sensor-miniature-ntc-10k/dp/1299930?Ntt=129-9930
 // Hot end thermistor: http://www.digikey.co.uk/product-search/en?x=20&y=11&KeyWords=480-3137-ND
-static const float DEFAULT_THERMISTOR_BETAS[HEATERS] = { 3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0 };				// Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
-static const float DEFAULT_THERMISTOR_SERIES_RS[HEATERS] = { 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0 };			// Ohms in series with the thermistors
-static const float DEFAULT_THERMISTOR_25_RS[HEATERS] = { 10000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0 };	// Thermistor ohms at 25 C = 298.15 K
+static const float DEFAULT_THERMISTOR_BETAS[HEATERS] = { 3988.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0, 4138.0 };				// Bed thermistor: B57861S104F40; Extruder thermistor: RS 198-961
+static const float DEFAULT_THERMISTOR_SERIES_RS[HEATERS] = { 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0, 1000.0 };			// Ohms in series with the thermistors
+static const float DEFAULT_THERMISTOR_25_RS[HEATERS] = { 10000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0, 100000.0 };	// Thermistor ohms at 25 C = 298.15 K
 
 // Note on hot end PID parameters:
 // The system is highly nonlinear because the heater power is limited to a maximum value and cannot go negative.
@@ -160,17 +159,17 @@ static const float DEFAULT_THERMISTOR_25_RS[HEATERS] = { 10000.0, 100000.0, 1000
 // This allows us to switch between PID and bang-bang using the M301 and M304 commands.
 
 // We use method 2 (see above)
-static const float DEFAULT_PID_KIS[HEATERS] = { 5.0, 0.2, 0.2, 0.2, 0.2, 0.2 };				// Integral PID constants
-static const float DEFAULT_PID_KDS[HEATERS] = { 500.0, 100.0, 100.0, 100.0, 100.0, 100.0 };	// Derivative PID constants
-const float DEFAULT_PID_KPS[HEATERS] = { -1.0, 10.0, 10.0, 10.0, 10.0, 10.0 };				// Proportional PID constants, negative values indicate use bang-bang instead of PID
-static const float DEFAULT_PID_KTS[HEATERS] = { 2.7, 0.4, 0.4, 0.4, 0.4, 0.4 };				// Approximate PWM value needed to maintain temperature, per degC above room temperature
-static const float DEFAULT_PID_KSS[HEATERS] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };				// PWM scaling factor, to allow for variation in heater power and supply voltage
-static const float DEFAULT_PID_FULLBANDS[HEATERS] = { 5.0, 30.0, 30.0, 30.0, 30.0, 30.0 };	// Errors larger than this cause heater to be on or off
-static const float DEFAULT_PID_MINS[HEATERS] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };			// Minimum value of I-term
-const float DEFAULT_PID_MAXES[HEATERS] = { 255.0, 180.0, 180.0, 180.0, 180.0, 180.0 };		// Maximum value of I-term, must be high enough to reach 245C for ABS printing
+static const float DEFAULT_PID_KIS[HEATERS] = { 5.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2 };				// Integral PID constants
+static const float DEFAULT_PID_KDS[HEATERS] = { 500.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0 };	// Derivative PID constants
+const float DEFAULT_PID_KPS[HEATERS] = { -1.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0 };				// Proportional PID constants, negative values indicate use bang-bang instead of PID
+static const float DEFAULT_PID_KTS[HEATERS] = { 2.7, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4 };				// Approximate PWM value needed to maintain temperature, per degC above room temperature
+static const float DEFAULT_PID_KSS[HEATERS] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };				// PWM scaling factor, to allow for variation in heater power and supply voltage
+static const float DEFAULT_PID_FULLBANDS[HEATERS] = { 5.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0 };	// Errors larger than this cause heater to be on or off
+static const float DEFAULT_PID_MINS[HEATERS] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };				// Minimum value of I-term
+const float DEFAULT_PID_MAXES[HEATERS] = { 255.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0 };		// Maximum value of I-term, must be high enough to reach 245C for ABS printing
 
-static const float STANDBY_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO }; // We specify one for the bed, though it's not needed
-static const float ACTIVE_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO };
+static const float STANDBY_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO }; // We specify one for the bed, though it's not needed
+static const float ACTIVE_TEMPERATURES[HEATERS] = { ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO, ABS_ZERO };
 
 static const int8_t HOT_BED_HEATER = 0;					// Index of the heated bed
 static const int8_t E0_HEATER = 1;						// Index of the first extruder heater
@@ -178,12 +177,14 @@ static const int8_t E1_HEATER = 2;						// Index of the second extruder heater
 static const int8_t E2_HEATER = 3;						// Index of the third extruder heater
 static const int8_t E3_HEATER = 4;						// Index of the fourth extruder heater
 static const int8_t E4_HEATER = 5;						// Index of the fifth extruder heater
+static const int8_t E5_HEATER = 6;						// Index of the sixth extruder heater
 
 
 // COOLING FAN
 
-static const uint8_t COOLING_FAN_PIN = X6;				// Pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
-static const uint8_t COOLING_FAN_RPM_PIN = 23;			// Pin PA15
+static const int8_t COOLING_FAN0_PIN = X6;				// Pin D34 is PWM capable but not an Arduino PWM pin - use X6 instead
+static const int8_t COOLING_FAN1_PIN = X17;
+static const int8_t COOLING_FAN_RPM_PIN = 23;			// Pin PA15
 static const float COOLING_FAN_RPM_SAMPLE_TIME = 2.0;	// Seconds
 
 
@@ -207,7 +208,7 @@ static const int Z_PROBE_AD_VALUE = 400;						// Default for the Z proboe - shou
 static const float Z_PROBE_STOP_HEIGHT = 0.7;					// Millimetres
 static const int8_t Z_PROBE_PIN = 10;							// Analogue pin number
 static const int8_t Z_PROBE_MOD_PIN = 52;						// Digital pin number to turn the IR LED on (high) or off (low)
-static const int8_t Z_PROBE_MOD_PIN07 = X25;					// Digital pin number to turn the IR LED on (high) or off (low) on Duet v0.7 onwards
+static const int8_t Z_PROBE_MOD_PIN07 = X12;					// Digital pin number to turn the IR LED on (high) or off (low) on Duet v0.7 onwards
 static const bool Z_PROBE_AXES[AXES] = { true, false, true };	// Axes for which the Z-probe is normally used
 static const unsigned int Z_PROBE_AVERAGE_READINGS = 8;			// We average this number of readings with IR on, and the same number with IR off
 
@@ -391,6 +392,23 @@ class FileStore
 
 /***************************************************************************************************************/
 
+// Class to give fast access to digital output pins for stepping
+
+class OutputPin
+{
+	private:
+		Pio *pPort;
+		uint32_t ulPin;
+
+	public:
+		explicit OutputPin(unsigned int pin);
+		OutputPin() : pPort(PIOC), ulPin(1 << 31) {}                    // default constructor needed for array init - accesses PC31 which isn't on the package, so safe
+		void SetHigh() const { pPort->PIO_SODR = ulPin; }
+		void SetLow() const { pPort->PIO_CODR = ulPin; }
+};
+
+/***************************************************************************************************************/
+
 // Struct for holding Z probe parameters
 
 struct ZProbeParameters
@@ -400,7 +418,9 @@ struct ZProbeParameters
 	float height;							// Nozzle height at which the target ADC value is returned
 	float calibTemperature;					// Temperature at which we did the calibration
 	float temperatureCoefficient;			// Variation of height with bed temperature
-	float diveHeight;						// The dive height we use when probing
+	float diveHeight;						// Dive height we use when probing
+	float probeSpeed;						// Initial speed of probing
+	float travelSpeed;						// Speed at which we travel to the probe point
 	float param1, param2;					// Extra parameters used by some types of probe e.g. Delta probe
 
 	void Init(float h)
@@ -411,6 +431,8 @@ struct ZProbeParameters
 		calibTemperature = 20.0;
 		temperatureCoefficient = 0.0;		// no default temperature correction
 		diveHeight = DEFAULT_Z_DIVE;
+		probeSpeed = DEFAULT_PROBE_SPEED;
+		travelSpeed = DEFAULT_TRAVEL_SPEED;
 		param1 = param2 = 0.0;
 	}
 
@@ -428,6 +450,8 @@ struct ZProbeParameters
 				&& calibTemperature == other.calibTemperature
 				&& temperatureCoefficient == other.temperatureCoefficient
 				&& diveHeight == other.diveHeight
+				&& probeSpeed == other.probeSpeed
+				&& travelSpeed == other.travelSpeed
 				&& param1 == other.param1
 				&& param2 == other.param2;
 	}
@@ -554,6 +578,15 @@ enum MessageType
 	GENERIC_MESSAGE,					// Type byte of a message that is to be sent to the web & host
 };
 
+// Supported board types
+enum class BoardType : uint8_t
+{
+	Auto = 0,
+	Duet_06 = 1,
+	Duet_07 = 2,
+	Duet_085 = 3
+};
+
 // Endstop states
 enum class EndStopHit
 {
@@ -602,6 +635,8 @@ class Platform
 		void SoftwareReset(uint16_t reason);
 		bool AtxPower() const;
 		void SetAtxPower(bool on);
+		void SetBoardType(BoardType bt);
+		const char* GetElectronicsString() const;
 
 		// Timing
 
@@ -651,9 +686,13 @@ class Platform
 		// Movement
 
 		void EmergencyStop();
+		void SetPhysicalDrive(size_t driverNumber, int8_t physicalDrive);
+		int GetPhysicalDrive(size_t driverNumber) const;
 		void SetDirection(size_t drive, bool direction);
 		void SetDirectionValue(size_t drive, bool dVal);
 		bool GetDirectionValue(size_t drive) const;
+		void SetEnableValue(size_t drive, bool eVal);
+		bool GetEnableValue(size_t drive) const;
 		void StepHigh(size_t drive);
 		void StepLow(size_t drive);
 		void EnableDrive(size_t drive);
@@ -676,8 +715,6 @@ class Platform
 		float ConfiguredInstantDv(size_t drive) const;
 		float ActualInstantDv(size_t drive) const;
 		void SetInstantDv(size_t drive, float value);
-		float HomeFeedRate(size_t axis) const;
-		void SetHomeFeedRate(size_t axis, float value);
 		EndStopHit Stopped(size_t drive) const;
 		EndStopHit GetZProbeResult() const;
 		float AxisMaximum(size_t axis) const;
@@ -694,13 +731,11 @@ class Platform
 
 		float ZProbeStopHeight() const;
 		float GetZProbeDiveHeight() const;
-		void SetZProbeDiveHeight(float height);
+		float GetZProbeTravelSpeed() const;
 		int ZProbe() const;
 		int GetZProbeSecondaryValues(int& v1, int& v2);
 		void SetZProbeType(int pt);
 		int GetZProbeType() const;
-		void SetZProbeChannel(int channel);
-		int GetZProbeChannel() const;
 		void SetZProbeAxes(const bool axes[AXES]);
 		void GetZProbeAxes(bool (&axes)[AXES]);
 		const ZProbeParameters& GetZProbeParameters() const;
@@ -720,8 +755,8 @@ class Platform
 		void SetHeater(size_t heater, float power);		// power is a fraction in [0,1]
 		float HeatSampleTime() const;
 		void SetHeatSampleTime(float st);
-		float GetFanValue() const;						// Result is returned in per cent
-		void SetFanValue(float speed);					// Accepts values between 0..1 and 1..255
+		float GetFanValue(size_t fan) const;			// Result is returned in per cent
+		void SetFanValue(size_t fan, float speed);		// Accepts values between 0..1 and 1..255
 		float GetFanRPM();
 		void SetPidParameters(size_t heater, const PidParameters& params);
 		const PidParameters& GetPidParameters(size_t heater) const;
@@ -751,6 +786,13 @@ class Platform
 		// So you can test for inkjet presence with if(platform->Inkjet(0))
 
 		bool Inkjet(int bitPattern);
+
+		// Two functions to set and get any processor pin.
+		// Only for use by the M579 command with extreme caution.  Don't use these
+		// for anything else.
+
+		void SetOutputPin(int pin, bool value);
+		bool GetInputPin(int pin);
 
 	private:
 		void ResetChannel(size_t chan); // re-initialise a serial channel
@@ -796,6 +838,8 @@ class Platform
 		FlashData nvData;
 		bool autoSaveEnabled;
 
+		BoardType board;
+
 		float lastTime;
 		float longWait;
 		float addToTime;
@@ -814,12 +858,16 @@ class Platform
 		void SetSlowestDrive();
 		void UpdateMotorCurrent(size_t drive);
 
-		int8_t stepPins[DRIVES];
+		// Note that
+		int8_t stepPins[DRIVES];					// the Arduino pin numbers for the stepper pins
+		OutputPin stepPinDescriptors[DRIVES];		// output pin descriptors for faster access, with the driver number mapping already done
 		int8_t directionPins[DRIVES];
 		int8_t enablePins[DRIVES];
 		volatile DriveStatus driveState[DRIVES];
 		bool directions[DRIVES];
+		bool enableValues[DRIVES];
 		int8_t endStopPins[DRIVES];
+		int8_t driverNumbers[DRIVES];
 		float maxFeedrates[DRIVES];
 		float accelerations[DRIVES];
 		float driveStepsPerUnit[DRIVES];
@@ -834,6 +882,7 @@ class Platform
 		int8_t potWipes[DRIVES];
 		float senseResistor;
 		float maxStepperDigipotVoltage;
+		float maxStepperDACVoltage;
 
 		// Z-Probe
 
@@ -853,21 +902,21 @@ class Platform
 
 		float axisMaxima[AXES];
 		float axisMinima[AXES];
-		float homeFeedrates[AXES];
 		EndStopType endStopType[AXES+1];
 		bool endStopLogicLevel[AXES+1];
 
 		// HEATERS - Bed is assumed to be the first
 
 		int GetRawTemperature(size_t heater) const;
+		void SetHeaterPwm(size_t heater, uint8_t pwm);
 
 		int8_t tempSensePins[HEATERS];
 		int8_t heatOnPins[HEATERS];
 		float heatSampleTime;
 		float standbyTemperatures[HEATERS];
 		float activeTemperatures[HEATERS];
-		float coolingFanValue;
-		int8_t coolingFanPin;
+		float coolingFan0Value, coolingFan1Value;
+		int8_t coolingFan0Pin, coolingFan1Pin;
 		int8_t coolingFanRpmPin;
 		float timeToHot;
 		float lastRpmResetTime;
@@ -904,7 +953,6 @@ class Platform
 
 		static uint16_t GetAdcReading(adc_channel_num_t chan);
 		static void StartAdcConversion(adc_channel_num_t chan);
-		static adc_channel_num_t PinToAdcChannel(int pin);
 
 		// Hotend configuration
 
@@ -1081,7 +1129,7 @@ inline void Platform::ExtrudeOn()
 {
 	if (extrusionAncilliaryPWM > 0.0)
 	{
-		SetFanValue(extrusionAncilliaryPWM);
+		SetFanValue(0, extrusionAncilliaryPWM);		//@TODO T3P3 currently only turns fan0 on
 	}
 }
 
@@ -1091,7 +1139,7 @@ inline void Platform::ExtrudeOff()
 {
 	if (extrusionAncilliaryPWM > 0.0)
 	{
-		SetFanValue(0.0);
+		SetFanValue(0, 0.0);						//@TODO T3P3 currently only turns fan0 off
 	}
 }
 
@@ -1165,14 +1213,14 @@ inline bool Platform::GetDirectionValue(size_t drive) const
 	return directions[drive];
 }
 
-inline float Platform::HomeFeedRate(size_t axis) const
+inline void Platform::SetEnableValue(size_t drive, bool eVal)
 {
-	return homeFeedrates[axis];
+	enableValues[drive] = eVal;
 }
 
-inline void Platform::SetHomeFeedRate(size_t axis, float value)
+inline bool Platform::GetEnableValue(size_t drive) const
 {
-	homeFeedrates[axis] = value;
+	return enableValues[drive];
 }
 
 inline float Platform::AxisMaximum(size_t axis) const
@@ -1203,12 +1251,12 @@ inline float Platform::AxisTotalLength(size_t axis) const
 // The A4988 requires 1us minimum pulse width, so we make separate StepHigh and StepLow calls so that we don't waste this time
 inline void Platform::StepHigh(size_t drive)
 {
-	digitalWrite(stepPins[drive], 1);
+	stepPinDescriptors[drive].SetHigh();
 }
 
 inline void Platform::StepLow(size_t drive)
 {
-	digitalWrite(stepPins[drive], 0);
+	stepPinDescriptors[drive].SetLow();
 }
 
 //********************************************************************************************************
@@ -1359,6 +1407,21 @@ inline float Platform::GetNozzleDiameter() const
 inline void Platform::SetNozzleDiameter(float diameter)
 {
 	nozzleDiameter = diameter;
+}
+
+// Two functions to set and get any processor pin.
+// Only for use by the M579 command with extreme caution.  Don't use these
+// for anything else.
+
+inline void Platform::SetOutputPin(int pin, bool value)
+{
+	pinMode(pin, OUTPUT);
+	digitalWrite(pin, value);	
+}
+
+inline bool Platform::GetInputPin(int pin)
+{
+	return digitalRead(pin);
 }
 
 //***************************************************************************************

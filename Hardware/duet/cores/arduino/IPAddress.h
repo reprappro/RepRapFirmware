@@ -21,7 +21,7 @@
 #define IPAddress_h
 
 #include <stdint.h>
-#include <Printable.h>
+#include "Printable.h"
 
 // A class to make it easier to handle and pass around IP addresses
 
@@ -44,6 +44,9 @@ public:
     IPAddress(uint8_t first_octet, uint8_t second_octet, uint8_t third_octet, uint8_t fourth_octet);
     IPAddress(uint32_t address);
     IPAddress(const uint8_t *address);
+
+    bool fromString(const char *address);
+    //bool fromString(const String &address) { return fromString(address.c_str()); }    // WString not supported
 
     // Overloaded cast operator to allow IPAddress objects to be used where a pointer
     // to a four-byte uint8_t array is expected
@@ -70,6 +73,5 @@ public:
 };
 
 const IPAddress INADDR_NONE(0,0,0,0);
-
 
 #endif

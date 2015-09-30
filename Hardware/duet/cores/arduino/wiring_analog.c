@@ -205,7 +205,8 @@ static bool PWMChanEnabled[8] = {false,false,false,false,false,false,false,false
 static void PWMC_ConfigureChannel_fixed( Pwm* pPwm, uint32_t ul_channel, uint32_t prescaler, uint32_t alignment, uint32_t polarity )
 {
 	/* Disable ul_channel (effective at the end of the current period) */
-	if ((pPwm->PWM_SR & (1 << ul_channel)) != 0) {
+	if ((pPwm->PWM_SR & (1 << ul_channel)) != 0)
+        {
 		pPwm->PWM_DIS = 1 << ul_channel;
 		while ((pPwm->PWM_SR & (1 << ul_channel)) != 0);
 	}
@@ -309,6 +310,16 @@ void analogWriteDuet(uint32_t ulPin, uint32_t ulValue, bool fastPwm)
 void analogWrite( uint32_t ulPin, uint32_t ulValue )
 {
 	analogWriteDuet(ulPin, ulValue, false);
+}
+
+// Convert an Arduino Due analog pin number to the corresponding ADC channel number
+enum adc_channel_num_t PinToAdcChannel(int pin)
+{
+	if (pin < A0)
+	{
+		pin += A0;
+	}
+	return (enum adc_channel_num_t) (int) g_APinDescription[pin].ulADCChannelNumber;
 }
 
 #ifdef __cplusplus

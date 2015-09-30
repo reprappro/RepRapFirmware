@@ -71,10 +71,9 @@ class DDA
 		// the calculation can just be managed in time at speeds of 15000mm/min (step interval 50us), but not at 20000mm/min (step interval 37.5us).
 		// Therefore, where the step interval falls below 70us, we don't calculate on every step.
 		static const int32_t MinCalcInterval = (70 * stepClockRate)/1000000;	// The smallest sensible interval between calculations (70us) in step timer clocks
-
-	private:
 		static const uint32_t minInterruptInterval = 6;							// About 2us minimum interval between interrupts, in clocks
 
+	private:
 		void RecalculateMove();
 		void CalcNewSpeeds();
 		void ReduceHomingSpeed();												// Called to reduce homing speed when a near-endstop is triggered
@@ -145,11 +144,13 @@ inline void DDA::SetDriveCoordinate(int32_t a, size_t drive)
 	endCoordinatesValid = false;
 }
 
-// Insert the specified drive into the step list, in step time order
+// Insert the specified drive into the step list, in step time order.
+// We insert the drive after any existing entries with the same step order so that
+// we serve them in round-robin order.
 inline void DDA::InsertDM(DriveMovement *dm)
 {
 	DriveMovement **dmp = &firstDM;
-	while (*dmp != nullptr && (*dmp)->nextStepTime < dm->nextStepTime)
+	while (*dmp != nullptr && (*dmp)->nextStepTime <= dm->nextStepTime)
 	{
 		dmp = &((*dmp)->nextDM);
 	}

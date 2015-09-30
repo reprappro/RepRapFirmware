@@ -19,94 +19,94 @@
 #include "Arduino.h"
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
-extern void pinModeDuet( uint32_t ulPin, uint32_t ulMode, uint32_t debounceCutoff )
+extern void pinModeDuet(uint32_t ulPin, uint32_t ulMode, uint32_t debounceCutoff)
 {
 	if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
-    {
-        return ;
-    }
+	{
+		return ;
+	}
 
 	switch ( ulMode )
-    {
-        case INPUT:
-            /* Enable peripheral for clocking input */
-            pmc_enable_periph_clk( g_APinDescription[ulPin].ulPeripheralId ) ;
-            PIO_Configure(
-            	g_APinDescription[ulPin].pPort,
-            	PIO_INPUT,
-            	g_APinDescription[ulPin].ulPin,
-				(debounceCutoff == 0) ? 0 : PIO_DEBOUNCE );
-            if (debounceCutoff != 0)
-            {
-            	PIO_SetDebounceFilter(g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, debounceCutoff);	// enable debounce filer with specified cutoff frequency
-            }
-        break ;
+	{
+		case INPUT:
+			/* Enable peripheral for clocking input */
+			pmc_enable_periph_clk( g_APinDescription[ulPin].ulPeripheralId ) ;
+			PIO_Configure(
+					g_APinDescription[ulPin].pPort,
+					PIO_INPUT,
+					g_APinDescription[ulPin].ulPin,
+					(debounceCutoff == 0) ? 0 : PIO_DEBOUNCE );
+			if (debounceCutoff != 0)
+			{
+				PIO_SetDebounceFilter(g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, debounceCutoff);	// enable debounce filer with specified cutoff frequency
+			}
+			break ;
 
-        case INPUT_PULLUP:
-            /* Enable peripheral for clocking input */
-            pmc_enable_periph_clk( g_APinDescription[ulPin].ulPeripheralId ) ;
-            PIO_Configure(
-            	g_APinDescription[ulPin].pPort,
-            	PIO_INPUT,
-            	g_APinDescription[ulPin].ulPin,
-				(debounceCutoff == 0) ? PIO_PULLUP : PIO_PULLUP | PIO_DEBOUNCE );
-            if (debounceCutoff != 0)
-            {
-            	PIO_SetDebounceFilter(g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, debounceCutoff);	// enable debounce filer with specified cutoff frequency
-            }
-        break ;
+		case INPUT_PULLUP:
+			/* Enable peripheral for clocking input */
+			pmc_enable_periph_clk( g_APinDescription[ulPin].ulPeripheralId ) ;
+			PIO_Configure(
+					g_APinDescription[ulPin].pPort,
+					PIO_INPUT,
+					g_APinDescription[ulPin].ulPin,
+					(debounceCutoff == 0) ? PIO_PULLUP : PIO_PULLUP | PIO_DEBOUNCE );
+			if (debounceCutoff != 0)
+			{
+				PIO_SetDebounceFilter(g_APinDescription[ulPin].pPort, g_APinDescription[ulPin].ulPin, debounceCutoff);	// enable debounce filer with specified cutoff frequency
+			}
+			break ;
 
-        case OUTPUT:
-            PIO_Configure(
-            	g_APinDescription[ulPin].pPort,
-            	PIO_OUTPUT_1,
-            	g_APinDescription[ulPin].ulPin,
-            	g_APinDescription[ulPin].ulPinConfiguration ) ;
+		case OUTPUT:
+			PIO_Configure(
+					g_APinDescription[ulPin].pPort,
+					PIO_OUTPUT_1,
+					g_APinDescription[ulPin].ulPin,
+					g_APinDescription[ulPin].ulPinConfiguration ) ;
 
-            /* if all pins are output, disable PIO Controller clocking, reduce power consumption */
-            if ( g_APinDescription[ulPin].pPort->PIO_OSR == 0xffffffff )
-            {
-                pmc_disable_periph_clk( g_APinDescription[ulPin].ulPeripheralId ) ;
-            }
-        break ;
+			/* if all pins are output, disable PIO Controller clocking, reduce power consumption */
+			if ( g_APinDescription[ulPin].pPort->PIO_OSR == 0xffffffff )
+			{
+				pmc_disable_periph_clk( g_APinDescription[ulPin].ulPeripheralId ) ;
+			}
+			break ;
 
-        default:
-        break ;
-    }
+		default:
+			break ;
+	}
 }
 
-extern void pinMode( uint32_t ulPin, uint32_t ulVal )
+extern void pinMode(uint32_t ulPin, uint32_t ulVal)
 {
 	pinModeDuet(ulPin, ulVal, 0);
 }
 
-extern void digitalWrite( uint32_t ulPin, uint32_t ulVal )
+extern void digitalWrite(uint32_t ulPin, uint32_t ulVal)
 {
-  /* Handle */
-  if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
-  {
-    return ;
-  }
+	/* Handle */
+	if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
+	{
+		return ;
+	}
 
-  if (ulVal)		// we make use of the fact that LOW is zero and HIGH is nonzero
-  {
-    g_APinDescription[ulPin].pPort->PIO_SODR = g_APinDescription[ulPin].ulPin;
-  }
-  else
-  {
-    g_APinDescription[ulPin].pPort->PIO_CODR = g_APinDescription[ulPin].ulPin;
-  }
+	if (ulVal)		// we make use of the fact that LOW is zero and HIGH is nonzero
+	{
+		g_APinDescription[ulPin].pPort->PIO_SODR = g_APinDescription[ulPin].ulPin;
+	}
+	else
+	{
+		g_APinDescription[ulPin].pPort->PIO_CODR = g_APinDescription[ulPin].ulPin;
+	}
 }
 
-extern int digitalRead( uint32_t ulPin )
+extern int digitalRead(uint32_t ulPin)
 {
 	if ( ulPin > MaxPinNumber || g_APinDescription[ulPin].ulPinType == PIO_NOT_A_PIN )
-    {
-        return LOW ;
-    }
+	{
+		return LOW ;
+	}
 
 	return (PIO_Get(g_APinDescription[ulPin].pPort, PIO_INPUT, g_APinDescription[ulPin].ulPin ) == 1) ? HIGH : LOW;
 }

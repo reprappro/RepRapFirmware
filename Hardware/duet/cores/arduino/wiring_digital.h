@@ -20,7 +20,7 @@
 #define _WIRING_DIGITAL_
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
 /**
@@ -30,8 +30,8 @@
  * \param ulMode Either INPUT or OUTPUT
  * \param debounceCutoff Debounce cutoff frequency (only one can be set per PIO)
  */
-extern void pinModeDuet( uint32_t dwPin, uint32_t dwMode, uint32_t debounceCutoff );
-extern void pinMode( uint32_t dwPin, uint32_t dwMode );
+extern void pinModeDuet(uint32_t dwPin, uint32_t dwMode, uint32_t debounceCutoff);
+extern void pinMode(uint32_t dwPin, uint32_t dwMode);
 
 /**
  * \brief Write a HIGH or a LOW value to a digital pin.
@@ -53,7 +53,7 @@ extern void pinMode( uint32_t dwPin, uint32_t dwMode );
  * \param dwPin the pin number
  * \param dwVal HIGH or LOW
  */
-extern void digitalWrite( uint32_t dwPin, uint32_t dwVal ) ;
+extern void digitalWrite(uint32_t dwPin, uint32_t dwVal);
 
 /**
  * \brief Reads the value from a specified digital pin, either HIGH or LOW.
@@ -62,7 +62,7 @@ extern void digitalWrite( uint32_t dwPin, uint32_t dwVal ) ;
  *
  * \return HIGH or LOW
  */
-extern int digitalRead( uint32_t ulPin ) ;
+extern int digitalRead(uint32_t ulPin);
 
 #ifdef __cplusplus
 }

@@ -75,7 +75,7 @@ void GCodes::Init()
 	}
 	toolChangeSequence = 0;
 	coolingInverted = false;
-	lastFanValue = 0.0;
+	lastFan0Value = lastFan1Value = 0.0;
 	internalCodeQueue = nullptr;
 	releasedQueueItems = nullptr;
 	for(size_t i=0; i<CODE_QUEUE_LENGTH; i++)
@@ -541,6 +541,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 		if(gb->Seen(axisLetters[axis]))
 		{
 			float moveArg = gb->GetFValue() * distanceScale;
+
 			if (reprap.GetMove()->IsDeltaMode())
 			{
 				// Perform axis scale compensation for Delta configurations
@@ -846,13 +847,35 @@ bool GCodes::DoCannedCycleMove(EndstopChecks ce)
 }
 
 // This sets positions.  I.e. it handles G92.
-
 bool GCodes::SetPositions(GCodeBuffer *gb)
 {
-	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
-		return false;
+	// Don't pause the machine if only extruder drives are being reset (DC, 2015-09-06).
+	// This avoids blobs and seams when the gcode uses absolute E coordinates and periodically includes G92 E0.
+	bool includingAxes = false;
+	for (size_t drive = 0; drive < AXES; ++drive)
+	{
+		if (gb->Seen(axisLetters[drive]))
+		{
+			includingAxes = true;
+			break;
+		}
+	}
 
-	if (LoadMoveBufferFromGCode(gb, true, false))
+	if (includingAxes)
+	{
+		if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+		{
+			return false;
+		}
+	}
+	else if (moveAvailable)			// wait for previous move to be taken so that GetCurrentUserPosition returns the correct value
+	{
+		return false;
+	}
+
+	reprap.GetMove()->GetCurrentUserPosition(moveBuffer, 0);		// make sure move buffer is up to date
+	bool ok = LoadMoveBufferFromGCode(gb, true, false);
+	if (ok && includingAxes)
 	{
 		SetPositions(moveBuffer);
 	}
@@ -1060,7 +1083,7 @@ bool GCodes::DoSingleZProbeAtPoint(int probePointIndex, float heightAdjust)
 		case 0: // Raise Z. This only does anything on the first move; on all the others Z is already there
 			moveToDo[Z_AXIS] = platform->GetZProbeDiveHeight();
 			activeDrive[Z_AXIS] = true;
-			moveToDo[DRIVES] = platform->MaxFeedrate(Z_AXIS);
+			moveToDo[DRIVES] = platform->GetZProbeTravelSpeed();
 			activeDrive[DRIVES] = true;
 			if (DoCannedCycleMove(0))
 			{
@@ -1073,7 +1096,7 @@ bool GCodes::DoSingleZProbeAtPoint(int probePointIndex, float heightAdjust)
 			activeDrive[X_AXIS] = true;
 			activeDrive[Y_AXIS] = true;
 			// NB - we don't use the Z value
-			moveToDo[DRIVES] = platform->MaxFeedrate(X_AXIS);
+			moveToDo[DRIVES] = platform->GetZProbeTravelSpeed();
 			activeDrive[DRIVES] = true;
 			if (DoCannedCycleMove(0))
 			{
@@ -1122,7 +1145,7 @@ bool GCodes::DoSingleZProbeAtPoint(int probePointIndex, float heightAdjust)
 		case 3:	// Raise the head
 			moveToDo[Z_AXIS] = platform->GetZProbeDiveHeight();
 			activeDrive[Z_AXIS] = true;
-			moveToDo[DRIVES] = platform->MaxFeedrate(Z_AXIS);
+			moveToDo[DRIVES] = platform->GetZProbeTravelSpeed();
 			activeDrive[DRIVES] = true;
 			if (DoCannedCycleMove(0))
 			{
@@ -1170,7 +1193,7 @@ int GCodes::DoZProbe(float distance)
 	if (platform->GetZProbeType() == 5)
 	{
 		const ZProbeParameters& params = platform->GetZProbeParameters();
-		return reprap.GetMove()->DoDeltaProbe(params.param1, params.param2, platform->HomeFeedRate(Z_AXIS), distance);
+		return reprap.GetMove()->DoDeltaProbe(params.param1, params.param2, params.probeSpeed, distance);
 	}
 	else
 	{
@@ -1187,7 +1210,7 @@ int GCodes::DoZProbe(float distance)
 
 		moveToDo[Z_AXIS] = -distance;
 		activeDrive[Z_AXIS] = true;
-		moveToDo[DRIVES] = platform->HomeFeedRate(Z_AXIS);
+		moveToDo[DRIVES] = platform->GetZProbeParameters().probeSpeed;
 		activeDrive[DRIVES] = true;
 
 		if (DoCannedCycleMove(ZProbeActive))
@@ -1595,11 +1618,13 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
 	if (!gb->Seen('P'))
 		return true;  // No time given - throw it away
 
-	float dwell = 0.001 * (float) gb->GetLValue(); // P values are in milliseconds; we need seconds
-
 	// Wait for all the queued moves to stop
-	if (!reprap.GetMove()->AllMovesAreFinished())
+	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
+	{
 		return false;
+	}
+
+	float dwell = 0.001 * (float) gb->GetLValue(); // P values are in milliseconds; we need seconds
 
 	if (simulating)
 	{
@@ -3192,6 +3217,21 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			break;
 
+		case 42: // Switch I/O pin
+			if(gb->Seen('P'))
+			{
+				int pin = gb->GetIValue();
+				if(gb->Seen('S'))
+				{
+					platform->SetOutputPin(pin, gb->GetIValue());
+				}
+				else
+				{
+					reply.printf("Pin %d is %s.\n", pin, platform->GetInputPin(pin) ? "high" : "low");
+				}
+			}
+			break;
+
 		case 80: // ATX power on
 		case 81: // ATX power off
 			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
@@ -3382,6 +3422,18 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		case 106: // Set/report fan values
 			{
 				bool seen = false;
+				int fanNumber = 0;
+
+				if (gb->Seen('P'))		// Choose fan number
+				{
+					fanNumber = gb->GetIValue();
+					if (fanNumber < 0 || fanNumber > 1)
+					{
+						error = true;
+						reply.printf("Fan value: %i is invalid, 0 or 1 are valid\n", fanNumber);
+						break;
+					}
+				}
 
 				if (gb->Seen('I'))		// Invert cooling
 				{
@@ -3389,7 +3441,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					seen = true;
 				}
 
-				float f = lastFanValue;
+				float f = (fanNumber == 0) ? lastFan0Value : lastFan1Value;
 				if (gb->Seen('S'))		// Set new fan value
 				{
 					f = gb->GetFValue();
@@ -3402,9 +3454,13 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				{
 					seen = true;
 				}
+				else if (fanNumber == 0)
+				{
+					lastFan0Value = f;
+				}
 				else
 				{
-					lastFanValue = f;
+					lastFan1Value = f;
 				}
 
 				if (seen)
@@ -3412,25 +3468,39 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					if (coolingInverted)
 					{
 						// Check if 1.0 or 255.0 may be used as the maximum value
-						platform->SetFanValue((f <= 1.0 ? 1.0 : 255.0) - f);
+						platform->SetFanValue(fanNumber, (f <= 1.0 ? 1.0 : 255.0) - f);
 					}
 					else
 					{
-						platform->SetFanValue(f);
+						platform->SetFanValue(fanNumber, f);
 					}
 				}
 				else
 				{
-					f = coolingInverted ? (1.0 - platform->GetFanValue()) : platform->GetFanValue();
-					reply.printf("Fan value: %d%%, Cooling inverted: %s\n", (byte)(f * 100.0),
+					f = coolingInverted ? (1.0 - platform->GetFanValue(fanNumber)) : platform->GetFanValue(fanNumber);
+					reply.printf("Fan%i value: %d%%, Cooling inverted: %s\n", fanNumber, (byte)(f * 100.0),
 							coolingInverted ? "yes" : "no");
 				}
 			}
 			break;
 
 		case 107: // Fan off - deprecated
-			platform->SetFanValue(coolingInverted ? 255.0 : 0.0);
-			break;
+			{
+				int fanNumber = 0;
+				if (gb->Seen('P'))
+				{
+					fanNumber = gb->GetIValue();
+					if (fanNumber < 0 || fanNumber > 1)
+					{
+						error = true;
+						reply.printf("Fan value: %i is invalid, 0 or 1 are valid\n", fanNumber);
+						break;
+					}
+				}
+
+				platform->SetFanValue(fanNumber, coolingInverted ? 255.0 : 0.0);
+				break;
+			}
 
 		case 109: // Set Extruder Temperature and Wait - deprecated
 			if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
@@ -3487,8 +3557,15 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			GetCurrentCoordinates(reply);
 			break;
 
-		case 115: // Print firmware version
-			reply.printf("FIRMWARE_NAME:%s FIRMWARE_VERSION:%s ELECTRONICS:%s DATE:%s\n", NAME, VERSION, ELECTRONICS, DATE);
+		case 115: // Print firmware version or set hardware type
+			if (gb->Seen('P'))
+			{
+				platform->SetBoardType((BoardType)gb->GetIValue());
+			}
+			else
+			{
+				reply.printf("FIRMWARE_NAME: %s FIRMWARE_VERSION: %s ELECTRONICS: %s DATE: %s\n", NAME, VERSION, platform->GetElectronicsString(), DATE);
+			}
 			break;
 
 		case 116: // Wait for everything, especially set temperatures
@@ -3933,35 +4010,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			break;
 
 		case 210: // Set/print homing feedrates
-			{
-				bool seen = false;
-				for (size_t axis = 0; axis < AXES; axis++)
-				{
-					if (gb->Seen(axisLetters[axis]))
-					{
-						float value = gb->GetFValue() * distanceScale * SECONDS_TO_MINUTES;
-						platform->SetHomeFeedRate(axis, value);
-						seen = true;
-					}
-				}
-
-				if(!seen)
-				{
-					reply.copy("Homing feedrates (mm/min) - ");
-					char comma = ',';
-					for(size_t axis = 0; axis < AXES; axis++)
-					{
-						if(axis == AXES - 1)
-						{
-							comma = ' ';
-						}
-
-						reply.catf("%c: %.1f%c ", axisLetters[axis],
-								platform->HomeFeedRate(axis) * 60.0 / distanceScale, comma);
-					}
-					reply.cat("\n");
-				}
-			}
+			// This is no longer used, but for backwards compatibility we don't report an error
 			break;
 
 		case 220: // Set/report speed factor override percentage
@@ -4366,7 +4415,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 		case 558: // Set or report Z probe type and for which axes it is used
 			{
-				bool seen = false;
+				bool seenAxes = false, seenType = false, seenParam = false;
 				bool zProbeAxes[AXES];
 				platform->GetZProbeAxes(zProbeAxes);
 				for (size_t axis = 0; axis < AXES; axis++)
@@ -4374,52 +4423,62 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					if (gb->Seen(axisLetters[axis]))
 					{
 						zProbeAxes[axis] = (gb->GetIValue() > 0);
-						seen = true;
+						seenAxes = true;
 					}
 				}
-				if (seen)
+				if (seenAxes)
 				{
 					platform->SetZProbeAxes(zProbeAxes);
 				}
 
 				// We must get and set the Z probe type first before setting the dive height, because different probe types may have different dive heights
-				if (gb->Seen('P'))
+				if (gb->Seen('P'))		// probe type
 				{
 					platform->SetZProbeType(gb->GetIValue());
-					seen = true;
+					seenType = true;
 				}
 
-				if (gb->Seen('H'))
+				ZProbeParameters params = platform->GetZProbeParameters();
+				if (gb->Seen('H'))		// dive height
 				{
-					platform->SetZProbeDiveHeight(gb->GetIValue());
-					seen = true;
+					params.diveHeight = gb->GetFValue();
+					seenParam = true;
 				}
 
-				if (gb->Seen('R'))
+				if (gb->Seen('F'))		// feed rate i.e. probing speed
 				{
-					platform->SetZProbeChannel(gb->GetIValue());
-					seen = true;
+					params.probeSpeed = gb->GetFValue() * SECONDS_TO_MINUTES;
+					seenParam = true;
 				}
 
-				if (gb->Seen('S'))
+				if (gb->Seen('T'))		// travel speed to probe point
 				{
-					ZProbeParameters params = platform->GetZProbeParameters();
+					params.travelSpeed = gb->GetFValue() * SECONDS_TO_MINUTES;
+					seenParam = true;
+				}
+
+				if (gb->Seen('S'))		// extra parameter for experimentation
+				{
 					params.param1 = gb->GetFValue();
-					platform->SetZProbeParameters(params);
-					seen = true;
+					seenParam = true;
 				}
 
-				if (gb->Seen('T'))
+				if (gb->Seen('R'))		// extra parameter for experimentation
 				{
-					ZProbeParameters params = platform->GetZProbeParameters();
 					params.param2 = gb->GetFValue();
-					platform->SetZProbeParameters(params);
-					seen = true;
+					seenParam = true;
 				}
 
-				if (!seen)
+				if (seenParam)
 				{
-					reply.printf("Z Probe type %d, channel %d, dive height %.1f", platform->GetZProbeType(), platform->GetZProbeChannel(), platform->GetZProbeDiveHeight());
+					platform->SetZProbeParameters(params);
+				}
+
+				if (!(seenAxes || seenType || seenParam))
+				{
+					reply.printf("Z Probe type %d, dive height %.1fmm, probe speed %dmm/min, travel speed %dmm/min",
+							platform->GetZProbeType(), platform->GetZProbeDiveHeight(),
+							(int)(platform->GetZProbeParameters().probeSpeed * MINUTES_TO_SECONDS), (int)(platform->GetZProbeTravelSpeed() * MINUTES_TO_SECONDS));
 					if (platform->GetZProbeType() == 5)
 					{
 						ZProbeParameters params = platform->GetZProbeParameters();
@@ -4776,7 +4835,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 			}
 			break;
 
-		case 579: // Scale Cartesian axes
+		case 579: // Scale Cartesian axes (for Delta configurations)
 			{
 				bool seen = false;
 				for(size_t axis = 0; axis < AXES; axis++)
@@ -4914,21 +4973,36 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		case 667: // Set CoreXY mode
 			{
 				Move* move = reprap.GetMove();
+				bool seen = false;
+				float positionNow[DRIVES];
+				move->GetCurrentUserPosition(positionNow, 0);					// get the current position, we may need it later
 				if (gb->Seen('S'))
 				{
-					float positionNow[DRIVES];
-					move->GetCurrentUserPosition(positionNow, 0);					// get the current position, we may need it later
-					int newMode = gb->GetIValue();
-					if (newMode != move->GetCoreXYMode())
+					move->SetCoreXYMode(gb->GetIValue());
+					seen = true;
+				}
+				for(size_t axis = 0; axis < AXES; axis++)
+				{
+					if (gb->Seen(axisLetters[axis]))
 					{
-						move->SetCoreXYMode(newMode);
-						SetPositions(positionNow);
-						SetAllAxesNotHomed();
+						move->SetCoreAxisFactor(axis, gb->GetFValue());
+						seen = true;
 					}
+				}
+
+				if (seen)
+				{
+					SetPositions(positionNow);
+					SetAllAxesNotHomed();
 				}
 				else
 				{
-					reply.printf("Printer mode is %s\n", move->GetGeometryString());
+					reply.printf("Printer mode is %s with axis factors", move->GetGeometryString());
+					for (size_t axis = 0; axis < AXES; ++axis)
+					{
+						reply.catf(" %c:%f", move->GetCoreAxisFactor(axis));
+					}
+					reply.cat("\n");
 				}
 			}
 			break;
@@ -5017,22 +5091,52 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 		case 569: // Set/report axis direction
 			if (gb->Seen('P'))
 			{
-				int drive = gb->GetIValue();
-				if (drive >= 0 && drive < (int)DRIVES)
+				size_t drive = gb->GetIValue();
+				if (drive < DRIVES)
 				{
+					bool seen = false;
 					if (gb->Seen('S'))
 					{
 						platform->SetDirectionValue(drive, gb->GetIValue());
+						seen = true;
 					}
-					else
+					if (gb->Seen('R'))
 					{
-						reply.printf("Drive %d is going %s.\n", drive, (platform->GetDirectionValue(drive) == FORWARDS) ? "forwards" : "backwards");
+						platform->SetEnableValue(drive, gb->GetIValue() != 0);
+						seen = true;
 					}
-				}
-				else
-				{
-					reply.printf("Invalid drive number.\n");
-					error = true;
+					for (size_t axis = 0; axis < AXES; ++axis)
+					{
+						if (gb->Seen(axisLetters[axis]))
+						{
+							platform->SetPhysicalDrive(drive, axis);
+							seen = true;
+						}
+					}
+					if (gb->Seen(EXTRUDE_LETTER))
+					{
+						size_t extruder = gb->GetIValue();
+						if (extruder + AXES < DRIVES)
+						{
+							platform->SetPhysicalDrive(drive, extruder + AXES);
+						}
+						seen = true;
+					}
+					if (!seen)
+					{
+						int physicalDrive = platform->GetPhysicalDrive(drive);
+						if (physicalDrive < 0)
+						{
+							reply.printf("Driver %u is not used\n", drive);
+						}
+						else
+						{
+							const char phyDriveLetter = (physicalDrive < (int)AXES) ? axisLetters[physicalDrive] : EXTRUDE_LETTER;
+							const int phyDriveNumber = (physicalDrive < (int)AXES) ? 0 : physicalDrive - (int)AXES;
+							reply.printf("Driver %u drives the %c%d motor, a %d sends it forwards and a %d enables it\n",
+									drive, phyDriveLetter, phyDriveNumber, (int) platform->GetDirectionValue(drive), (int) platform->GetEnableValue(drive));
+						}
+					}
 				}
 			}
 			break;

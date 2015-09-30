@@ -10,7 +10,7 @@ ARDUINO_VERSION := 1.6.5
 GCC_VERSION := 4.8.3-2014q1
 BOSSAC_VERSION := 1.3a-arduino
 
-DUET_BOARD_VERSION := 1.0.3
+DUET_BOARD_VERSION := 1.0.4
 
 # Workspace paths
 LIBRARY_PATH := $(PWD)/Libraries
@@ -68,8 +68,8 @@ INCLUDES := $(PWD)/Libraries/Flash $(PWD)/Libraries/EMAC $(PWD)/Libraries/Lwip $
 INCLUDES += $(DUET_BOARD_PATH)/cores/arduino $(DUET_BOARD_PATH)/variants/duet
 INCLUDES += $(DUET_BOARD_PATH)/system/libsam $(DUET_BOARD_PATH)/system/libsam/include $(DUET_BOARD_PATH)/system/CMSIS/CMSIS/Include $(DUET_BOARD_PATH)/system/CMSIS/Device/ATMEL
 
-CFLAGS += -c -g $(OPTIMIZATION) -Wall -Wno-unused-variable -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single=500 -Dprintf=iprintf -MMD -MP -std=gnu99
-CPPFLAGS += -c -g $(OPTIMIZATION) -Wall -Wno-unused-variable -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single=500 -fno-rtti -fno-exceptions -Dprintf=iprintf -MMD -MP -std=gnu++11
+CFLAGS += -c -g $(OPTIMIZATION) -std=gnu11 -Wall -Wno-unused-variable -ffunction-sections -fdata-sections -nostdlib --param max-inline-insns-single=500 -Dprintf=iprintf -MMD -MP
+CPPFLAGS += -c -g $(OPTIMIZATION) -Wall -Wno-unused-variable -std=gnu++11 -ffunction-sections -fdata-sections -nostdlib -fno-threadsafe-statics --param max-inline-insns-single=500 -fno-rtti -fno-exceptions -Dprintf=iprintf -MMD -MP
 
 DEVICE_FLAGS = -mcpu=cortex-m3 -DF_CPU=84000000L -DARDUINO=$(subst .,,$(ARDUINO_VERSION)) -DARDUINO_SAM_DUE -DARDUINO_ARCH_SAM -D__SAM3X8E__ -mthumb -DUSB_VID=0x2341 -DUSB_PID=0x003e -DUSBCON -DUSB_MANUFACTURER=\"Unknown\" -DUSB_PRODUCT=\"Duet\"
 

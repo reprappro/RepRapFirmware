@@ -91,6 +91,11 @@ void Move::Init()
 		extrusionFactors[extruder] = 1.0;
 	}
 
+	for (size_t axis = 0; axis < AXES; axis++)
+	{
+		axisFactors[axis] = 1.0;
+	}
+
 	active = true;
 }
 
@@ -318,6 +323,7 @@ FilePosition Move::PausePrint(float positions[DRIVES+1], unsigned int &skippedMo
 	DDA *dda = currentDda;
 	if (dda != nullptr)
 	{
+		// A move is being executed. See if we can safely pause at the end of it.
 		if (dda->CanPause())
 		{
 			ddaRingAddPointer = dda->GetNext();
@@ -332,6 +338,11 @@ FilePosition Move::PausePrint(float positions[DRIVES+1], unsigned int &skippedMo
 				if (dda->CanPause())
 				{
 					ddaRingAddPointer = dda->GetNext();
+					if (ddaRingAddPointer->GetState() == DDA::frozen)
+					{
+						// Change the state so that the ISR won't start executing this move
+						ddaRingAddPointer->Free();
+					}
 					break;
 				}
 				dda = dda->GetNext();
@@ -340,8 +351,10 @@ FilePosition Move::PausePrint(float positions[DRIVES+1], unsigned int &skippedMo
 	}
 	else
 	{
+		// No move being executed
 		ddaRingAddPointer = ddaRingGetPointer;
 	}
+
 	cpu_irq_enable();
 
 	FilePosition fPos = NO_FILE_POSITION;
@@ -372,7 +385,7 @@ FilePosition Move::PausePrint(float positions[DRIVES+1], unsigned int &skippedMo
 			{
 				fPos = dda->GetFilePosition();
 			}
-			dda->Complete();
+			dda->Free();
 			dda = dda->GetNext();
 			skippedMoves++;
 		}
@@ -477,24 +490,30 @@ void Move::MachineToEndPoint(const int32_t motorPos[], float machinePos[], size_
 		switch (coreXYMode)
 		{
 		case 1:		// CoreXY
-			machinePos[X_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Y_AXIS]) - (motorPos[Y_AXIS] * stepsPerUnit[X_AXIS]))/(2 * stepsPerUnit[X_AXIS] * stepsPerUnit[Y_AXIS]);
-			machinePos[Y_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Y_AXIS]) + (motorPos[Y_AXIS] * stepsPerUnit[X_AXIS]))/(2 * stepsPerUnit[X_AXIS] * stepsPerUnit[Y_AXIS]);
+			machinePos[X_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Y_AXIS]) - (motorPos[Y_AXIS] * stepsPerUnit[X_AXIS]))
+				/(2 * axisFactors[X_AXIS] * stepsPerUnit[X_AXIS] * stepsPerUnit[Y_AXIS]);
+			machinePos[Y_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Y_AXIS]) + (motorPos[Y_AXIS] * stepsPerUnit[X_AXIS]))
+				/(2 * axisFactors[Y_AXIS] * stepsPerUnit[X_AXIS] * stepsPerUnit[Y_AXIS]);
 			machinePos[Z_AXIS] = motorPos[Z_AXIS]/stepsPerUnit[Z_AXIS];
 			break;
 
 		case 2:		// CoreXZ
-			machinePos[X_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Z_AXIS]) - (motorPos[Z_AXIS] * stepsPerUnit[X_AXIS]))/(2 * stepsPerUnit[X_AXIS] * stepsPerUnit[Z_AXIS]);
+			machinePos[X_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Z_AXIS]) - (motorPos[Z_AXIS] * stepsPerUnit[X_AXIS]))
+				/(2 * axisFactors[X_AXIS] * stepsPerUnit[X_AXIS] * stepsPerUnit[Z_AXIS]);
 			machinePos[Y_AXIS] = motorPos[Y_AXIS]/stepsPerUnit[Y_AXIS];
-			machinePos[Z_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Z_AXIS]) + (motorPos[Z_AXIS] * stepsPerUnit[X_AXIS]))/(2 * stepsPerUnit[X_AXIS] * stepsPerUnit[Z_AXIS]);
+			machinePos[Z_AXIS] = ((motorPos[X_AXIS] * stepsPerUnit[Z_AXIS]) + (motorPos[Z_AXIS] * stepsPerUnit[X_AXIS]))
+				/(2 * axisFactors[Z_AXIS] * stepsPerUnit[X_AXIS] * stepsPerUnit[Z_AXIS]);
 			break;
 
 		case 3:		// CoreYZ
 			machinePos[X_AXIS] = motorPos[X_AXIS]/stepsPerUnit[X_AXIS];
-			machinePos[Y_AXIS] = ((motorPos[Y_AXIS] * stepsPerUnit[Z_AXIS]) - (motorPos[Z_AXIS] * stepsPerUnit[Y_AXIS]))/(2 * stepsPerUnit[Y_AXIS] * stepsPerUnit[Z_AXIS]);
-			machinePos[Z_AXIS] = ((motorPos[Y_AXIS] * stepsPerUnit[Z_AXIS]) + (motorPos[Z_AXIS] * stepsPerUnit[Y_AXIS]))/(2 * stepsPerUnit[Y_AXIS] * stepsPerUnit[Z_AXIS]);
+			machinePos[Y_AXIS] = ((motorPos[Y_AXIS] * stepsPerUnit[Z_AXIS]) - (motorPos[Z_AXIS] * stepsPerUnit[Y_AXIS]))
+				/(2 * axisFactors[Y_AXIS] * stepsPerUnit[Y_AXIS] * stepsPerUnit[Z_AXIS]);
+			machinePos[Z_AXIS] = ((motorPos[Y_AXIS] * stepsPerUnit[Z_AXIS]) + (motorPos[Z_AXIS] * stepsPerUnit[Y_AXIS]))
+				/(2 * axisFactors[Z_AXIS] * stepsPerUnit[Y_AXIS] * stepsPerUnit[Z_AXIS]);
 			break;
 
-		default:
+		default:	// Cartesian
 			machinePos[X_AXIS] = motorPos[X_AXIS]/stepsPerUnit[X_AXIS];
 			machinePos[Y_AXIS] = motorPos[Y_AXIS]/stepsPerUnit[Y_AXIS];
 			machinePos[Z_AXIS] = motorPos[Z_AXIS]/stepsPerUnit[Z_AXIS];
@@ -528,25 +547,25 @@ void Move::MotorTransform(const float machinePos[AXES], int32_t motorPos[AXES]) 
 	{
 		switch (coreXYMode)
 		{
-		case 1:
-			motorPos[X_AXIS] = MotorEndPointToMachine(X_AXIS, machinePos[X_AXIS] + machinePos[Y_AXIS]);
-			motorPos[Y_AXIS] = MotorEndPointToMachine(Y_AXIS, machinePos[Y_AXIS] - machinePos[X_AXIS]);
+		case 1:			// CoreXY
+			motorPos[X_AXIS] = MotorEndPointToMachine(X_AXIS, (machinePos[X_AXIS] * axisFactors[X_AXIS]) + (machinePos[Y_AXIS] * axisFactors[Y_AXIS]));
+			motorPos[Y_AXIS] = MotorEndPointToMachine(Y_AXIS, (machinePos[Y_AXIS] * axisFactors[Y_AXIS]) - (machinePos[X_AXIS] * axisFactors[X_AXIS]));
 			motorPos[Z_AXIS] = MotorEndPointToMachine(Z_AXIS, machinePos[Z_AXIS]);
 			break;
 
-		case 2:
-			motorPos[X_AXIS] = MotorEndPointToMachine(X_AXIS, machinePos[X_AXIS] + machinePos[Z_AXIS]);
+		case 2:			// CoreXZ
+			motorPos[X_AXIS] = MotorEndPointToMachine(X_AXIS, (machinePos[X_AXIS] * axisFactors[X_AXIS]) + (machinePos[Z_AXIS] * axisFactors[Z_AXIS]));
 			motorPos[Y_AXIS] = MotorEndPointToMachine(Y_AXIS, machinePos[Y_AXIS]);
-			motorPos[Z_AXIS] = MotorEndPointToMachine(Z_AXIS, machinePos[Z_AXIS] - machinePos[X_AXIS]);
+			motorPos[Z_AXIS] = MotorEndPointToMachine(Z_AXIS, (machinePos[Z_AXIS] * axisFactors[Z_AXIS]) - (machinePos[X_AXIS] * axisFactors[X_AXIS]));
 			break;
 
-		case 3:
+		case 3:			// CoreYZ
 			motorPos[X_AXIS] = MotorEndPointToMachine(X_AXIS, machinePos[X_AXIS]);
-			motorPos[Y_AXIS] = MotorEndPointToMachine(Y_AXIS, machinePos[Y_AXIS] + machinePos[Z_AXIS]);
-			motorPos[Z_AXIS] = MotorEndPointToMachine(Z_AXIS, machinePos[Z_AXIS] - machinePos[Y_AXIS]);
+			motorPos[Y_AXIS] = MotorEndPointToMachine(Y_AXIS, (machinePos[Y_AXIS] * axisFactors[Y_AXIS]) + (machinePos[Z_AXIS] * axisFactors[Z_AXIS]));
+			motorPos[Z_AXIS] = MotorEndPointToMachine(Z_AXIS, (machinePos[Z_AXIS] * axisFactors[Z_AXIS]) - (machinePos[Y_AXIS] * axisFactors[Y_AXIS]));
 			break;
 
-		default:
+		default:		// Cartesian
 			motorPos[X_AXIS] = MotorEndPointToMachine(X_AXIS, machinePos[X_AXIS]);
 			motorPos[Y_AXIS] = MotorEndPointToMachine(Y_AXIS, machinePos[Y_AXIS]);
 			motorPos[Z_AXIS] = MotorEndPointToMachine(Z_AXIS, machinePos[Z_AXIS]);
@@ -1139,6 +1158,11 @@ bool Move::StartNextMove(uint32_t startTime)
 {
 	if (ddaRingGetPointer->GetState() == DDA::frozen)
 	{
+		// DEBUG!
+		/*static bool pinState = false;
+		pinState = !pinState;
+		digitalWrite(21, pinState);*/
+
 		currentDda = ddaRingGetPointer;
 		return currentDda->Start(startTime);
 	}
