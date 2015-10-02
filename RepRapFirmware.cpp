@@ -170,8 +170,8 @@ void watchdogSetup(void)
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
 
-RepRap::RepRap() : ticksInSpinState(0), spinningModule(noModule), debug(0), stopped(false), active(false),
-	resetting(false), usedOutputBuffers(0), maxUsedOutputBuffers(0)
+RepRap::RepRap() : lastToolWarningTime(0.0), ticksInSpinState(0), spinningModule(noModule), debug(0),
+	stopped(false), active(false), resetting(false), usedOutputBuffers(0), maxUsedOutputBuffers(0)
 {
 	platform = new Platform();
 	network = new Network(platform);
@@ -309,7 +309,7 @@ void RepRap::Spin()
 
 	for(Tool *t = toolList; t != nullptr; t = t->Next())
 	{
-		if (t->DisplayColdExtrudeWarning())
+		if (t->DisplayColdExtrudeWarning() && ToolWarningsAllowed())
 		{
 			platform->MessageF(GENERIC_MESSAGE, "Warning: Tool %d was not driven because its heater temperatures were not high enough\n", t->Number());
 			break;
@@ -618,6 +618,18 @@ void RepRap::SetToolVariables(int toolNumber, float* standbyTemperatures, float*
 	platform->MessageF(GENERIC_MESSAGE, "Error: Attempt to set variables for a non-existent tool: %d.\n", toolNumber);
 }
 
+// chrishamm 02-10-2015: I don't think it's a good idea to write tool warning message after every
+// short move, so only print them in a reasonable interval.
+bool RepRap::ToolWarningsAllowed()
+{
+	const float now = platform->Time();
+	if (now - lastToolWarningTime > MINIMUM_TOOL_WARNING_INTERVAL)
+	{
+		lastToolWarningTime = platform->Time();
+		return true;
+	}
+	return false;
+}
 
 void RepRap::Tick()
 {

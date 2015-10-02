@@ -1158,11 +1158,6 @@ bool Move::StartNextMove(uint32_t startTime)
 {
 	if (ddaRingGetPointer->GetState() == DDA::frozen)
 	{
-		// DEBUG!
-		/*static bool pinState = false;
-		pinState = !pinState;
-		digitalWrite(21, pinState);*/
-
 		currentDda = ddaRingGetPointer;
 		return currentDda->Start(startTime);
 	}

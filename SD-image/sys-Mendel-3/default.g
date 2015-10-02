@@ -28,9 +28,9 @@ M92 E660:660:660                    ; Set extruder steps per mm
 M558 P2                             ; Use a modulated Z probe
 G31 Z0.6 P550                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
 M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
-M201 X3000 Y3000 Z150 E500          ; Accelerations (mm/s^2)
-M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
-M566 X200 Y200 Z30 E20              ; Minimum speeds mm/minute
+M201 X3000 Y3000 Z150 E750          ; Accelerations (mm/s^2)
+M203 X15000 Y15000 Z180 E3600       ; Maximum speeds (mm/min)
+M566 X1400 Y1400 Z30 E20            ; Maximum instantaneous speed changes mm/minute
 M208 X-8 S1                         ; Set axis minimum (adjust to make X=0 the edge of the bed)
 M208 X214 Y210                      ; Set axis maxima (adjust to suit your machine)
 M563 P0 D0 H1                       ; Define tool 0

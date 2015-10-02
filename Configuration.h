@@ -24,8 +24,8 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.09h-ch"
-#define DATE "2015-08-25"
+#define VERSION "1.09i-ch"
+#define DATE "2015-10-02"
 
 #define AUTHORS "reprappro, dc42, chrishamm, t3p3, dnewman"
 
@@ -55,6 +55,7 @@ static const float MINUTES_TO_SECONDS = 60.0;
 static const float SECONDS_TO_MINUTES = 1.0 / MINUTES_TO_SECONDS;
 
 static const float LONG_TIME = 300.0;						// Seconds
+static const float MINIMUM_TOOL_WARNING_INTERVAL = 4.0;		// Seconds
 
 // Heater values
 

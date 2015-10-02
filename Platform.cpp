@@ -123,9 +123,6 @@ Platform::Platform() :
 
 void Platform::Init()
 {
-	digitalWrite(21, LOW);	// DEBUG!
-	pinMode(21, OUTPUT);	// DEBUG!
-
 	// Deal with power first
 	digitalWrite(atxPowerPin, LOW);		// ensure ATX power is off by default
 	pinMode(atxPowerPin, OUTPUT);
@@ -225,7 +222,7 @@ void Platform::Init()
 
 	for(size_t drive = 0; drive < DRIVES; drive++)
 	{
-		SetPhysicalDrive(drive, drive);					// map drivers directly to axes and extruders
+		SetPhysicalDrive(drive, drive);                                 // map drivers directly to axes and extruders
 		if (stepPins[drive] >= 0)
 		{
 			pinMode(stepPins[drive], OUTPUT);
@@ -1205,6 +1202,7 @@ void Platform::EnableDrive(size_t drive)
 {
 	if (drive < DRIVES && driveState[drive] != DriveStatus::enabled)
 	{
+		driveState[drive] = DriveStatus::enabled;
 		const int driver = driverNumbers[drive];
 		if (driver >= 0)
 		{
@@ -1234,17 +1232,6 @@ void Platform::DisableDrive(size_t drive)
 			}
 		}
 		driveState[drive] = DriveStatus::disabled;
-	}
-}
-
-// Set a drive to idle hold if it is enabled. If it is disabled, leave it alone.
-// Must not be called from an ISR, or with interrupts disabled.
-void Platform::SetDriveIdle(size_t drive)
-{
-	if (drive < DRIVES && driveState[drive] == DriveStatus::enabled)
-	{
-		driveState[drive] = DriveStatus::idle;
-		UpdateMotorCurrent(drive);
 	}
 }
 
@@ -1341,6 +1328,7 @@ void Platform::SetPhysicalDrive(size_t driverNumber, int8_t physicalDrive)
 		driverNumbers[oldDrive] = -1;
 		stepPinDescriptors[oldDrive] = OutputPin();
 	}
+
 	driverNumbers[physicalDrive] = driverNumber;
 	stepPinDescriptors[physicalDrive] = OutputPin(stepPins[driverNumber]);
 }
@@ -2455,7 +2443,7 @@ uint32_t FileStore::longestWriteTime = 0;
 // Build a short-form pin descriptor for a IO pin
 OutputPin::OutputPin(unsigned int pin)
 {
-	const PinDescription& pinDesc = (pin >= X0) ? g_APinDescription[pin - X0] : g_APinDescription[pin];
+	const PinDescription& pinDesc = g_APinDescription[pin];
 	pPort = pinDesc.pPort;
 	ulPin = pinDesc.ulPin;
 }

@@ -372,6 +372,9 @@ void GCodes::Diagnostics()
 
 bool GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
 {
+	// Make sure other G-Code sources wait for this one to complete first...
+	waitingForMoveToComplete = true;
+
 	// Last one gone?
 	if (moveAvailable)
 		return false;
@@ -383,6 +386,9 @@ bool GCodes::AllMovesAreFinishedAndMoveBufferIsLoaded()
 
 	// Load the last position
 	reprap.GetMove()->GetCurrentUserPosition(moveBuffer, 0);
+
+	// Movement has stopped, return here
+	waitingForMoveToComplete = false;
 	return true;
 }
 
@@ -479,7 +485,10 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 	{
 		if (tool == nullptr)
 		{
-			platform->Message(GENERIC_MESSAGE, "Error: Attempting to extrude with no tool selected.\n");
+			if (reprap.ToolWarningsAllowed())
+			{
+				platform->Message(GENERIC_MESSAGE, "Error: Attempting to extrude with no tool selected.\n");
+			}
 			return false;
 		}
 
@@ -2519,14 +2528,10 @@ bool GCodes::HandleGcode(GCodeBuffer* gb)
 		case 1: // Ordinary move
 			if (waitingForMoveToComplete)
 			{
-				// We have already set up this move, but it does endstop checks, so wait for it to complete.
-				// Otherwise, if the next move uses relative coordinates, it will be incorrectly calculated.
-				// Or we're just performing an isolated move while the Move class is paused.
+				// We're still waiting for a homing move or another G-Code source
+				// is requesting an immediate movement stop. We must to wait for it
+				// before we set up any new moves, or else we may get a race condition.
 				result = AllMovesAreFinishedAndMoveBufferIsLoaded();
-				if (result)
-				{
-					waitingForMoveToComplete = false;
-				}
 			}
 			// Check for 'R' parameter here to go back to the coordinates at which the print was paused
 			else if (gb->Seen('R') && gb->GetIValue() > 0 && !IsRunning())
@@ -2689,10 +2694,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 				if (code == 0)
 				{
 					// M0 puts each drive into idle state
-					for(size_t drive = 0; drive < DRIVES; drive++)
-					{
-						platform->SetDriveIdle(drive);
-					}
+					platform->SetDrivesIdle();
 				}
 				else
 				{
@@ -4175,7 +4177,7 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 					return true;
 				}
 			}
-			return false;
+			break;
 
 		case 500: // Store parameters in EEPROM
 			platform->WriteNvData();

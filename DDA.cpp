@@ -251,7 +251,7 @@ bool DDA::Init(const float nextMove[], float feedRate, EndstopChecks ce, bool do
 
 	// Set the speed to the smaller of the requested and maximum speed.
 	// Also enforce a minimum speed of 0.5mm/sec. We need a minimum speed to avoid overflow in the movement calculations.
-	float reqSpeed = nextMove[DRIVES];
+	float reqSpeed = feedRate;
 	if (reprap.GetMove()->IsDeltaMode() && !isDeltaMovement)
 	{
 		// Special case of a raw or homing move on a delta printer
@@ -523,11 +523,11 @@ bool DDA::FetchEndPosition(volatile int32_t ep[DRIVES], volatile float endCoords
 		{
 			endCoords[axis] = endCoordinates[axis];
 		}
-	}
-	for (size_t extruder = 0; extruder < AXES; ++extruder)
-	{
-		endCoords[extruder + AXES] += endCoordinates[extruder + AXES];
-		rawExtrTotals[extruder] += rawExtruderDistances[extruder];
+		for (size_t extruder = 0; extruder < DRIVES - AXES; ++extruder)
+		{
+			endCoords[extruder + AXES] += endCoordinates[extruder + AXES];
+			rawExtrTotals[extruder] += rawExtruderDistances[extruder];
+		}
 	}
 	return endCoordinatesValid;
 }
@@ -712,7 +712,7 @@ bool DDA::Start(uint32_t tim)
 			{
 				for (size_t i = 0; i < DRIVES - AXES; ++i)
 				{
-					if (prohibitedMovements & (1 << i))
+					if ((prohibitedMovements & (1 << i)) != 0)
 					{
 						ddm[i + AXES].state = DMState::idle;
 					}
@@ -847,8 +847,8 @@ bool DDA::Step()
 			dm = firstDM;
 
 //uint32_t t3 = Platform::GetInterruptClocks() - t2;
-// //if (t3 > maxCalcTime) maxCalcTime = t3;
-//  //if (t3 < minCalcTime) minCalcTime = t3;
+//if (t3 > maxCalcTime) maxCalcTime = t3;
+//if (t3 < minCalcTime) minCalcTime = t3;
 		}
 
 		repeat = reprap.GetPlatform()->ScheduleInterrupt(firstDM->nextStepTime + moveStartTime);

@@ -80,7 +80,6 @@ static const size_t NUM_SERIAL_CHANNELS = 3;			// The number of serial IO channe
 static const int8_t ENABLE_PINS[DRIVES] = { 29, 27, X1, X0, 37, X8, 50, 47, X13 };
 static const bool ENABLE_VALUES[DRIVES] = { false, false, false, false, false, false, false, false, false };	// what to send to enable a drive
 static const int8_t STEP_PINS[DRIVES] = { 14, 25, 5, X2, 41, 39, X4, 49, X10 };
-//static const int8_t STEP_PINS[DRIVES] = { 41, 39, X4, 49, X10, 14, 25, 5, X2  }; // DEBUG!
 static const int8_t DIRECTION_PINS[DRIVES] = { 15, 26, 4, X3, 35, 53, 51, 48, X11 };
 
 static const float DEFAULT_IDLE_CURRENT_FACTOR = 0.3;	// Proportion of normal motor current that we use for idle hold
@@ -389,7 +388,6 @@ class FileStore
 		static uint32_t longestWriteTime;
 };
 
-
 /***************************************************************************************************************/
 
 // Class to give fast access to digital output pins for stepping
@@ -697,7 +695,6 @@ class Platform
 		void StepLow(size_t drive);
 		void EnableDrive(size_t drive);
 		void DisableDrive(size_t drive);
-		void SetDriveIdle(size_t drive);
 		void SetDrivesIdle();
 		void SetMotorCurrent(size_t drive, float current);
 		float MotorCurrent(size_t drive) const;

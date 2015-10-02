@@ -55,6 +55,7 @@ class RepRap
 		Tool* GetOnlyTool() const;
 		//Tool* GetToolByDrive(int driveNumber);
 		void SetToolVariables(int toolNumber, float* standbyTemperatures, float* activeTemperatures);
+		bool ToolWarningsAllowed();
 
 		unsigned int GetProhibitedExtruderMovements(unsigned int extrusions, unsigned int retractions);
 		void PrintTool(int toolNumber, StringRef& reply);
@@ -110,6 +111,8 @@ class RepRap
 
 		Tool* toolList;
 		Tool* currentTool;
+		float lastToolWarningTime;
+
 		uint16_t activeExtruders;
 		uint16_t activeHeaters;
 
