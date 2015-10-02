@@ -672,7 +672,13 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 				liveCoordinates[i] += offset[i];
 			}
 		}
-		move->LiveCoordinates(liveCoordinates);
+	    if(platform->GetRoland()->Active())
+		{
+			platform->GetRoland()->GetCurrentRolandPosition(liveCoordinates);
+		} else
+		{
+			move->LiveCoordinates(liveCoordinates);
+		}
 
 		// Homed axes
 		response->catf("\"axesHomed\":[%d,%d,%d]",

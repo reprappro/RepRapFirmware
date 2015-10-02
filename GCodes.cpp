@@ -563,7 +563,8 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				}
 
 				// If on a Cartesian printer and applying limits, limit all axes
-				if (applyLimits && axisIsHomed[axis] && !reprap.GetMove()->IsDeltaMode())
+				if ( applyLimits && axisIsHomed[axis] && 
+				    !(reprap.GetMove()->IsDeltaMode() || reprap.GetPlatform()->GetRoland()->Active()) )
 				{
 					if (moveArg < platform->AxisMinimum(axis))
 					{
@@ -5558,13 +5559,15 @@ unsigned int GCodeBuffer::Length() const
 bool GCodeBuffer::Seen(char c)
 {
 	readPointer = 0;
-	for(;;)
+	//for(;;) // Not safe if the buffer is corrupted
+	char b;
+	do
 	{
-		char b = gcodeBuffer[readPointer];
-		if (b == 0 || b == ';') break;
+		b = gcodeBuffer[readPointer];
+		//if (b == 0 || b == ';') break;
 		if (b == c) return true;
 		++readPointer;
-	}
+	}while(!(b == 0 || b == ';') && readPointer < GCODE_LENGTH);
 	readPointer = -1;
 	return false;
 }

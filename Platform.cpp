@@ -2521,8 +2521,8 @@ void Roland::Spin()
 
 	// Are we sending something to the Roland?
 
-	char rol[2];
-	rol[1] = 0;
+	//char rol[2];
+	//rol[1] = 0;
 
 	if(Busy()) // Busy means we are sending something
 	{
@@ -2534,8 +2534,8 @@ void Roland::Spin()
 			return;
 		Serial1.write(buffer[bufferPointer]);
 		Serial1.flush();
-		rol[0]= buffer[bufferPointer];
-		platform->Message(HOST_MESSAGE, rol);
+		//rol[0]= buffer[bufferPointer];
+		//platform->Message(HOST_MESSAGE, rol);
 		bufferPointer++;
 	} else
 	{ // Not sending.
@@ -2559,7 +2559,6 @@ void Roland::Spin()
 
 void Roland::Zero(bool feed)
 {
-  platform->Message(HOST_MESSAGE, "Roland zero\n");
   size_t lim = AXES;
   if(feed) lim++;
   for(size_t axis = 0; axis < lim; axis++)
@@ -2568,6 +2567,11 @@ void Roland::Zero(bool feed)
     coordinates[axis] = 0;
     oldCoordinates[axis] = 0;
     offset[axis] = 0;
+  }
+
+  if (reprap.Debug(moduleGcodes))
+  {
+	platform->Message(HOST_MESSAGE, "Roland zero\n");
   }
 }
 
@@ -2580,9 +2584,12 @@ bool Roland::ProcessHome()
 {
    if(Busy())
 	return false;
-   platform->Message(HOST_MESSAGE, "Roland home\n");
    sBuffer->printf("H;\n"); 
    Zero(0);
+   if (reprap.Debug(moduleGcodes))
+   {
+	platform->MessageF(HOST_MESSAGE, "Roland home: %s", buffer);
+   }
    return true;
 }
 
@@ -2590,10 +2597,13 @@ bool Roland::ProcessDwell(long milliseconds)
 {
    if(Busy())
 	return false;
-   platform->Message(HOST_MESSAGE, "Roland dwell\n");
    sBuffer->printf("W%ld;", milliseconds);
    sBuffer->catf("PD%ld,%ld;", oldCoordinates[0], oldCoordinates[1]);
    sBuffer->catf("W0;\n");
+   if (reprap.Debug(moduleGcodes))
+   {
+	platform->MessageF(HOST_MESSAGE, "Roland dwell: %s", buffer);
+   }
    return true;
 }
 
@@ -2601,11 +2611,14 @@ bool Roland::ProcessG92(float v, size_t axis)
 {
   if(Busy())
 	return false;
-  platform->Message(HOST_MESSAGE, "Roland G92\n");
   move[axis] = v;
   coordinates[axis] = round(move[axis]*ROLAND_FACTOR) + offset[axis];
   offset[axis] = oldCoordinates[axis];
   oldCoordinates[axis] = coordinates[axis];
+  if (reprap.Debug(moduleGcodes))
+  {
+	platform->Message(HOST_MESSAGE, "Roland G92\n");
+  }
   return true;
 }
 
@@ -2613,13 +2626,16 @@ bool Roland::ProcessSpindle(float rpm)
 {
    if(Busy())
 	return false;
-   platform->Message(HOST_MESSAGE, "Roland spindle\n");
    if(rpm < 0.5)
    { // Stop
-	sBuffer->printf("!MC 0;");
+	sBuffer->printf("!MC 0;\n");
    } else
    { // Go
-   	sBuffer->printf("!RC%ld;!MC 1;", (long)(rpm + 100.0));
+   	sBuffer->printf("!RC%ld;!MC 1;\n", (long)(rpm + 100.0));
+   }
+   if (reprap.Debug(moduleGcodes))
+   {
+	platform->MessageF(HOST_MESSAGE, "Roland spindle: %s", buffer);
    }
    return true;
 
@@ -2636,7 +2652,6 @@ void Roland::GetCurrentRolandPosition(float moveBuffer[])
 
 void Roland::ProcessMove()
 {
-  platform->Message(HOST_MESSAGE, "Roland move\n");
   for(size_t axis = 0; axis < AXES; axis++)
     coordinates[axis] = round(move[axis]*ROLAND_FACTOR) + offset[axis];
   coordinates[AXES] = round(move[AXES]);
@@ -2661,11 +2676,20 @@ void Roland::ProcessMove()
   if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || (coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]) )
     sBuffer->catf("PD%ld,%ld;", coordinates[0], coordinates[1]);
 
-  
+
+/*  if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || 
+	(coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]) ||
+	(coordinates[Z_AXIS] != oldCoordinates[Z_AXIS])	)
+    sBuffer->catf("!ZE X%ldY%ldZ%ld;", coordinates[0], coordinates[1], coordinates[2]);
+*/  
   sBuffer->catf("\n");
   
   for(size_t axis = 0; axis <= AXES; axis++)
     oldCoordinates[axis] = coordinates[axis];
+   if (reprap.Debug(moduleGcodes))
+   {
+	platform->MessageF(HOST_MESSAGE, "Roland move: %s", buffer);
+   }
 }
 
 
@@ -2673,8 +2697,12 @@ bool Roland::RawWrite(const char* s)
 {
   if(Busy())
 	return false;
-  platform->Message(HOST_MESSAGE, "Roland rawwrite\n");
   sBuffer->copy(s);
+  sBuffer->catf("\n");
+  if (reprap.Debug(moduleGcodes))
+  {
+	platform->MessageF(HOST_MESSAGE, "Roland rawwrite: %s", buffer);
+  }
   return true;
 }
 
@@ -2685,11 +2713,15 @@ bool Roland::Active()
 
 void Roland::Activate()
 {
-	platform->Message(HOST_MESSAGE, "Roland started\n");
 	digitalWrite(ROLAND_RTS_PIN, LOW);
 //Serial1.write('a');
 //Serial1.flush();
 	active = true;
+  if (reprap.Debug(moduleGcodes))
+  {
+	platform->Message(HOST_MESSAGE, "Roland started\n");
+  }
+
 }
 
 bool Roland::Deactivate()
@@ -2698,7 +2730,11 @@ bool Roland::Deactivate()
 	return false;
   digitalWrite(ROLAND_RTS_PIN, HIGH);
   active = false;
-  platform->Message(HOST_MESSAGE, "Roland stopped\n");
+  if (reprap.Debug(moduleGcodes))
+  {
+	platform->Message(HOST_MESSAGE, "Roland stopped\n");
+  }
+
   return true;
 }
 
