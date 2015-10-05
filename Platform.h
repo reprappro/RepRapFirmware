@@ -612,9 +612,9 @@ class Roland
 
 		Platform* platform;
 		float move[DRIVES+1];
-		long coordinates[AXES+1];
-		long oldCoordinates[AXES+1];
-		long offset[AXES+1];
+		float coordinates[AXES+1];
+		float oldCoordinates[AXES+1];
+		float offset[AXES+1];
 		char buffer[ROLAND_BUFFER_SIZE];
 		int bufferPointer;
 		StringRef *sBuffer;

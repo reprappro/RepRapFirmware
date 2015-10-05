@@ -2521,21 +2521,12 @@ void Roland::Spin()
 
 	// Are we sending something to the Roland?
 
-	//char rol[2];
-	//rol[1] = 0;
-
 	if(Busy()) // Busy means we are sending something
 	{
-		/*platform->Message(HOST_MESSAGE, "Roland: ");
-                platform->Message(HOST_MESSAGE, buffer);
-		platform->Message(HOST_MESSAGE, "\n");
-		sBuffer->Clear();*/
 		if(digitalRead(ROLAND_CTS_PIN))
 			return;
 		Serial1.write(buffer[bufferPointer]);
 		Serial1.flush();
-		//rol[0]= buffer[bufferPointer];
-		//platform->Message(HOST_MESSAGE, rol);
 		bufferPointer++;
 	} else
 	{ // Not sending.
@@ -2564,9 +2555,9 @@ void Roland::Zero(bool feed)
   for(size_t axis = 0; axis < lim; axis++)
   {
     move[axis] = 0.0;
-    coordinates[axis] = 0;
-    oldCoordinates[axis] = 0;
-    offset[axis] = 0;
+    coordinates[axis] = 0.0;
+    oldCoordinates[axis] = 0.0;
+    offset[axis] = 0.0;
   }
 
   if (reprap.Debug(moduleGcodes))
@@ -2585,7 +2576,7 @@ bool Roland::ProcessHome()
    if(Busy())
 	return false;
    sBuffer->printf("H;\n"); 
-   Zero(0);
+   Zero(false);
    if (reprap.Debug(moduleGcodes))
    {
 	platform->MessageF(HOST_MESSAGE, "Roland home: %s", buffer);
@@ -2598,7 +2589,7 @@ bool Roland::ProcessDwell(long milliseconds)
    if(Busy())
 	return false;
    sBuffer->printf("W%ld;", milliseconds);
-   sBuffer->catf("PD%ld,%ld;", oldCoordinates[0], oldCoordinates[1]);
+   sBuffer->catf("Z %.4f,%.4f,%.4f;", oldCoordinates[0], oldCoordinates[1], oldCoordinates[2]);
    sBuffer->catf("W0;\n");
    if (reprap.Debug(moduleGcodes))
    {
@@ -2612,7 +2603,7 @@ bool Roland::ProcessG92(float v, size_t axis)
   if(Busy())
 	return false;
   move[axis] = v;
-  coordinates[axis] = round(move[axis]*ROLAND_FACTOR) + offset[axis];
+  coordinates[axis] = move[axis]*ROLAND_FACTOR + offset[axis];
   offset[axis] = oldCoordinates[axis];
   oldCoordinates[axis] = coordinates[axis];
   if (reprap.Debug(moduleGcodes))
@@ -2645,43 +2636,27 @@ void Roland::GetCurrentRolandPosition(float moveBuffer[])
 {
     for(size_t axis = 0; axis < AXES; axis++)
 	moveBuffer[axis] = move[axis];
+
     for(size_t axis = AXES; axis < DRIVES; axis++)
 	moveBuffer[axis] = 0.0;
+
     moveBuffer[DRIVES] = move[AXES];
 }
 
 void Roland::ProcessMove()
 {
   for(size_t axis = 0; axis < AXES; axis++)
-    coordinates[axis] = round(move[axis]*ROLAND_FACTOR) + offset[axis];
-  coordinates[AXES] = round(move[AXES]);
+    coordinates[axis] = move[axis]*ROLAND_FACTOR + offset[axis];
+  coordinates[AXES] = move[AXES];
 
-  // Start with feedrate
+  // Start with feedrate; For some reason the Roland won't accept more than 4 d.p.
 
-  if(coordinates[AXES] != oldCoordinates[AXES])
-    sBuffer->printf("VS%ld;", coordinates[AXES]);
-  else
-    sBuffer->Clear();
+    sBuffer->printf("V %.4f;", coordinates[AXES]);
 
-  // Now any Z move
+  // Now the move
 
-  if(coordinates[Z_AXIS] != oldCoordinates[Z_AXIS])
-  {
-    sBuffer->catf("!PZ%ld;", coordinates[Z_AXIS]);
-    sBuffer->catf("PD%ld,%ld;", oldCoordinates[X_AXIS], oldCoordinates[Y_AXIS]);
-  }
-
-  // Finally any XY move
-
-  if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || (coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]) )
-    sBuffer->catf("PD%ld,%ld;", coordinates[0], coordinates[1]);
-
-
-/*  if( (coordinates[X_AXIS] != oldCoordinates[X_AXIS]) || 
-	(coordinates[Y_AXIS] != oldCoordinates[Y_AXIS]) ||
-	(coordinates[Z_AXIS] != oldCoordinates[Z_AXIS])	)
-    sBuffer->catf("!ZE X%ldY%ldZ%ld;", coordinates[0], coordinates[1], coordinates[2]);
-*/  
+    sBuffer->catf("Z %.4f,%.4f,%.4f;", coordinates[0], coordinates[1], coordinates[2]);
+ 
   sBuffer->catf("\n");
   
   for(size_t axis = 0; axis <= AXES; axis++)
@@ -2714,8 +2689,6 @@ bool Roland::Active()
 void Roland::Activate()
 {
 	digitalWrite(ROLAND_RTS_PIN, LOW);
-//Serial1.write('a');
-//Serial1.flush();
 	active = true;
   if (reprap.Debug(moduleGcodes))
   {
