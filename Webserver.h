@@ -45,17 +45,19 @@ const size_t maxQualKeys = 5;					// max number of key/value pairs in the qualif
 const size_t maxHeaders = 16;					// max number of key/value pairs in the headers
 
 const size_t  maxSessions = 8;					// maximum number of simultaneous HTTP sessions
-const uint16_t httpSessionTimeout = 30;			// HTTP session timeout in seconds
+const float httpSessionTimeout = 30.0;			// HTTP session timeout in seconds
 
 /* FTP */
 
 const uint16_t ftpResponseLength = 128;			// maximum FTP response length
 const uint16_t ftpFileListLineLength = 256;		// maximum length for one FTP file listing line
 const uint16_t ftpMessageLength = 128;			// maximum line length for incoming FTP commands
+const float ftpPasvPortTimeout = 10.0;			// maximum time to wait for an FTP data connection
 
 /* Telnet */
 
-const uint16_t telnetMessageLength = 256;		// maximum line length for incoming Telnet commands
+const uint16_t telnetMessageLength = 128;		// maximum line length for incoming Telnet commands
+const float telnetSetupDuration = 4.0;			// ignore the first Telnet request within this duration
 
 
 class Webserver;
@@ -82,9 +84,8 @@ class ProtocolInterpreter
 		virtual void ResetState() = 0;
 		virtual bool NeedMoreData();
 
-		virtual bool DoFastUpload();
+		virtual bool DoFastUpload(NetworkTransaction *transaction);
 		virtual bool DoingFastUpload() const;
-		bool FlushUploadData();
 		virtual void CancelUpload();
 
 	protected:
@@ -104,11 +105,8 @@ class ProtocolInterpreter
 		UploadState uploadState;
 		FileData fileBeingUploaded;
 		char filenameBeingUploaded[FILENAME_LENGTH];
-		const char *uploadPointer;							// pointer to start of uploaded data not yet written to file
-		uint32_t uploadLength;								// amount of data not yet written to file
 
 		virtual bool StartUpload(FileStore *file);
-		virtual bool StoreUploadData(const char* data, uint32_t len);
 		bool IsUploading() const;
 		virtual void FinishUpload(uint32_t fileLength);
 };
@@ -149,7 +147,7 @@ class Webserver
 				void ResetState();
 				bool NeedMoreData();
 
-				bool DoFastUpload();
+				bool DoFastUpload(NetworkTransaction *transaction);
 				bool DoingFastUpload() const;
 				void CancelUpload();
 				void CancelUpload(uint32_t remoteIP);
@@ -194,7 +192,7 @@ class Webserver
 				};
 
 				void SendFile(const char* nameOfFileToSend);
-				void SendGCodeReply();
+				void SendGCodeReply(NetworkTransaction *transaction);
 				void SendJsonResponse(const char* command);
 				bool GetJsonResponse(const char* request, OutputBuffer *&response, const char* key, const char* value, size_t valueLength, bool& keepOpen);
 				void GetJsonUploadResponse(OutputBuffer *response);
@@ -255,7 +253,7 @@ class Webserver
 				uint32_t postFileLength, uploadedBytes;			// how many POST bytes do we expect and how many have already been written?
 
 				bool StartUpload(FileStore *file);
-				bool StoreUploadData(const char* data, uint32_t len);
+				void WriteUploadedData(const char *buffer, unsigned int length);
 				void FinishUpload(uint32_t fileLength);
 
 		};
@@ -277,6 +275,7 @@ class Webserver
 
 				enum FtpState
 				{
+					idle,					// no client connected
 					authenticating,			// not logged in
 					authenticated,			// logged in
 					waitingForPasvPort,		// waiting for connection to be established on PASV port
@@ -321,16 +320,20 @@ class Webserver
 				uint16_t GetGCodeBufferSpace() const;
 
 				bool HasDataToSend() const;
-				void SendGCodeReply();
+				void SendGCodeReply(NetworkTransaction *transaction);
 
 			private:
 
 				enum TelnetState
 				{
+					idle,					// not connected
+					justConnected,			// not logged in, but the client has just connected
 					authenticating,			// not logged in
 					authenticated			// logged in
 				};
 				TelnetState state;
+				uint8_t connectedClients;
+				float connectTime;
 
 				char clientMessage[telnetMessageLength];
 				uint16_t clientPointer;
@@ -342,7 +345,6 @@ class Webserver
 				char gcodeBuffer[gcodeBufferLength];
 				uint16_t gcodeReadIndex, gcodeWriteIndex;		// head and tail indices into gcodeBuffer
 
-				void LoadGcodeBuffer(const char* gc);
 				void ProcessGcode(const char* gc);
 				void StoreGcodeData(const char* data, uint16_t len);
 

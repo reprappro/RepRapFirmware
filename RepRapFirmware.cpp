@@ -39,7 +39,7 @@ Naming conventions:
 
 Structure:
 
-There are eight main classes:
+There are nine main classes:
 
   * RepRap
   * GCodes
@@ -47,7 +47,8 @@ There are eight main classes:
   * Move
   * Platform
   * Network
-  * Webserver, and
+  * Webserver
+  * Roland, and
   * PrintMonitor
 
 RepRap:
@@ -83,6 +84,11 @@ Webserver:
 This class talks to the network (via Platform) and implements a simple webserver to give an interactive
 interface to the RepRap machine.  It uses the Knockout and Jquery Javascript libraries to achieve this.
 In addition, FTP and Telnet servers are provided for easier SD card file management and G-Code handling.
+
+Roland:
+
+This class can interface with a Roland mill (e.g. Roland MDX-20/15) and allows the underlying hardware
+to act as a G-Code proxy, which translates G-Codes to internal Roland commands.
 
 PrintMonitor:
 
@@ -158,14 +164,6 @@ RepRap reprap;
 
 //*************************************************************************************************
 
-void watchdogSetup(void)
-{
-    // RepRapFirmware enables the watchdog by default
-    watchdogEnable(1000);
-}
-
-//*************************************************************************************************
-
 // RepRap member functions.
 
 // Do nothing more in the constructor; put what you want in RepRap:Init()
@@ -179,6 +177,7 @@ RepRap::RepRap() : lastToolWarningTime(0.0), ticksInSpinState(0), spinningModule
 	gCodes = new GCodes(platform, webserver);
 	move = new Move(platform, gCodes);
 	heat = new Heat(platform, gCodes);
+	roland = new Roland(platform);
 	printMonitor = new PrintMonitor(platform, gCodes);
 
 	toolList = nullptr;
@@ -212,6 +211,7 @@ void RepRap::Init()
 	webserver->Init();
 	move->Init();
 	heat->Init();
+	roland->Init();
 	printMonitor->Init();
 	currentTool = nullptr;
 
@@ -297,6 +297,10 @@ void RepRap::Spin()
 	spinningModule = moduleHeat;
 	ticksInSpinState = 0;
 	heat->Spin();
+
+	spinningModule = moduleRoland;
+	ticksInSpinState = 0;
+	roland->Spin();
 
 	spinningModule = modulePrintMonitor;
 	ticksInSpinState = 0;
@@ -676,6 +680,15 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 	/* Coordinates */
 	{
 		float liveCoordinates[DRIVES + 1];
+		if (roland->Active())
+		{
+			roland->GetCurrentRolandPosition(liveCoordinates);
+		}
+		else
+		{
+			move->LiveCoordinates(liveCoordinates);
+		}
+
 		if (currentTool != nullptr)
 		{
 			const float *offset = currentTool->GetOffset();
@@ -684,7 +697,6 @@ OutputBuffer *RepRap::GetStatusResponse(uint8_t type, bool forWebserver)
 				liveCoordinates[i] += offset[i];
 			}
 		}
-		move->LiveCoordinates(liveCoordinates);
 
 		// Homed axes
 		response->catf("\"axesHomed\":[%d,%d,%d]",
@@ -1454,7 +1466,7 @@ OutputBuffer *RepRap::GetFilesResponse(const char *dir, bool flagsDirs)
 }
 
 // Allocates an output buffer instance which can be used for (large) string outputs
-bool RepRap::AllocateOutput(OutputBuffer *&buf)
+bool RepRap::AllocateOutput(OutputBuffer *&buf, bool isAppending)
 {
 	const irqflags_t flags = cpu_irq_save();
 
@@ -1464,6 +1476,18 @@ bool RepRap::AllocateOutput(OutputBuffer *&buf)
 
 		buf = nullptr;
 		return false;
+	}
+	else if (isAppending)
+	{
+		// It's a good idea to leave at least one OutputBuffer available if we're
+		// writing a large chunk of data...
+		if (freeOutputBuffers->next == nullptr)
+		{
+			cpu_irq_restore(flags);
+
+			buf = nullptr;
+			return false;
+		}
 	}
 
 	buf = freeOutputBuffers;
@@ -1827,7 +1851,7 @@ size_t OutputBuffer::copy(const char *src, size_t len)
 		OutputBuffer *currentBuffer, *lastBuffer = nullptr;
 		size_t bytesCopied = OUTPUT_BUFFER_SIZE;
 		do {
-			if (!reprap.AllocateOutput(currentBuffer))
+			if (!reprap.AllocateOutput(currentBuffer, true))
 			{
 				// We cannot store the whole string. Should never happen
 				break;
@@ -1876,7 +1900,7 @@ size_t OutputBuffer::cat(const char c)
 	{
 		// No - allocate a new item and link it
 		OutputBuffer *nextBuffer;
-		if (!reprap.AllocateOutput(nextBuffer))
+		if (!reprap.AllocateOutput(nextBuffer, true))
 		{
 			// We cannot store any more data. Should never happen
 			return 0;
@@ -1917,7 +1941,7 @@ size_t OutputBuffer::cat(const char *src, size_t len)
 
 		// Yes - copy what we can't write into a new chain
 		OutputBuffer *nextBuffer;
-		if (!reprap.AllocateOutput(nextBuffer))
+		if (!reprap.AllocateOutput(nextBuffer, true))
 		{
 			// We cannot store any more data. Should never happen
 			return 0;

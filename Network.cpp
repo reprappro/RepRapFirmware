@@ -66,7 +66,7 @@ static inline char* sendingWindow() { return reinterpret_cast<char*>(sendingWind
 static uint16_t sendingWindowSize, sentDataOutstanding;
 static uint8_t sendingRetries;
 
-static uint16_t httpPort = HTTP_PORT;
+static uint16_t httpPort = DEFAULT_HTTP_PORT;
 
 // Called only by LWIP to put out a message.
 // May be called from C as well as C++
@@ -710,99 +710,6 @@ NetworkTransaction *Network::GetTransaction(const ConnectionState *cs)
 	return nullptr;
 }
 
-// Send the output data we already have, optionally with a file appended, then close the connection unless keepConnectionOpen is true.
-// The file may be too large for our buffer, so we may have to send it in multiple transactions.
-void Network::SendAndClose(FileStore *f, bool keepConnectionOpen)
-{
-	NetworkTransaction *r = readyTransactions;
-	if (r == nullptr)
-	{
-		return;
-	}
-
-	if (r->status == dataSending)
-	{
-		// This transaction is already in use for sending (e.g. a Telnet request),
-		// so all we have to do is to remove it from readyTransactions.
-		readyTransactions = r->next;
-	}
-	else
-	{
-		readyTransactions = r->next;
-
-		if (r->LostConnection())
-		{
-			if (f != nullptr)
-			{
-				f->Close();
-			}
-
-			OutputBuffer *buf = r->sendBuffer;
-			while (buf != nullptr)
-			{
-				buf = reprap.ReleaseOutput(buf);
-			}
-			r->sendBuffer = nullptr;
-
-			AppendTransaction(&freeTransactions, r);
-//			debugPrintf("Conn lost before send\n");
-		}
-		else
-		{
-			r->FreePbuf();	// If a connection is lost before, the corresponding events will do this automatically
-			r->cs->persistConnection = keepConnectionOpen;
-			r->fileBeingSent = f;
-			r->status = dataSending;
-
-			NetworkTransaction *mySendingTransaction = r->cs->sendingTransaction;
-			if (mySendingTransaction == nullptr)
-			{
-				r->cs->sendingTransaction = r;
-				AppendTransaction(&writingTransactions, r);
-//				debugPrintf("Transaction queued for writing to network, file=%c, data=%s\n", (f ? 'Y' : 'N'), r->outputBuffer);
-			}
-			else
-			{
-				while (mySendingTransaction->nextWrite != nullptr)
-				{
-					mySendingTransaction = mySendingTransaction->nextWrite;
-				}
-				mySendingTransaction->nextWrite = r;
-//				debugPrintf("Transaction appended to sending RS\n");
-			}
-		}
-	}
-}
-
-// We have no data to write and we want to keep the current connection alive if possible.
-// That way we can speed up freeing the current NetworkTransaction.
-void Network::CloseTransaction()
-{
-	// Free the current NetworkTransaction's data (if any)
-	NetworkTransaction *r = readyTransactions;
-	if (r == nullptr)
-	{
-		return;
-	}
-	r->FreePbuf();
-
-	// Terminate this connection if this NetworkTransaction indicates a graceful disconnect
-	TransactionStatus status = r->status;
-	if (!r->LostConnection() && status == disconnected)
-	{
-//		debugPrintf("Network: CloseRequest is closing connection cs=%08x\n", (unsigned int)locCs);
-		ConnectionClosed(r->cs, true);
-	}
-
-	// Remove the current item from readyTransactions
-	readyTransactions = r->next;
-
-	// Append it to freeTransactions again unless it's already on another list
-	if (status != dataSending)
-	{
-		AppendTransaction(&freeTransactions, r);
-	}
-}
 
 
 // The current NetworkTransaction must be processed again,
@@ -1179,6 +1086,11 @@ void NetworkTransaction::Printf(const char* fmt, ...)
 	va_end(p);
 }
 
+void NetworkTransaction::SetFileToWrite(FileStore *file)
+{
+	fileBeingSent = file;
+}
+
 // Send exactly one TCP window of data or return true if we can free up this object
 bool NetworkTransaction::Send()
 {
@@ -1315,6 +1227,91 @@ bool NetworkTransaction::Send()
 		}
 	}
 	return false;
+}
+
+// This is called by the Webserer to send output data to a client. If keepConnectionAlive is set to false,
+// the current connection is terminated once everything has been sent.
+void NetworkTransaction::Commit(bool keepConnectionAlive)
+{
+	// If this transaction is already in use for sending, just pretend it was complete
+	if (status == dataSending)
+	{
+		reprap.GetNetwork()->readyTransactions = next;
+	}
+	else
+	{
+		if (LostConnection())
+		{
+			Discard();
+//			debugPrintf("Conn lost before send\n");
+		}
+		else
+		{
+			// We're actually sending, so this transaction must be complete
+			reprap.GetNetwork()->readyTransactions = next;
+			FreePbuf();
+			cs->persistConnection = keepConnectionAlive;
+			status = dataSending;
+
+			// Enqueue this transaction, so it's sent in the right order
+			NetworkTransaction *mySendingTransaction = cs->sendingTransaction;
+			if (mySendingTransaction == nullptr)
+			{
+				cs->sendingTransaction = this;
+				NetworkTransaction * volatile * writingTransactions = &reprap.GetNetwork()->writingTransactions;
+				reprap.GetNetwork()->AppendTransaction(writingTransactions, this);
+//				debugPrintf("Transaction queued for writing to network, file=%c, data=%s\n", (f ? 'Y' : 'N'), r->outputBuffer);
+			}
+			else
+			{
+				while (mySendingTransaction->nextWrite != nullptr)
+				{
+					mySendingTransaction = mySendingTransaction->nextWrite;
+				}
+				mySendingTransaction->nextWrite = this;
+//				debugPrintf("Transaction appended to sending RS\n");
+			}
+		}
+	}
+}
+
+// This method should be called if we don't want to send data to the client and if
+// we don't want to interfere with the connection state, i.e. keep it alive.
+void NetworkTransaction::Discard()
+{
+	// Is this the transaction we should be dealing with?
+	if (reprap.GetNetwork()->readyTransactions != this)
+	{
+		return;
+	}
+	reprap.GetNetwork()->readyTransactions = next;
+
+	// Free up some resources...
+	FreePbuf();
+
+	if (fileBeingSent != nullptr)
+	{
+		fileBeingSent->Close();
+	}
+
+	while (sendBuffer != nullptr)
+	{
+		sendBuffer = reprap.ReleaseOutput(sendBuffer);
+	}
+
+	// Free this transaction again unless it's still referenced
+	if (status != dataSending)
+	{
+		NetworkTransaction * volatile * freeTransactions = &reprap.GetNetwork()->freeTransactions;
+		reprap.GetNetwork()->AppendTransaction(freeTransactions, this);
+	}
+
+	// Call disconnect events if this transaction indicates a graceful disconnect
+	if (!LostConnection() && status == disconnected)
+	{
+//		debugPrintf("Network: CloseRequest is closing connection cs=%08x\n", (unsigned int)locCs);
+		reprap.GetNetwork()->ConnectionClosed(cs, true);
+	}
 }
 
 void NetworkTransaction::SetConnectionLost()

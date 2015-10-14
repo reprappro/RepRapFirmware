@@ -573,7 +573,7 @@ bool GCodes::LoadMoveBufferFromGCode(GCodeBuffer *gb, bool doingG92, bool applyL
 				}
 
 				// If on a Cartesian printer and applying limits, limit all axes
-				if (applyLimits && axisIsHomed[axis] && !reprap.GetMove()->IsDeltaMode())
+				if (applyLimits && axisIsHomed[axis] && !(reprap.GetMove()->IsDeltaMode() || reprap.GetRoland()->Active()))
 				{
 					if (moveArg < platform->AxisMinimum(axis))
 					{
@@ -670,7 +670,14 @@ int GCodes::SetUpMove(GCodeBuffer *gb, StringRef& reply)
 	}
 
 	// Load the last position and feed rate into moveBuffer
-	reprap.GetMove()->GetCurrentUserPosition(moveBuffer, moveType);
+	if (reprap.GetRoland()->Active())
+	{
+		reprap.GetRoland()->GetCurrentRolandPosition(moveBuffer);
+	}
+	else
+	{
+		reprap.GetMove()->GetCurrentUserPosition(moveBuffer, moveType);
+	}
 
 	// Load the move buffer with either the absolute movement required or the relative movement required
 	moveAvailable = LoadMoveBufferFromGCode(gb, false, limitAxes && moveType == 0);
@@ -886,6 +893,17 @@ bool GCodes::SetPositions(GCodeBuffer *gb)
 	bool ok = LoadMoveBufferFromGCode(gb, true, false);
 	if (ok && includingAxes)
 	{
+		if (reprap.GetRoland()->Active())
+		{
+			for(size_t axis = 0; axis < AXES; axis++)
+			{
+				if (!reprap.GetRoland()->ProcessG92(moveBuffer[axis], axis))
+				{
+					return false;
+				}
+			}
+		}
+
 		SetPositions(moveBuffer);
 	}
 
@@ -972,6 +990,20 @@ bool GCodes::DoHome(const GCodeBuffer *gb, StringRef& reply, bool& error)
 	{
 		// If we're interfering with another GCode, wait until it's finished
 		return false;
+	}
+
+	// Deal with a Roland configuration
+	if (reprap.GetRoland()->Active())
+	{
+		bool rolHome = reprap.GetRoland()->ProcessHome();
+		if (rolHome)
+		{
+			for(size_t axis = 0; axis < AXES; axis++)
+			{
+				axisIsHomed[axis] = true;
+			}
+		}
+		return rolHome;
 	}
 
 	// Homing procedure for delta printers
@@ -1627,6 +1659,12 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
 	if (!gb->Seen('P'))
 		return true;  // No time given - throw it away
 
+	// Deal with a Roland configuration
+	if (reprap.GetRoland()->Active())
+	{
+		return reprap.GetRoland()->ProcessDwell(gb->GetLValue());
+	}
+
 	// Wait for all the queued moves to stop
 	if (!AllMovesAreFinishedAndMoveBufferIsLoaded())
 	{
@@ -1638,7 +1676,6 @@ bool GCodes::DoDwell(GCodeBuffer *gb)
 	if (simulating)
 	{
 		simulationTime += dwell;
-		reprap.GetMove()->ResumeMoving();
 		return true;
 	}
 	else
@@ -1664,6 +1701,7 @@ bool GCodes::DoDwellTime(float dwell)
 
 	// New dwell - set it up
 
+	reprap.GetMove()->AllMovesAreFinished();
 	dwellWaiting = true;
 	dwellTime = platform->Time() + dwell;
 	return false;
@@ -2722,6 +2760,16 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 
 				// Reset everything
 				CancelPrint();
+			}
+			break;
+
+		case 3: // Spin spindle
+			if (reprap.GetRoland()->Active())
+			{
+				if(gb->Seen('S'))
+				{
+					result = reprap.GetRoland()->ProcessSpindle(gb->GetFValue());
+				}
 			}
 			break;
 
@@ -4862,6 +4910,28 @@ bool GCodes::HandleMcode(GCodeBuffer* gb)
 						reply.catf(" %c: %.3f%c", axisLetters[axis], axisScaleFactors[axis], comma);
 					}
 				}
+			}
+			break;
+
+		case 580: // (De)Select Roland mill
+			if (gb->Seen('R'))
+			{
+				if (gb->GetIValue())
+				{
+					reprap.GetRoland()->Activate();
+					if (gb->Seen('P'))
+					{
+						result = reprap.GetRoland()->RawWrite(gb->GetString());
+					}
+				}
+				else
+				{
+					result = reprap.GetRoland()->Deactivate();
+				}
+			}
+			else
+			{
+				reply.printf("Roland is %s.\n", reprap.GetRoland()->Active() ? "active" : "inactive");
 			}
 			break;
 

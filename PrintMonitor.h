@@ -20,7 +20,8 @@ Licence: GPL
 #ifndef PRINTMONITOR_H
 #define PRINTMONITOR_H
 
-enum PrintEstimationMethod {
+enum PrintEstimationMethod
+{
 	filamentBased,
 	fileBased,
 	layerBased

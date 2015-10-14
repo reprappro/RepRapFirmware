@@ -68,6 +68,7 @@ class RepRap
 		GCodes* GetGCodes() const;
 		Network* GetNetwork() const;
 		Webserver* GetWebserver() const;
+		Roland* GetRoland() const;
 		PrintMonitor* GetPrintMonitor() const;
 
 		void Tick();
@@ -78,7 +79,8 @@ class RepRap
 		uint16_t GetHeatersInUse() const;
 
 		// Allocate an unused OutputBuffer instance. Returns true on success or false if no instance could be allocated.
-		bool AllocateOutput(OutputBuffer *&buf);
+		// Setting isAppending to true will guarantee that one OutputBuffer will remain available for single allocation.
+		bool AllocateOutput(OutputBuffer *&buf, bool isAppending = false);
 
 		// Replace an existing OutputBuffer with another one.
 		void ReplaceOutput(OutputBuffer *&destination, OutputBuffer *source);
@@ -107,6 +109,7 @@ class RepRap
 		Heat* heat;
 		GCodes* gCodes;
 		Webserver* webserver;
+		Roland* roland;
 		PrintMonitor* printMonitor;
 
 		Tool* toolList;
@@ -144,6 +147,7 @@ inline Heat* RepRap::GetHeat() const { return heat; }
 inline GCodes* RepRap::GetGCodes() const { return gCodes; }
 inline Network* RepRap::GetNetwork() const { return network; }
 inline Webserver* RepRap::GetWebserver() const { return webserver; }
+inline Roland* RepRap::GetRoland() const { return roland; }
 inline PrintMonitor* RepRap::GetPrintMonitor() const { return printMonitor; }
 
 inline bool RepRap::Debug(Module m) const { return debug & (1 << m); }

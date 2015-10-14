@@ -74,6 +74,12 @@ extern "C"
 	}
 }
 
+void watchdogSetup(void)
+{
+    // RepRapFirmware enables the watchdog by default
+    watchdogEnable(1000);
+}
+
 //*************************************************************************************************
 // PidParameters class
 

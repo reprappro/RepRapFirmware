@@ -95,8 +95,6 @@ rr_move?old=xxx&new=yyy
 static const char* overflowResponse = "overflow";
 static const char* badEscapeResponse = "bad escape";
 
-const float pasvPortTimeout = 10.0;	 					// seconds to wait for the FTP data port
-
 
 //********************************************************************************************
 //
@@ -136,7 +134,7 @@ void Webserver::Spin()
 	// Before we process an incoming Request, we must ensure that the webserver
 	// is active and that all upload buffers are empty.
 
-	if (webserverActive && httpInterpreter->FlushUploadData() && ftpInterpreter->FlushUploadData())
+	if (webserverActive)
 	{
 		// Check if we can purge any HTTP sessions
 		httpInterpreter->CheckSessions();
@@ -149,14 +147,14 @@ void Webserver::Spin()
 		}
 
 		// See if we have new data to process
-		NetworkTransaction *req = network->GetTransaction(readingConnection);
-		if (req != nullptr)
+		NetworkTransaction *transaction = network->GetTransaction(readingConnection);
+		if (transaction != nullptr)
 		{
-			if (!req->LostConnection())
+			if (!transaction->LostConnection())
 			{
 				// Take care of different protocol types here
 				ProtocolInterpreter *interpreter;
-				uint16_t localPort = req->GetLocalPort();
+				uint16_t localPort = transaction->GetLocalPort();
 				switch (localPort)
 				{
 					case FTP_PORT:		/* FTP */
@@ -180,28 +178,23 @@ void Webserver::Spin()
 				}
 
 				// For protocols other than HTTP it is important to send a HELO message
-				TransactionStatus status = req->GetStatus();
+				TransactionStatus status = transaction->GetStatus();
 				if (status == connected)
 				{
 					interpreter->ConnectionEstablished();
-
-					// Close this request unless ConnectionEstablished() has already used it for sending
-					if (req == network->GetTransaction())
-					{
-						network->CloseTransaction();
-					}
+					transaction->Discard();
 				}
 				// Graceful disconnects are handled here, because prior NetworkTransactions might still contain valid
 				// data. That's why it's a bad idea to close these connections immediately in the Network class.
 				else if (status == disconnected)
 				{
-					// CloseRequest() will call the disconnect events and close the connection
-					network->CloseTransaction();
+					// This will call the disconnect events and effectively close the connection
+					transaction->Discard();
 				}
 				// Check for fast uploads
 				else if (interpreter->DoingFastUpload())
 				{
-					if (!interpreter->DoFastUpload())
+					if (!interpreter->DoFastUpload(transaction))
 					{
 						// Ensure this connection won't block everything if anything goes wrong
 						readingConnection = nullptr;
@@ -210,8 +203,8 @@ void Webserver::Spin()
 				// Check if we need to send data to a Telnet client
 				else if (interpreter == telnetInterpreter && telnetInterpreter->HasDataToSend())
 				{
-					telnetInterpreter->SendGCodeReply();
-					network->SendAndClose(nullptr, true);
+					telnetInterpreter->SendGCodeReply(transaction);
+					transaction->Commit(true);
 				}
 				// Process other messages
 				else
@@ -219,7 +212,7 @@ void Webserver::Spin()
 					for(size_t i = 0; i < 500; i++)
 					{
 						char c;
-						if (req->Read(c))
+						if (transaction->Read(c))
 						{
 							// Each ProtocolInterpreter must take care of the current NetworkTransaction and remove
 							// it from the ready transactions by either calling SendAndClose() or CloseRequest().
@@ -234,8 +227,8 @@ void Webserver::Spin()
 							// We ran out of data before finding a complete request.
 							// This happens when the incoming message length exceeds the TCP MSS.
 							// Check if we need to process another packet on the same connection.
-							readingConnection = (interpreter->NeedMoreData()) ? req->GetConnection() : nullptr;
-							network->CloseTransaction();
+							readingConnection = (interpreter->NeedMoreData()) ? transaction->GetConnection() : nullptr;
+							transaction->Discard();
 							break;
 						}
 					}
@@ -243,8 +236,8 @@ void Webserver::Spin()
 			}
 			else
 			{
-				platform->MessageF(HOST_MESSAGE, "Webserver: Skipping zombie request with status %d\n", req->GetStatus());
-				network->CloseTransaction();
+				platform->MessageF(HOST_MESSAGE, "Webserver: Skipping zombie transaction with status %d\n", transaction->GetStatus());
+				transaction->Discard();
 			}
 		}
 
@@ -397,8 +390,6 @@ ProtocolInterpreter::ProtocolInterpreter(Platform *p, Webserver *ws, Network *n)
 	: platform(p), webserver(ws), network(n)
 {
 	uploadState = notUploading;
-	uploadPointer = nullptr;
-	uploadLength = 0;
 	filenameBeingUploaded[0] = 0;
 }
 
@@ -419,37 +410,6 @@ bool ProtocolInterpreter::StartUpload(FileStore *file)
 	return false;
 }
 
-// Process a received buffer of upload data
-bool ProtocolInterpreter::StoreUploadData(const char* data, uint32_t len)
-{
-	if (uploadState == uploadOK)
-	{
-		uploadPointer = data;
-		uploadLength = len;
-		return true;
-	}
-	return false;
-}
-
-// Try to flush upload buffer and return true if all data has been flushed
-bool ProtocolInterpreter::FlushUploadData()
-{
-	if (uploadState == uploadOK && uploadLength != 0)
-	{
-		// Write uploaded data to file
-		if (!fileBeingUploaded.Write(uploadPointer, uploadLength))
-		{
-			platform->Message(HOST_MESSAGE, "Could not flush upload data!\n");
-			uploadState = uploadError;
-		}
-
-		uploadPointer = nullptr;
-		uploadLength = 0;
-	}
-
-	return true;
-}
-
 void ProtocolInterpreter::CancelUpload()
 {
 	if (fileBeingUploaded.IsLive())
@@ -461,31 +421,30 @@ void ProtocolInterpreter::CancelUpload()
 		}
 	}
 	filenameBeingUploaded[0] = 0;
-	uploadPointer = nullptr;
-	uploadLength = 0;
 	uploadState = notUploading;
 }
 
-bool ProtocolInterpreter::DoFastUpload()
+bool ProtocolInterpreter::DoFastUpload(NetworkTransaction *transaction)
 {
-	NetworkTransaction *req = network->GetTransaction();
 	if (IsUploading())
 	{
 		char *buffer;
 		unsigned int len;
-		if (req->ReadBuffer(buffer, len))
+		if (transaction->ReadBuffer(buffer, len))
 		{
-			StoreUploadData(buffer, len);
-		}
-		else
-		{
-			network->CloseTransaction();
+			// Write uploaded data immediately to the file
+			if (!fileBeingUploaded.Write(buffer, len))
+			{
+				platform->Message(HOST_MESSAGE, "Could not write upload data!\n");
+				uploadState = uploadError;
+			}
+			transaction->Discard();
 		}
 	}
-	else if (req->DataLength() > 0)
+	else if (transaction->DataLength() > 0)
 	{
 		platform->Message(HOST_MESSAGE, "Webserver: Closing invalid data connection\n");
-		network->SendAndClose(nullptr);
+		transaction->Commit(false);
 		return false;
 	}
 
@@ -494,19 +453,7 @@ bool ProtocolInterpreter::DoFastUpload()
 
 void ProtocolInterpreter::FinishUpload(uint32_t fileLength)
 {
-	// Write the remaining data
-	if (uploadState == uploadOK && uploadLength != 0)
-	{
-		if (!fileBeingUploaded.Write(uploadPointer, uploadLength))
-		{
-			uploadState = uploadError;
-			platform->Message(HOST_MESSAGE, "Could not write remaining data while finishing upload!\n");
-		}
-	}
-
-	uploadPointer = nullptr;
-	uploadLength = 0;
-
+	// Flush remaining data for FSO
 	if (uploadState == uploadOK && !fileBeingUploaded.Flush())
 	{
 		uploadState = uploadError;
@@ -556,16 +503,35 @@ Webserver::HttpInterpreter::HttpInterpreter(Platform *p, Webserver *ws, Network 
 
 // File Uploads
 
-bool Webserver::HttpInterpreter::DoFastUpload()
+bool Webserver::HttpInterpreter::DoFastUpload(NetworkTransaction *transaction)
 {
-	bool success = ProtocolInterpreter::DoFastUpload();
-	uploadedBytes += uploadLength;
+	// Attempt to write one pbuf entry in one go
+	if (IsUploading())
+	{
+		char *buffer;
+		unsigned int len;
+		if (transaction->ReadBuffer(buffer, len))
+		{
+			WriteUploadedData(buffer, len);
+			uploadedBytes += len;
+		}
+		else
+		{
+			transaction->Discard();
+		}
+	}
+	else if (transaction->DataLength() > 0)
+	{
+		platform->Message(HOST_MESSAGE, "Webserver: Closing invalid data connection\n");
+		transaction->Commit(false);
+		return false;
+	}
 
-	// See if we can finish it this time
-	if (uploadedBytes >= postFileLength)
+	// See if the upload has finished
+	if (uploadState != uploadOK || uploadedBytes >= postFileLength)
 	{
 		// Reset POST upload state for this client
-		uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
+		uint32_t remoteIP = transaction->GetRemoteIP();
 		for(size_t i=0; i<numActiveSessions; i++)
 		{
 			if (sessions[i].ip == remoteIP && sessions[i].isPostUploading)
@@ -581,7 +547,7 @@ bool Webserver::HttpInterpreter::DoFastUpload()
 		uploadState = notUploading;
 	}
 
-	return success;
+	return (uploadState != uploadError);
 }
 
 bool Webserver::HttpInterpreter::DoingFastUpload() const
@@ -610,30 +576,30 @@ bool Webserver::HttpInterpreter::StartUpload(FileStore *file)
 	return ProtocolInterpreter::StartUpload(file);
 }
 
-bool Webserver::HttpInterpreter::StoreUploadData(const char* data, uint32_t len)
+void Webserver::HttpInterpreter::WriteUploadedData(const char *buffer, unsigned int length)
 {
-	if (uploadState == uploadOK)
+	// Count the number of UTF8 continuation bytes. We may need it to adjust the expected file length.
+	if (uploadingTextData)
 	{
-		uploadPointer = data;
-		uploadLength = len;
-
-		// Count the number of UTF8 continuation bytes. We may need it to adjust the expected file length.
-		if (uploadingTextData)
+		unsigned int bytesToCheck = length;
+		const char *data = buffer;
+		while (bytesToCheck != 0)
 		{
-			while (len != 0)
+			if ((*data & 0xC0) == 0x80)
 			{
-				if ((*data & 0xC0) == 0x80)
-				{
-					++numContinuationBytes;
-				}
-				++data;
-				--len;
+				++numContinuationBytes;
 			}
+			++data;
+			--bytesToCheck;
 		}
-
-		return true;
 	}
-	return false;
+
+	// Write uploaded data immediately to the file
+	if (!fileBeingUploaded.Write(buffer, length))
+	{
+		platform->Message(HOST_MESSAGE, "Could not write upload data!\n");
+		uploadState = uploadError;
+	}
 }
 
 void Webserver::HttpInterpreter::CancelUpload()
@@ -661,6 +627,8 @@ void Webserver::HttpInterpreter::CancelUpload(uint32_t remoteIP)
 // Start sending a file or a JSON response.
 void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 {
+	NetworkTransaction *transaction = network->GetTransaction();
+
 	if (StringEquals(nameOfFileToSend, "/"))
 	{
 		nameOfFileToSend = INDEX_PAGE_FILE;
@@ -676,9 +644,9 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 			return;
 		}
 	}
+	transaction->SetFileToWrite(fileToSend);
 
-	NetworkTransaction *req = network->GetTransaction();
-	req->Write("HTTP/1.1 200 OK\n");
+	transaction->Write("HTTP/1.1 200 OK\n");
 
 	const char* contentType;
 	bool zip = false;
@@ -711,19 +679,19 @@ void Webserver::HttpInterpreter::SendFile(const char* nameOfFileToSend)
 	{
 		contentType = "application/octet-stream";
 	}
-	req->Printf("Content-Type: %s\n", contentType);
+	transaction->Printf("Content-Type: %s\n", contentType);
 
 	if (zip && fileToSend != nullptr)
 	{
-		req->Write("Content-Encoding: gzip\n");
-		req->Printf("Content-Length: %lu\n", fileToSend->Length());
+		transaction->Write("Content-Encoding: gzip\n");
+		transaction->Printf("Content-Length: %lu\n", fileToSend->Length());
 	}
 
-	req->Write("Connection: close\n\n");
-	network->SendAndClose(fileToSend);
+	transaction->Write("Connection: close\n\n");
+	transaction->Commit(false);
 }
 
-void Webserver::HttpInterpreter::SendGCodeReply()
+void Webserver::HttpInterpreter::SendGCodeReply(NetworkTransaction *transaction)
 {
 	// Only one client may receive the G-Code response. Go through all sessions
 	// and check if this is the client that is intended to receive it, or alternatively
@@ -731,7 +699,7 @@ void Webserver::HttpInterpreter::SendGCodeReply()
 	bool sendGCodeReply = false;
 	if (gcodeReply != nullptr)
 	{
-		uint32_t remoteIP = network->GetTransaction()->GetRemoteIP();
+		uint32_t remoteIP = transaction->GetRemoteIP();
 		for(size_t i=0; i<numActiveSessions; i++)
 		{
 			if (sessions[i].ip == remoteIP)
@@ -743,21 +711,22 @@ void Webserver::HttpInterpreter::SendGCodeReply()
 		sendGCodeReply |= (numActiveSessions == 1);
 	}
 
-	NetworkTransaction *req = network->GetTransaction();
-	req->Write("HTTP/1.1 200 OK\n");
-	req->Write("Content-Type: text/plain\n");
-	req->Printf("Content-Length: %u\n", sendGCodeReply ? gcodeReply->Length() : 0);
-	req->Write("Connection: close\n\n");
+	transaction->Write("HTTP/1.1 200 OK\n");
+	transaction->Write("Content-Type: text/plain\n");
+	transaction->Printf("Content-Length: %u\n", sendGCodeReply ? gcodeReply->Length() : 0);
+	transaction->Write("Connection: close\n\n");
 	if (sendGCodeReply)
 	{
-		req->Write(gcodeReply);
+		transaction->Write(gcodeReply);
 		gcodeReply = nullptr;
 	}
-	network->SendAndClose(nullptr);
+	transaction->Commit(false);
 }
 
 void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 {
+	NetworkTransaction *transaction = network->GetTransaction();
+
 	// Try to authorize the user automatically to retain compatibility with the old web interface
 	if (!IsAuthenticated() && reprap.NoPasswordSet())
 	{
@@ -767,7 +736,7 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 	// rr_reply is treated differently, because it (currently) responds as "text/plain"
 	if (IsAuthenticated() && StringEquals(command, "reply"))
 	{
-		SendGCodeReply();
+		SendGCodeReply(transaction);
 		return;
 	}
 
@@ -776,12 +745,11 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 	if (!reprap.AllocateOutput(jsonResponse))
 	{
 		// Should never happen
-		network->SendAndClose(nullptr, false);
+		network->GetTransaction()->Commit(false);
 		return;
 	}
 
 	// See if we can find a suitable JSON response
-	NetworkTransaction *req = network->GetTransaction();
 	bool keepOpen = false;
 	bool mayKeepOpen;
 	bool found;
@@ -822,13 +790,13 @@ void Webserver::HttpInterpreter::SendJsonResponse(const char* command)
 		}
 	}
 
-	req->Write("HTTP/1.1 200 OK\n");
-	req->Write("Content-Type: application/json\n");
-	req->Printf("Content-Length: %u\n", (jsonResponse != nullptr) ? jsonResponse->Length() : 0);
-	req->Printf("Connection: %s\n\n", keepOpen ? "keep-alive" : "close");
-	req->Write(jsonResponse);
+	transaction->Write("HTTP/1.1 200 OK\n");
+	transaction->Write("Content-Type: application/json\n");
+	transaction->Printf("Content-Length: %u\n", (jsonResponse != nullptr) ? jsonResponse->Length() : 0);
+	transaction->Printf("Connection: %s\n\n", keepOpen ? "keep-alive" : "close");
+	transaction->Write(jsonResponse);
 
-	network->SendAndClose(nullptr, keepOpen);
+	transaction->Commit(keepOpen);
 }
 
 //----------------------------------------------------------------------------------------------------
@@ -936,7 +904,8 @@ bool Webserver::HttpInterpreter::GetJsonResponse(const char* request, OutputBuff
 		}
 		else if (StringEquals(request, "upload_data") && StringEquals(key, "data"))
 		{
-			StoreUploadData(value, valueLength);
+			WriteUploadedData(value, valueLength);
+			uploadedBytes += valueLength;
 
 			GetJsonUploadResponse(response);
 			keepOpen = true;
@@ -1026,7 +995,7 @@ bool Webserver::HttpInterpreter::NeedMoreData()
 	{
 		// At this stage we've processed the first chunk of a POST upload request. Store the
 		// initial payload and reset the HTTP reader again in order to process new requests
-		StoreUploadData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
+		WriteUploadedData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
 		ResetState();
 		return false;
 	}
@@ -1367,7 +1336,7 @@ bool Webserver::HttpInterpreter::CharFromClient(char c)
 
 			if (uploadedBytes == postFileLength)
 			{
-				StoreUploadData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
+				WriteUploadedData(clientMessage + (clientPointer - uploadedBytes), uploadedBytes);
 				FinishUpload(postFileLength);
 
 				SendJsonResponse("upload");
@@ -1523,9 +1492,9 @@ bool Webserver::HttpInterpreter::RejectMessage(const char* response, unsigned in
 {
 	platform->MessageF(HOST_MESSAGE, "Webserver: rejecting message with: %s\n", response);
 
-	NetworkTransaction *req = network->GetTransaction();
-	req->Printf("HTTP/1.1 %u %s\nConnection: close\n\n", code, response);
-	network->SendAndClose(nullptr);
+	NetworkTransaction *transaction = network->GetTransaction();
+	transaction->Printf("HTTP/1.1 %u %s\nConnection: close\n\n", code, response);
+	transaction->Commit(false);
 
 	ResetState();
 
@@ -1783,34 +1752,37 @@ void Webserver::FtpInterpreter::ConnectionEstablished()
 		platform->Message(HOST_MESSAGE, "Webserver: FTP connection established!\n");
 	}
 
-	NetworkTransaction *req = network->GetTransaction();
-
-	switch (state)
+	// Is this a new connection on the data port?
+	NetworkTransaction *transaction = network->GetTransaction();
+	if (transaction->GetLocalPort() != FTP_PORT)
 	{
-		case waitingForPasvPort:
-			if (req->GetLocalPort() == FTP_PORT)
-			{
-				network->SendAndClose(nullptr);
-				return;
-			}
-
+		if (state == waitingForPasvPort)
+		{
+			// Yes - save it for the main request
 			network->SaveDataConnection();
 			state = pasvPortConnected;
+		}
+		else
+		{
+			// Should never get here...
+			transaction->Commit(false);
+		}
+		return;
+	}
 
+	// A client is trying to connect to the main FTP port
+	switch (state)
+	{
+		case idle:
+			// We can safely deal with one connection on the main FTP port
+			state = authenticating;
+			SendReply(220, "RepRapFirmware FTP server", true);
 			break;
 
 		default:
-			// I (zpl) wanted to allow only one active FTP session, but some FTP programs
-			// like FileZilla open a second connection for transfers for some reason.
-			if (req->GetLocalPort() == FTP_PORT)
-			{
-				req->Write("220 RepRapFirmware FTP server\r\n");
-				network->SendAndClose(nullptr, true);
-
-				ResetState();
-			}
-
-			break;
+			// But don't allow multiple ones, this could mess things up
+			SendReply(421, "Only one client can be connected at a time.", false);
+			return;
 	}
 }
 
@@ -1905,7 +1877,7 @@ void Webserver::FtpInterpreter::ResetState()
 	network->CloseDataPort();
 	CancelUpload();
 
-	state = authenticating;
+	state = idle;
 }
 
 bool Webserver::FtpInterpreter::DoingFastUpload() const
@@ -1918,6 +1890,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 {
 	switch (state)
 	{
+		case idle:
 		case authenticating:
 			// don't check the user name
 			if (StringStartsWith(clientMessage, "USER"))
@@ -2169,7 +2142,7 @@ void Webserver::FtpInterpreter::ProcessLine()
 			break;
 
 		case waitingForPasvPort:
-			if (!reprap.Debug(moduleWebserver) && platform->Time() - portOpenTime > pasvPortTimeout)
+			if (!reprap.Debug(moduleWebserver) && platform->Time() - portOpenTime > ftpPasvPortTimeout)
 			{
 				SendReply(425, "Failed to establish connection.");
 
@@ -2192,17 +2165,18 @@ void Webserver::FtpInterpreter::ProcessLine()
 			{
 				// send response via main port
 				strncpy(ftpResponse, "150 Here comes the directory listing.\r\n", ftpResponseLength);
-				NetworkTransaction *ftp_req = network->GetTransaction();
-				ftp_req->Write(ftpResponse);
-				network->SendAndClose(nullptr, true);
+				NetworkTransaction *transaction = network->GetTransaction();
+				transaction->Write(ftpResponse);
+				transaction->Commit(true);
 
 				// send file list via data port
 				if (network->AcquireDataTransaction())
 				{
+					NetworkTransaction *dataTransaction = network->GetTransaction();
+
 					FileInfo fileInfo;
 					if (platform->GetMassStorage()->FindFirst(currentDir, fileInfo))
 					{
-						NetworkTransaction *data_req = network->GetTransaction();
 						char line[ftpFileListLineLength];
 
 						do {
@@ -2215,11 +2189,11 @@ void Webserver::FtpInterpreter::ProcessLine()
 									fileInfo.day, fileInfo.year, fileInfo.fileName);
 
 							// Fortunately we don't need to bother with output buffer chunks any more...
-							data_req->Write(line);
+							dataTransaction->Write(line);
 						} while (platform->GetMassStorage()->FindNext(fileInfo));
 					}
 
-					network->SendAndClose(nullptr);
+					dataTransaction->Commit(false);
 					state = doingPasvIO;
 				}
 				else
@@ -2286,7 +2260,9 @@ void Webserver::FtpInterpreter::ProcessLine()
 					if (network->AcquireDataTransaction())
 					{
 						// send the file via data port
-						network->SendAndClose(fs, false);
+						NetworkTransaction *dataTransaction = network->GetTransaction();
+						dataTransaction->SetFileToWrite(fs);
+						dataTransaction->Commit(false);
 						state = doingPasvIO;
 					}
 					else
@@ -2336,18 +2312,18 @@ void Webserver::FtpInterpreter::ProcessLine()
 
 void Webserver::FtpInterpreter::SendReply(int code, const char *message, bool keepConnection)
 {
-	NetworkTransaction *req = network->GetTransaction();
-	req->Printf("%d %s\r\n", code, message);
-	network->SendAndClose(nullptr, keepConnection);
+	NetworkTransaction *transaction = network->GetTransaction();
+	transaction->Printf("%d %s\r\n", code, message);
+	transaction->Commit(keepConnection);
 }
 
 void Webserver::FtpInterpreter::SendFeatures()
 {
-	NetworkTransaction *req = network->GetTransaction();
-	req->Write("211-Features:\r\n");
-	req->Write("PASV\r\n");		// support PASV mode
-	req->Write("211 End\r\n");
-	network->SendAndClose(nullptr, true);
+	NetworkTransaction *transaction = network->GetTransaction();
+	transaction->Write("211-Features:\r\n");
+	transaction->Write("PASV\r\n");		// support PASV mode
+	transaction->Write("211 End\r\n");
+	transaction->Commit(true);
 }
 
 void Webserver::FtpInterpreter::ReadFilename(uint16_t start)
@@ -2461,6 +2437,7 @@ void Webserver::FtpInterpreter::ChangeDirectory(const char *newDirectory)
 Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws, Network *n)
 	: ProtocolInterpreter(p, ws, n)
 {
+	connectedClients = 0;
 	gcodeReadIndex = gcodeWriteIndex = 0;
 	gcodeReply = nullptr;
 	ResetState();
@@ -2468,27 +2445,67 @@ Webserver::TelnetInterpreter::TelnetInterpreter(Platform *p, Webserver *ws, Netw
 
 void Webserver::TelnetInterpreter::ConnectionEstablished()
 {
-	NetworkTransaction *req = network->GetTransaction();
-	req->Write("RepRapFirmware Telnet interface\r\n\r\n");
-	req->Write("Please enter your password:\r\n");
-	req->Write("> ");
-	network->SendAndClose(nullptr, true);
+	connectedClients++;
+	NetworkTransaction *transaction = network->GetTransaction();
+
+	// Only one client may be connected via Telnet at once, so check this first
+	if (state != idle)
+	{
+		transaction->Write("Sorry, only one client may be connected via Telnet at once.\r\n");
+		transaction->Commit(false);
+		return;
+	}
+	state = justConnected;
+	connectTime = platform->Time();
+
+	// Check whether we need a password to log in
+	if (reprap.NoPasswordSet())
+	{
+		// Don't send a login prompt if no password is set, so we don't mess up Pronterface
+		transaction->Discard();
+	}
+	else
+	{
+		transaction->Write("RepRapFirmware Telnet interface\r\n\r\n");
+		transaction->Write("Please enter your password:\r\n");
+		transaction->Write("> ");
+		transaction->Commit(true);
+	}
 }
 
 void Webserver::TelnetInterpreter::ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort)
 {
-	ResetState();
+	connectedClients--;
+	if (connectedClients == 0)
+	{
+		ResetState();
+	}
 }
 
 bool Webserver::TelnetInterpreter::CharFromClient(char c)
 {
-	if (clientPointer == ARRAY_UPB(clientMessage))
+	// If this is likely to be a Telnet setup message (with some garbage in it), dump the first
+	// received packet and move on to the next state
+	if (state == justConnected)
 	{
-		clientPointer = 0;
-		platform->Message(HOST_MESSAGE, "Webserver: Buffer overflow in Telnet server!\n");
-		return true;
+		if (reprap.NoPasswordSet())
+		{
+			state = authenticated;
+			network->SaveTelnetConnection();
+		}
+		else
+		{
+			state = authenticating;
+		}
+
+		if (platform->Time() - connectTime < telnetSetupDuration)
+		{
+			network->GetTransaction()->Discard();
+			return true;
+		}
 	}
 
+	// Otherwise try to read one line at a time
 	switch (c)
 	{
 		case 0:
@@ -2504,18 +2521,14 @@ bool Webserver::TelnetInterpreter::CharFromClient(char c)
 			}
 			return true;
 
-		case '#':
-			// On Linux, the last character of the HELO message sent by Telnet is '#',
-			// so clear the buffer if the user hasn't logged in yet.
-			if (state == authenticating)
-			{
-				clientPointer = 0;
-				break;
-			}
-			// no break
-
 		default:
 			clientMessage[clientPointer++] = c;
+			if (clientPointer == ARRAY_UPB(clientMessage))
+			{
+				clientPointer = 0;
+				platform->Message(HOST_MESSAGE, "Webserver: Buffer overflow in Telnet server!\n");
+				return true;
+			}
 			break;
 	}
 
@@ -2524,29 +2537,33 @@ bool Webserver::TelnetInterpreter::CharFromClient(char c)
 
 void Webserver::TelnetInterpreter::ResetState()
 {
-	state = authenticating;
+	state = idle;
+	connectTime = 0.0;
 	clientPointer = 0;
 }
 
 void Webserver::TelnetInterpreter::ProcessLine()
 {
-	NetworkTransaction *req = network->GetTransaction();
-
+	NetworkTransaction *transaction = network->GetTransaction();
 	switch (state)
 	{
+		case idle:
+		case justConnected:
+			// Should never get here...
+
 		case authenticating:
 			if (reprap.CheckPassword(clientMessage))
 			{
 				network->SaveTelnetConnection();
 				state = authenticated;
 
-				req->Write("Log in successful!\r\n");
-				network->SendAndClose(nullptr, true);
+				transaction->Write("Log in successful!\r\n");
+				transaction->Commit(true);
 			}
 			else
 			{
-				req->Write("Invalid password.\r\n> ");
-				network->SendAndClose(nullptr, true);
+				transaction->Write("Invalid password.\r\n> ");
+				transaction->Commit(true);
 			}
 			break;
 
@@ -2554,8 +2571,8 @@ void Webserver::TelnetInterpreter::ProcessLine()
 			// Special commands for Telnet
 			if (StringEquals(clientMessage, "exit") || StringEquals(clientMessage, "quit"))
 			{
-				req->Write("Goodbye.\r\n");
-				network->SendAndClose(nullptr);
+				transaction->Write("Goodbye.\r\n");
+				transaction->Commit(false);
 			}
 			// All other commands are processed by the Webserver
 			else
@@ -2563,66 +2580,15 @@ void Webserver::TelnetInterpreter::ProcessLine()
 				ProcessGcode(clientMessage);
 				if (HasDataToSend())
 				{
-					SendGCodeReply();
-					network->SendAndClose(nullptr, true);
+					SendGCodeReply(transaction);
+					transaction->Commit(true);
 				}
 				else
 				{
-					network->CloseTransaction();
+					transaction->Discard();
 				}
 			}
 			break;
-	}
-}
-
-// Process a received string of gcodes
-void Webserver::TelnetInterpreter::LoadGcodeBuffer(const char* gc)
-{
-	char gcodeTempBuf[GCODE_LENGTH];
-	uint16_t gtp = 0;
-	bool inComment = false;
-	for (;;)
-	{
-		char c = *gc++;
-		if (c == 0)
-		{
-			gcodeTempBuf[gtp] = 0;
-			ProcessGcode(gcodeTempBuf);
-			return;
-		}
-
-		if (c == '\n')
-		{
-			gcodeTempBuf[gtp] = 0;
-			ProcessGcode(gcodeTempBuf);
-			gtp = 0;
-			inComment = false;
-		}
-		else
-		{
-			if (c == ';')
-			{
-				inComment = true;
-			}
-
-			if (gtp == ARRAY_UPB(gcodeTempBuf))
-			{
-				// gcode is too long, we haven't room for another character and a null
-				if (c != ' ' && !inComment)
-				{
-					platform->Message(HOST_MESSAGE, "Error: GCode local buffer overflow in Telnet webserver.\n");
-					return;
-				}
-				// else we're either in a comment or the current character is a space.
-				// If we're in a comment, we'll silently truncate it.
-				// If the current character is a space, we'll wait until we see a non-comment character before reporting an error,
-				// in case the next character is end-of-line or the start of a comment.
-			}
-			else
-			{
-				gcodeTempBuf[gtp++] = c;
-			}
-		}
 	}
 }
 
@@ -2769,9 +2735,9 @@ void Webserver::TelnetInterpreter::HandleGCodeReply(const char *reply)
 	}
 }
 
-void Webserver::TelnetInterpreter::SendGCodeReply()
+void Webserver::TelnetInterpreter::SendGCodeReply(NetworkTransaction *transaction)
 {
-	reprap.GetNetwork()->GetTransaction()->Write(gcodeReply);
+	transaction->Write(gcodeReply);
 	gcodeReply = nullptr;
 }
 

@@ -39,8 +39,9 @@ enum Module
 	moduleMove = 4,
 	moduleHeat = 5,
 	moduleDda = 6,
-	modulePrintMonitor = 7,
-	numModules = 8,				// make this one greater than the last module number
+	moduleRoland = 7,
+	modulePrintMonitor = 8,
+	numModules = 9,				// make this one greater than the last module number
 	noModule = 15
 };
 
@@ -53,8 +54,9 @@ static const char *moduleName[] =
 	"Move",
 	"Heat",
 	"DDA",
+	"Roland",
 	"PrintMonitor",
-	"?","?","?","?","?","?","?",
+	"?","?","?","?","?","?",
 	"none"
 };
 
@@ -67,6 +69,7 @@ class GCodes;
 class Move;
 class Heat;
 class Tool;
+class Roland;
 class PrintMonitor;
 class RepRap;
 class FileStore;
@@ -178,6 +181,7 @@ class OutputBuffer
 #include "Move.h"
 #include "Heat.h"
 #include "Tool.h"
+#include "Roland.h"
 #include "PrintMonitor.h"
 #include "Reprap.h"
 

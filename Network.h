@@ -38,7 +38,7 @@ static const char *HOSTNAME = "duet";
 
 static const uint16_t FTP_PORT = 21;
 static const uint16_t TELNET_PORT = 23;
-static const uint16_t HTTP_PORT = 80;
+static const uint16_t DEFAULT_HTTP_PORT = 80;
 
 
 /****************************************************************************************************/
@@ -80,28 +80,31 @@ class NetworkTransaction
 
 		NetworkTransaction(NetworkTransaction* n) : next(n) { }
 		void Set(pbuf *p, ConnectionState* c, TransactionStatus s);
+		TransactionStatus GetStatus() const { return status; }
 
 		uint16_t DataLength() const;
 		bool Read(char& b);
 		bool ReadBuffer(char *&buffer, unsigned int &len);
-
 		void Write(char b);
 		void Write(const char* s);
 		void Write(StringRef ref);
 		void Write(const char* s, size_t len);
 		void Write(OutputBuffer *buffer);
 		void Printf(const char *fmt, ...);
+		void SetFileToWrite(FileStore *file);
 
-		bool Send();
 		void SetConnectionLost();
 		bool LostConnection() const { return cs == nullptr || cs->pcb == nullptr; }
 		ConnectionState *GetConnection() const { return cs; }
 		uint32_t GetRemoteIP() const;
 		uint16_t GetRemotePort() const;
 		uint16_t GetLocalPort() const;
-		TransactionStatus GetStatus() const { return status; }
+
+		void Commit(bool keepConnectionAlive);
+		void Discard();
 
 	private:
+		bool Send();
 		void Close();
 		void FreePbuf();
 
@@ -135,8 +138,6 @@ class Network
 		void ConnectionClosedGracefully(ConnectionState *cs);
 
 		NetworkTransaction *GetTransaction(const ConnectionState *cs = nullptr);
-		void SendAndClose(FileStore *f, bool keepConnectionOpen = false);
-		void CloseTransaction();
 		void WaitForDataConection();
 
 		uint8_t *IPAddress() const;
