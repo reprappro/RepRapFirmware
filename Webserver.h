@@ -30,36 +30,44 @@ Licence: GPL
 #ifndef WEBSERVER_H
 #define WEBSERVER_H
 
-const unsigned int gcodeBufferLength = 512;		// size of our gcode ring buffer, preferably a power of 2
+const uint16_t gcodeBufferLength = 512;			// size of our gcode ring buffer, preferably a power of 2
 
 /* HTTP */
 
 #define KO_START "rr_"
 #define KO_FIRST 3
 
-const unsigned int webUploadBufferSize = 2300;	// maximum size of HTTP GET upload packets (webMessageLength - 700)
-const unsigned int webMessageLength = 3000;		// maximum length of the web message we accept after decoding
+const uint16_t webUploadBufferSize = 2300;		// maximum size of HTTP GET upload packets (webMessageLength - 700)
+const uint16_t webMessageLength = 3000;			// maximum length of the web message we accept after decoding
 
-const unsigned int maxCommandWords = 4;			// max number of space-separated words in the command
-const unsigned int maxQualKeys = 5;				// max number of key/value pairs in the qualifier
-const unsigned int maxHeaders = 16;				// max number of key/value pairs in the headers
+const size_t maxCommandWords = 4;				// max number of space-separated words in the command
+const size_t maxQualKeys = 5;					// max number of key/value pairs in the qualifier
+const size_t maxHeaders = 16;					// max number of key/value pairs in the headers
 
-const unsigned int jsonReplyLength = 2048;		// size of buffer used to hold JSON reply
-
-const unsigned int maxSessions = 8;				// maximum number of simultaneous HTTP sessions
-const unsigned int httpSessionTimeout = 30;		// HTTP session timeout in seconds
+const size_t  maxSessions = 8;					// maximum number of simultaneous HTTP sessions
+const float httpSessionTimeout = 30.0;			// HTTP session timeout in seconds
 
 /* FTP */
 
-const unsigned int ftpResponseLength = 128;		// maximum FTP response length
-const unsigned int ftpMessageLength = 128;		// maximum line length for incoming FTP commands
+const uint16_t ftpResponseLength = 128;			// maximum FTP response length
+const uint16_t ftpFileListLineLength = 256;		// maximum length for one FTP file listing line
+const uint16_t ftpMessageLength = 128;			// maximum line length for incoming FTP commands
+const float ftpPasvPortTimeout = 10.0;			// maximum time to wait for an FTP data connection
 
 /* Telnet */
 
-const unsigned int telnetMessageLength = 256;	// maximum line length for incoming Telnet commands
+const uint16_t telnetMessageLength = 128;		// maximum line length for incoming Telnet commands
+const float telnetSetupDuration = 4.0;			// ignore the first Telnet request within this duration
 
 
 class Webserver;
+
+// List of protocols that can execute G-Codes
+enum class WebSource
+{
+	HTTP,
+	Telnet
+};
 
 // This is the abstract class for all supported protocols
 // Any inherited class should implement a state machine to increase performance and reduce memory usage.
@@ -76,265 +84,305 @@ class ProtocolInterpreter
 		virtual void ResetState() = 0;
 		virtual bool NeedMoreData();
 
-		virtual bool DoFastUpload();
+		virtual bool DoFastUpload(NetworkTransaction *transaction);
 		virtual bool DoingFastUpload() const;
-	    bool FlushUploadData();
-	    virtual void CancelUpload();
+		virtual void CancelUpload();
 
 	protected:
 
-	    Platform *platform;
-	    Webserver *webserver;
-	    Network *network;
+		Platform *platform;
+		Webserver *webserver;
+		Network *network;
 
-	    // Information for file uploading
-	    enum UploadState
-	    {
+		// Information for file uploading
+		enum UploadState
+		{
 			notUploading,									// no upload in progress
 			uploadOK,										// upload in progress, no error so far
 			uploadError										// upload in progress but had error
-	    };
+		};
 
-	    UploadState uploadState;
-	    FileData fileBeingUploaded;
-	    char filenameBeingUploaded[FILENAME_LENGTH];
-	    const char *uploadPointer;							// pointer to start of uploaded data not yet written to file
-	    unsigned int uploadLength;							// amount of data not yet written to file
+		UploadState uploadState;
+		FileData fileBeingUploaded;
+		char filenameBeingUploaded[FILENAME_LENGTH];
 
-	    virtual bool StartUpload(FileStore *file);
-	    virtual bool StoreUploadData(const char* data, unsigned int len);
+		virtual bool StartUpload(FileStore *file);
 		bool IsUploading() const;
-	    virtual void FinishUpload(uint32_t fileLength);
+		virtual void FinishUpload(uint32_t fileLength);
 };
 
 class Webserver
 {   
-  public:
+	public:
 
-    Webserver(Platform* p, Network *n);
-    void Init();
-    void Spin();
-    void Exit();
-    void Diagnostics();
+		friend class Platform;
 
-    bool GCodeAvailable();
-    char ReadGCode();
-    unsigned int GetGcodeBufferSpace() const;
+		Webserver(Platform* p, Network *n);
+		void Init();
+		void Spin();
+		void Exit();
+		void Diagnostics();
 
-    void ConnectionLost(const ConnectionState *cs);
-    void ConnectionError();
+		bool GCodeAvailable(const WebSource source) const;
+		char ReadGCode(const WebSource source);
+		void HandleGCodeReply(const WebSource source, OutputBuffer *reply);
+		void HandleGCodeReply(const WebSource source, const char *reply);
+		uint32_t GetReplySeq() const;
 
-    friend class Platform;
+		// Returns the available G-Code buffer space of the HTTP interpreter (may be dropped in a future version)
+		uint16_t GetGCodeBufferSpace(const WebSource source) const;
 
-  protected:
+		void ConnectionLost(const ConnectionState *cs);
+		void ConnectionError();
 
-    void ResponseToWebInterface(const char *s, bool error);
-    void AppendResponseToWebInterface(const char* s);
+	protected:
 
-	class HttpInterpreter : public ProtocolInterpreter
-	{
-		public:
+		class HttpInterpreter : public ProtocolInterpreter
+		{
+			public:
 
-			HttpInterpreter(Platform *p, Webserver *ws, Network *n);
-			void ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort);
-			bool CharFromClient(const char c);
-			void ResetState();
-			bool NeedMoreData();
+				HttpInterpreter(Platform *p, Webserver *ws, Network *n);
+				void ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort);
+				bool CharFromClient(const char c);
+				void ResetState();
+				bool NeedMoreData();
 
-			bool DoFastUpload();
-			bool DoingFastUpload() const;
-			void CancelUpload();
-			void CancelUpload(uint32_t remoteIP);
+				bool DoFastUpload(NetworkTransaction *transaction);
+				bool DoingFastUpload() const;
+				void CancelUpload();
+				void CancelUpload(uint32_t remoteIP);
 
-			void ResetSessions();
-			void CheckSessions();
+				void ResetSessions();
+				void CheckSessions();
 
-		private:
+				bool GCodeAvailable() const;
+				char ReadGCode();
+				void HandleGCodeReply(OutputBuffer *reply);
+				void HandleGCodeReply(const char *reply);
+				uint16_t GetGCodeBufferSpace() const;
+				uint32_t GetReplySeq() const;
 
-			// HTTP server state enumeration. The order is important, in particular xxxEsc1 must follow xxx, and xxxEsc2 must follow xxxEsc1.
-			// We assume that qualifier keys do not contain escapes, because none of ours needs to be encoded. If we are sent escapes in the key,
-			// it won't do any harm, but the key won't be recognised even if it would be valid were it decoded.
-			enum HttpState
-			{
-				doingCommandWord,			// receiving a word in the first line of the HTTP request
-				doingFilename,				// receiving the filename (second word in the command line)
-				doingFilenameEsc1,			// received '%' in the filename (e.g. we are being asked for a filename with spaces in it)
-				doingFilenameEsc2,			// received '%' and one hex digit in the filename
-				doingQualifierKey,			// receiving a key name in the HTTP request
-				doingQualifierValue,		// receiving a key value in the HTTP request
-				doingQualifierValueEsc1,	// received '%' in the qualifier
-				doingQualifierValueEsc2,	// received '%' and one hex digit in the qualifier
-				doingHeaderKey,				// receiving a header key
-				expectingHeaderValue,		// expecting a header value
-				doingHeaderValue,			// receiving a header value
-				doingHeaderContinuation,	// received a newline after a header value
-				doingPost					// receiving post data
-			};
+			private:
 
-			struct KeyValueIndices
-			{
-				const char* key;
-				const char* value;
-			};
+				// HTTP server state enumeration. The order is important, in particular xxxEsc1 must follow xxx, and xxxEsc2 must follow xxxEsc1.
+				// We assume that qualifier keys do not contain escapes, because none of ours needs to be encoded. If we are sent escapes in the key,
+				// it won't do any harm, but the key won't be recognised even if it would be valid were it decoded.
+				enum HttpState
+				{
+					doingCommandWord,			// receiving a word in the first line of the HTTP request
+					doingFilename,				// receiving the filename (second word in the command line)
+					doingFilenameEsc1,			// received '%' in the filename (e.g. we are being asked for a filename with spaces in it)
+					doingFilenameEsc2,			// received '%' and one hex digit in the filename
+					doingQualifierKey,			// receiving a key name in the HTTP request
+					doingQualifierValue,		// receiving a key value in the HTTP request
+					doingQualifierValueEsc1,	// received '%' in the qualifier
+					doingQualifierValueEsc2,	// received '%' and one hex digit in the qualifier
+					doingHeaderKey,				// receiving a header key
+					expectingHeaderValue,		// expecting a header value
+					doingHeaderValue,			// receiving a header value
+					doingHeaderContinuation,	// received a newline after a header value
+					doingPost					// receiving post data
+				};
+				HttpState state;
 
-			void SendFile(const char* nameOfFileToSend);
-			void SendGCodeReply();
-			void SendJsonResponse(const char* command);
-			bool GetJsonResponse(const char* request, StringRef& response, const char* key, const char* value, size_t valueLength, bool& keepOpen);
-			void GetJsonUploadResponse(StringRef& response);
-			bool ProcessMessage();
-			bool RejectMessage(const char* s, unsigned int code = 500);
+				struct KeyValueIndices
+				{
+					const char* key;
+					const char* value;
+				};
 
-			bool Authenticate();
-			bool IsAuthenticated() const;
-			void UpdateAuthentication();
-			void RemoveAuthentication();
+				void SendFile(const char* nameOfFileToSend);
+				void SendGCodeReply(NetworkTransaction *transaction);
+				void SendJsonResponse(const char* command);
+				bool GetJsonResponse(const char* request, OutputBuffer *&response, const char* key, const char* value, size_t valueLength, bool& keepOpen);
+				void GetJsonUploadResponse(OutputBuffer *response);
+				bool ProcessMessage();
+				bool RejectMessage(const char* s, unsigned int code = 500);
 
-			HttpState state;
+				// Buffers for processing HTTP input
 
-			// Buffers for processing HTTP input
+				char clientMessage[webMessageLength + 3];		// holds the command, qualifier, and headers
+				size_t clientPointer;							// current index into clientMessage
+				char decodeChar;
 
-			char clientMessage[webMessageLength];			// holds the command, qualifier, and headers
-			unsigned int clientPointer;						// current index into clientMessage
-			char decodeChar;
+				const char* commandWords[maxCommandWords];
+				KeyValueIndices qualifiers[maxQualKeys + 1];	// offsets into clientQualifier of the key/value pairs, the +1 is needed so that values can contain nulls
+				KeyValueIndices headers[maxHeaders];			// offsets into clientHeader of the key/value pairs
+				size_t numCommandWords;
+				size_t numQualKeys;								// number of qualifier keys we have found, <= maxQualKeys
+				size_t numHeaderKeys;							// number of keys we have found, <= maxHeaders
 
-			const char* commandWords[maxCommandWords];
-			KeyValueIndices qualifiers[maxQualKeys + 1];	// offsets into clientQualifier of the key/value pairs, the +1 is needed so that values can contain nulls
-			KeyValueIndices headers[maxHeaders];			// offsets into clientHeader of the key/value pairs
-			unsigned int numCommandWords;
-			unsigned int numQualKeys;						// number of qualifier keys we have found, <= maxQualKeys
-			unsigned int numHeaderKeys;						// number of keys we have found, <= maxHeaders
+				// HTTP sessions
 
-		    // HTTP sessions
+				struct HttpSession
+				{
+					uint32_t ip;
+					float lastQueryTime;
+					bool isPostUploading;
+					uint16_t postPort;
+					bool sendGCodeReply;
+				};
 
-			struct HttpSession
-			{
-				uint32_t ip;
-				float lastQueryTime;
-				bool isPostUploading;
-				uint16_t postPort;
-			};
+				HttpSession sessions[maxSessions];
+				size_t numActiveSessions;
 
-			HttpSession sessions[maxSessions];
-		    unsigned int numActiveSessions;
+				bool Authenticate();
+				bool IsAuthenticated() const;
+				void UpdateAuthentication();
+				void RemoveAuthentication();
 
-		protected:
-		    bool uploadingTextData;							// do we need to count UTF-8 continuation bytes?
-		    uint32_t numContinuationBytes;					// number of UTF-8 continuation bytes we have received
+				// Deal with incoming G-Codes
 
-		    uint32_t postFileLength, uploadedBytes;			// how many POST bytes do we expect and how many have already been written?
+				char gcodeBuffer[gcodeBufferLength];
+				uint16_t gcodeReadIndex, gcodeWriteIndex;		// head and tail indices into gcodeBuffer
+				uint32_t seq;									// sequence number for G-Code replies
 
-		    bool StartUpload(FileStore *file);
-			bool StoreUploadData(const char* data, unsigned int len);
-			void FinishUpload(uint32_t fileLength);
-	};
-	HttpInterpreter *httpInterpreter;
+				void LoadGcodeBuffer(const char* gc);
+				void ProcessGcode(const char* gc);
+				void StoreGcodeData(const char* data, uint16_t len);
 
-	class FtpInterpreter : public ProtocolInterpreter
-	{
-		public:
+				// Response from GCodes class
 
-			FtpInterpreter(Platform *p, Webserver *ws, Network *n);
-			void ConnectionEstablished();
-			void ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort);
-			bool CharFromClient(const char c);
-			void ResetState();
+				OutputBuffer * volatile gcodeReply;
 
-			bool DoingFastUpload() const;
+			protected:
 
-		private:
+				bool uploadingTextData;							// do we need to count UTF-8 continuation bytes?
+				uint32_t numContinuationBytes;					// number of UTF-8 continuation bytes we have received
 
-			enum FtpState
-			{
-				authenticating,			// not logged in
-				authenticated,			// logged in
-				waitingForPasvPort,		// waiting for connection to be established on PASV port
-				pasvPortConnected,		// client connected to PASV port, ready to send data
-				doingPasvIO				// client is connected and data is being transferred
-			};
-			FtpState state;
+				uint32_t postFileLength, uploadedBytes;			// how many POST bytes do we expect and how many have already been written?
 
-			char clientMessage[ftpMessageLength];
-			unsigned int clientPointer;
-			char ftpResponse[ftpResponseLength];
+				bool StartUpload(FileStore *file);
+				void WriteUploadedData(const char *buffer, unsigned int length);
+				void FinishUpload(uint32_t fileLength);
 
-			char filename[FILENAME_LENGTH];
-			char currentDir[FILENAME_LENGTH];
+		};
+		HttpInterpreter *httpInterpreter;
 
-			float portOpenTime;
+		class FtpInterpreter : public ProtocolInterpreter
+		{
+			public:
 
-			void ProcessLine();
-			void SendReply(int code, const char *message, bool keepConnection = true);
-			void SendFeatures();
+				FtpInterpreter(Platform *p, Webserver *ws, Network *n);
+				void ConnectionEstablished();
+				void ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t localPort);
+				bool CharFromClient(const char c);
+				void ResetState();
 
-			void ReadFilename(int start);
-			void ChangeDirectory(const char *newDirectory);
-	};
-	FtpInterpreter *ftpInterpreter;
+				bool DoingFastUpload() const;
 
-	class TelnetInterpreter : public ProtocolInterpreter
-	{
-		public:
+			private:
 
-			TelnetInterpreter(Platform *p, Webserver *ws, Network *n);
-			void ConnectionEstablished();
-			void ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t local_port);
-			bool CharFromClient(const char c);
-			void ResetState();
-			bool NeedMoreData();
+				enum FtpState
+				{
+					idle,					// no client connected
+					authenticating,			// not logged in
+					authenticated,			// logged in
+					waitingForPasvPort,		// waiting for connection to be established on PASV port
+					pasvPortConnected,		// client connected to PASV port, ready to send data
+					doingPasvIO				// client is connected and data is being transferred
+				};
+				FtpState state;
 
-			void HandleGcodeReply(const char* reply);
-			bool HasRemainingData() const;
-			void RemainingDataSent();
+				char clientMessage[ftpMessageLength];
+				unsigned int clientPointer;
+				char ftpResponse[ftpResponseLength];
 
-		private:
+				char filename[FILENAME_LENGTH];
+				char currentDir[FILENAME_LENGTH];
 
-			enum TelnetState
-			{
-				authenticating,			// not logged in
-				authenticated			// logged in
-			};
-			TelnetState state;
+				float portOpenTime;
 
-			char clientMessage[telnetMessageLength];
-			unsigned int clientPointer;
-			bool sendPending;
+				void ProcessLine();
+				void SendReply(int code, const char *message, bool keepConnection = true);
+				void SendFeatures();
 
-			void ProcessLine();
-	};
-	TelnetInterpreter *telnetInterpreter;
+				void ReadFilename(uint16_t start);
+				void ChangeDirectory(const char *newDirectory);
+		};
+		FtpInterpreter *ftpInterpreter;
 
-	// G-Code processing
-    void ProcessGcode(const char* gc);
-    void LoadGcodeBuffer(const char* gc);
-    void StoreGcodeData(const char* data, size_t len);
+		class TelnetInterpreter : public ProtocolInterpreter
+		{
+			public:
 
-  private:
+				TelnetInterpreter(Platform *p, Webserver *ws, Network *n);
+				void ConnectionEstablished();
+				void ConnectionLost(uint32_t remoteIP, uint16_t remotePort, uint16_t local_port);
+				bool CharFromClient(const char c);
+				void ResetState();
+				bool NeedMoreData();
 
-    // Buffer to hold gcode that is ready for processing
-    char gcodeBuffer[gcodeBufferLength];
-    unsigned int gcodeReadIndex, gcodeWriteIndex;	// head and tail indices into gcodeBuffer
+				bool GCodeAvailable() const;
+				char ReadGCode();
+				void HandleGCodeReply(OutputBuffer *reply);
+				void HandleGCodeReply(const char *reply);
+				uint16_t GetGCodeBufferSpace() const;
 
-    // Misc
-    Platform* platform;
-    Network* network;
-    bool webserverActive;
-    const ConnectionState *readingConnection;
+				bool HasDataToSend() const;
+				void SendGCodeReply(NetworkTransaction *transaction);
 
-    float lastTime;
-    float longWait;
+			private:
+
+				enum TelnetState
+				{
+					idle,					// not connected
+					justConnected,			// not logged in, but the client has just connected
+					authenticating,			// not logged in
+					authenticated			// logged in
+				};
+				TelnetState state;
+				uint8_t connectedClients;
+				float connectTime;
+
+				char clientMessage[telnetMessageLength];
+				uint16_t clientPointer;
+
+				void ProcessLine();
+
+				// Deal with incoming G-Codes
+
+				char gcodeBuffer[gcodeBufferLength];
+				uint16_t gcodeReadIndex, gcodeWriteIndex;		// head and tail indices into gcodeBuffer
+
+				void ProcessGcode(const char* gc);
+				void StoreGcodeData(const char* data, uint16_t len);
+
+				// Response from GCodes class
+
+				OutputBuffer * volatile gcodeReply;
+		};
+		TelnetInterpreter *telnetInterpreter;
+
+	private:
+
+		Platform* platform;
+		Network* network;
+
+		bool webserverActive;
+		const ConnectionState *readingConnection;
+
+		float lastTime;
+		float longWait;
 };
 
 inline bool ProtocolInterpreter::NeedMoreData()  { return true; }
 inline bool ProtocolInterpreter::DoingFastUpload() const { return false; }
 inline bool ProtocolInterpreter::IsUploading() const { return uploadState != notUploading; }
 
+inline uint32_t Webserver::GetReplySeq() const { return httpInterpreter->GetReplySeq(); }
+
 inline void Webserver::HttpInterpreter::FinishUpload(uint32_t fileLength) { ProtocolInterpreter::FinishUpload(fileLength + numContinuationBytes); }
+inline uint16_t Webserver::HttpInterpreter::GetGCodeBufferSpace() const { return (gcodeReadIndex - gcodeWriteIndex - 1u) % gcodeBufferLength; }
+inline bool Webserver::HttpInterpreter::GCodeAvailable() const { return gcodeReadIndex != gcodeWriteIndex; }
+inline uint32_t Webserver::HttpInterpreter::GetReplySeq() const { return seq; }
 
-inline bool Webserver::TelnetInterpreter::NeedMoreData() { return false; }	// we don't want a Telnet connection to block everything else
-inline bool Webserver::TelnetInterpreter::HasRemainingData() const { return sendPending; }
-inline void Webserver::TelnetInterpreter::RemainingDataSent() { sendPending = false; }
+inline bool Webserver::TelnetInterpreter::NeedMoreData() { return false; }	// We don't want a Telnet connection to block everything else
+inline uint16_t Webserver::TelnetInterpreter::GetGCodeBufferSpace() const { return (gcodeReadIndex - gcodeWriteIndex - 1u) % gcodeBufferLength; }
+inline bool Webserver::TelnetInterpreter::GCodeAvailable() const { return gcodeReadIndex != gcodeWriteIndex; }
 
-inline unsigned int Webserver::GetGcodeBufferSpace() const { return (gcodeReadIndex - gcodeWriteIndex - 1u) % gcodeBufferLength; }
+inline bool Webserver::TelnetInterpreter::HasDataToSend() const { return gcodeReply != nullptr; }
 
 #endif
+
+// vim: ts=4:sw=4

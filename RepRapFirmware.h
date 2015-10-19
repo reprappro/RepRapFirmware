@@ -26,6 +26,9 @@ Licence: GPL
 #include <cfloat>
 #include <cstdarg>
 
+#include "Arduino.h"
+#include "Configuration.h"
+
 // Module numbers and names, used for diagnostics and debug
 enum Module
 {
@@ -35,8 +38,10 @@ enum Module
 	moduleGcodes = 3,
 	moduleMove = 4,
 	moduleHeat = 5,
-	moduleDda = 6,			// not yet implemented in zpl fork
-	modulePrintMonitor = 7,
+	moduleDda = 6,
+	moduleRoland = 7,
+	modulePrintMonitor = 8,
+	numModules = 9,				// make this one greater than the last module number
 	noModule = 15
 };
 
@@ -49,8 +54,9 @@ static const char *moduleName[] =
 	"Move",
 	"Heat",
 	"DDA",
+	"Roland",
 	"PrintMonitor",
-	"?","?","?","?","?","?","?",
+	"?","?","?","?","?","?",
 	"none"
 };
 
@@ -63,6 +69,7 @@ class GCodes;
 class Move;
 class Heat;
 class Tool;
+class Roland;
 class PrintMonitor;
 class RepRap;
 class FileStore;
@@ -86,13 +93,11 @@ int StringContains(const char* string, const char* match);
 #define ARRAY_UPB(_x)	(ARRAY_SIZE(_x) - 1)
 
 // Macro to assign an array from an initializer list
-#if __cplusplus >= 201103L
-// This version relies on C++'11 features (add '-std=gnu++11' to your CPP compiler flags)
-#define ARRAY_INIT(_dest, _init) {static const decltype(_dest) _temp = _init; memcpy(_dest, _temp, sizeof(_dest)); }
-#else
-// This version relies on a gcc extension that is available only in older compilers
-#define ARRAY_INIT(_dest, _init) _dest = _init
+#if __cplusplus < 201103L
+#define ARRAY_INIT(_dest, _init) memcpy(_dest, _init, sizeof(_init));
 #define nullptr		(0)
+#else
+#define ARRAY_INIT(_dest, _init) static_assert(sizeof(_dest) == sizeof(_init), "Incompatible array types"); memcpy(_dest, _init, sizeof(_init));
 #endif
 
 // Class to describe a string buffer, including its length. This saves passing buffer lengths around everywhere.
@@ -123,8 +128,52 @@ public:
 
 extern StringRef scratchString;
 
-#include "Arduino.h"
-#include "Configuration.h"
+// This class is used to hold data for sending (either for Serial or Network destinations)
+class OutputBuffer
+{
+	public:
+		friend class RepRap;
+
+		OutputBuffer(OutputBuffer *n) : next(n) { }
+
+		OutputBuffer *Next() const { return next; }
+		void Append(OutputBuffer *other);
+		void SetReferences(size_t refs);
+
+		const char *Data() const { return data; }
+		uint16_t DataLength() const { return dataLength; }
+		uint32_t Length() const;
+
+		char& operator[](size_t index);
+		char operator[](size_t index) const;
+		const char *Read(uint16_t len);
+		uint16_t BytesLeft() const { return bytesLeft; }
+
+		int printf(const char *fmt, ...);
+		int vprintf(const char *fmt, va_list vargs);
+		int catf(const char *fmt, ...);
+
+		size_t copy(const char c);
+		size_t copy(const char *src);
+		size_t copy(const char *src, size_t len);
+
+		size_t cat(const char c);
+		size_t cat(const char *src);
+		size_t cat(const char *src, size_t len);
+		size_t cat(StringRef &str);
+
+		void EncodeString(const char *src, uint16_t srcLength, bool allowControlChars, bool encapsulateString = true);
+		void EncodeReply(OutputBuffer *src, bool allowControlChars);
+
+	private:
+		OutputBuffer *next;
+
+		char data[OUTPUT_BUFFER_SIZE];
+		uint16_t dataLength, bytesLeft;
+
+		size_t referenceCounter;
+};
+
 #include "Network.h"
 #include "Platform.h"
 #include "Webserver.h"
@@ -132,8 +181,9 @@ extern StringRef scratchString;
 #include "Move.h"
 #include "Heat.h"
 #include "Tool.h"
+#include "Roland.h"
 #include "PrintMonitor.h"
-#include "Reprap.h"
+#include "Hardware/Reprap.h"
 
 // std::min and std::max don't seem to work with this variant of gcc, so define our own ones here
 // We use these only with primitive types, so pass them directly instead of by const reference
@@ -171,6 +221,25 @@ template<> inline double max(double _a, double _b)
 	return (isnan(_a) || _a > _b) ? _a : _b;
 }
 
+inline float fsquare(float arg)
+{
+	return arg * arg;
+}
+
+inline uint64_t isquare64(int32_t arg)
+{
+	return (uint64_t)((int64_t)arg * arg);
+}
+
+inline void swap(float& a, float& b)
+{
+	float temp = a;
+	a = b;
+	b = temp;
+}
+
+extern uint32_t isqrt64(uint64_t num);          // Thus is defined in its own file, Isqrt.cpp or Isqrt.asm
+
 #endif
 
-
+// vim: ts=4:sw=4

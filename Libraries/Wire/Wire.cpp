@@ -345,7 +345,7 @@ static void Wire_Init(void) {
 
 	NVIC_DisableIRQ(TWI1_IRQn);
 	NVIC_ClearPendingIRQ(TWI1_IRQn);
-	NVIC_SetPriority(TWI1_IRQn, 0);
+	NVIC_SetPriority(TWI1_IRQn, 16);
 	NVIC_EnableIRQ(TWI1_IRQn);
 }
 
@@ -372,7 +372,7 @@ static void Wire1_Init(void) {
 
 	NVIC_DisableIRQ(TWI0_IRQn);
 	NVIC_ClearPendingIRQ(TWI0_IRQn);
-	NVIC_SetPriority(TWI0_IRQn, 0);
+	NVIC_SetPriority(TWI0_IRQn, 16);
 	NVIC_EnableIRQ(TWI0_IRQn);
 }
 

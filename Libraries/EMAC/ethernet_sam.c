@@ -74,6 +74,7 @@ extern void RepRapNetworkMessage(const char*);
 
 /* Global variable containing MAC Config (hw addr, IP, GW, ...) */
 struct netif gs_net_if;
+static bool net_if_ready = false;
 
 struct netif* ethernet_get_configuration()
 {
@@ -140,7 +141,7 @@ void ethernet_timers_update(void)
 
 // Added by AB.
 
-static void ethernet_configure_interface(unsigned char ipAddress[], unsigned char netMask[], unsigned char gateWay[])
+static void ethernet_configure_interface(const unsigned char ipAddress[], const unsigned char netMask[], const unsigned char gateWay[])
 {
 	struct ip_addr x_ip_addr, x_net_mask, x_gateway;
 	extern err_t ethernetif_init(struct netif *netif);
@@ -170,12 +171,12 @@ static void ethernet_configure_interface(unsigned char ipAddress[], unsigned cha
 	/* Bring it up */
 	if (x_ip_addr.addr == 0)
 	{
-		RepRapNetworkMessage("Starting DHCP\n");
+		RepRapNetworkMessage("Starting DHCP...\n");
 		dhcp_start(&gs_net_if);
 	}
 	else
 	{
-		RepRapNetworkMessage("Starting network\n");
+		RepRapNetworkMessage("Starting network...\n");
 		netif_set_up(&gs_net_if);
 	}
 }
@@ -209,6 +210,14 @@ void start_ethernet(const unsigned char ipAddress[], const unsigned char netMask
 	ethernet_configure_interface(ipAddress, netMask, gateWay);
 }
 
+/** \brief Check if the ethernet interface has been configured completely and if
+ * an IP has been assigned to it.
+ *
+ */
+bool ethernet_is_ready()
+{
+	return net_if_ready;
+}
 
 //*************************************************************************************************************
 /**
@@ -218,14 +227,15 @@ void start_ethernet(const unsigned char ipAddress[], const unsigned char netMask
  */
 void ethernet_status_callback(struct netif *netif)
 {
-	char c_mess[20];		// 15 for IP address, 1 for \n, 1 for null, so 3 spare
+	char c_mess[20];		// 15 for IP address, 2 for \n\n, 1 for null, so 2 spare
 	if (netif_is_up(netif))
 	{
 		RepRapNetworkMessage("Network up, IP=");
 		ipaddr_ntoa_r(&(netif->ip_addr), c_mess, sizeof(c_mess));
-		strncat(c_mess, sizeof(c_mess) - 1, "\n");
+		strncat(c_mess, "\n\n", sizeof(c_mess) - 1);
 		RepRapNetworkMessage(c_mess);
 		netif->flags |= NETIF_FLAG_LINK_UP;
+		net_if_ready = true;
 	}
 	else
 	{

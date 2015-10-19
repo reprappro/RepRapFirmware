@@ -24,9 +24,10 @@ Licence: GPL
 #define CONFIGURATION_H
 
 #define NAME "RepRapFirmware"
-#define VERSION "1.09"
-#define DATE "2015-04-21"
-#define AUTHORS "reprappro, dc42, zpl"
+#define VERSION "1.1"
+#define DATE "2015-10-15"
+
+#define AUTHORS "reprappro, dc42, chrishamm, t3p3, dnewman"
 
 // Comment out the following line if you don't want to build the firmware with Flash save support
 #define FLASH_SAVE_ENABLED
@@ -43,90 +44,105 @@ enum Compatibility
 	repetier = 5
 };
 
-// Some numbers...
+// Generic constants
 
-#define ABS_ZERO (-273.15)  					// Celsius
-#define NEARLY_ABS_ZERO (-273)					// Celsius
+static const float ABS_ZERO = -273.15;						// Celsius
+static const float NEARLY_ABS_ZERO = -273.0;				// Celsius
+static const float ROOM_TEMPERATURE = 21.0;					// Celsius
 
-#define INCH_TO_MM (25.4)
+static const float INCH_TO_MM = 25.4;
+static const float MINUTES_TO_SECONDS = 60.0;
+static const float SECONDS_TO_MINUTES = 1.0 / MINUTES_TO_SECONDS;
 
-#define HEAT_SAMPLE_TIME (0.5)					// Seconds
-#define HEAT_PWM_AVERAGE_TIME (5.0)				// Seconds
+static const float LONG_TIME = 300.0;						// Seconds
+static const float MINIMUM_TOOL_WARNING_INTERVAL = 4.0;		// Seconds
 
-#define TEMPERATURE_CLOSE_ENOUGH (2.5) 			// Celsius
-#define TEMPERATURE_LOW_SO_DONT_CARE (40.0)		// Celsius
-#define HOT_ENOUGH_TO_EXTRUDE (160.0)       	// Celsius
-#define HOT_ENOUGH_TO_RETRACT (90.0)			// Celsius
-#define TIME_TO_HOT (150.0)						// Seconds
+// Heater values
 
-#define DEFAULT_IDLE_CURRENT_FACTOR (0.3)		// Proportion of normal motor current that we use for idle hold
+static const float HEAT_SAMPLE_TIME = 0.5;					// Seconds
+static const float HEAT_PWM_AVERAGE_TIME = 5.0;				// Seconds
 
-// If temperatures fall outside this range, something nasty has happened.
+static const float TEMPERATURE_CLOSE_ENOUGH = 2.5;			// Celsius
+static const float TEMPERATURE_LOW_SO_DONT_CARE = 40.0;		// Celsius
+static const float HOT_ENOUGH_TO_EXTRUDE = 160.0;			// Celsius
+static const float HOT_ENOUGH_TO_RETRACT = 90.0;			// Celsius
+static const float TIME_TO_HOT = 150.0;						// Seconds
 
-#define MAX_BAD_TEMPERATURE_COUNT 6
-#define BAD_LOW_TEMPERATURE -10.0
-#define BAD_HIGH_TEMPERATURE 300.0
+static const uint8_t MAX_BAD_TEMPERATURE_COUNT = 6;			// Number of bad temperature samples before a heater fault is reported
+static const float BAD_LOW_TEMPERATURE = -10.0;				// Celsius
+static const float BAD_HIGH_TEMPERATURE = 300.0;			// Celsius
 
-#define STANDBY_INTERRUPT_RATE 2.0e-4			// Seconds
+// Default Z probe values
 
-#define NUMBER_OF_PROBE_POINTS 5				// Maximum number of probe points
-#define Z_DIVE 5.0								// Height from which to probe the bed (mm)
-#define TRIANGLE_0 -0.001						// Slightly less than 0 for point-in-triangle tests
+static const size_t MAX_PROBE_POINTS = 16;					// Maximum number of probe points
+static const size_t MAX_DELTA_PROBE_POINTS = 8;				// Must be <= MaxProbePoints, may be smaller to reduce matrix storage requirements. Preferably a power of 2.
 
-#define SILLY_Z_VALUE -9999.0
+static const float DEFAULT_Z_DIVE = 5.0;					// Millimetres
+static const float DEFAULT_PROBE_SPEED = 2.0;				// Default Z probing speed
+static const float DEFAULT_TRAVEL_SPEED = 100.0;			// Default speed for travel to probe points
+
+static const float TRIANGLE_ZERO = -0.001;					// Millimetres
+static const float SILLY_Z_VALUE = -9999.0;					// Millimetres
 
 // String lengths
 
-#define STRING_LENGTH 1024
-#define SHORT_STRING_LENGTH 40
+static const size_t LONG_STRING_LENGTH = 1024;
+static const size_t FORMAT_STRING_LENGTH = 256;
+static const size_t SHORT_STRING_LENGTH = 40;
 
-#define FILENAME_LENGTH 100
-#define GCODE_REPLY_LENGTH 2048
+static const size_t GCODE_LENGTH = 100;
+static const size_t GCODE_REPLY_LENGTH = 2048;
+static const size_t MESSAGE_LENGTH = 256;
+
+// Output buffer lengths
+
+static const uint16_t OUTPUT_BUFFER_SIZE = 256;				// How many bytes does each OutputBuffer hold?
+static const size_t OUTPUT_BUFFER_COUNT = 16;				// How many OutputBuffer instances do we have?
+
+// Move system
+
+static const float DEFAULT_FEEDRATE = 3000.0;				// The initial requested feed rate after resetting the printer
+static const float DEFAULT_IDLE_TIMEOUT = 30.0;				// Seconds
 
 // Print estimation defaults
-#define NOZZLE_DIAMETER 0.5						// Thickness of the nozzle
-#define MAX_LAYER_SAMPLES 5						// Number of layer samples (except for first layer)
-#define ESTIMATION_MIN_FILAMENT_USAGE 0.025		// Minimum per cent for filament usage estimation
-#define FIRST_LAYER_SPEED_FACTOR 0.25			// First layer speed compared to others (only for layer-based estimation)
 
-// Webserver stuff
+static const float NOZZLE_DIAMETER = 0.5;					// Millimetres
+static const float FILAMENT_WIDTH = 1.75;					// Millimetres
+static const size_t MAX_LAYER_SAMPLES = 5;					// Number of layer samples for end-time estimation (except for first layer)
+static const float ESTIMATION_MIN_FILAMENT_USAGE = 0.025;	// Minimum per cent after which the first layer height is determined
+static const float FIRST_LAYER_SPEED_FACTOR = 0.25;			// First layer speed factor compared to other layers (only for layer-based estimation)
 
-#define DEFAULT_PASSWORD "reprap"
-#define DEFAULT_NAME "My RepRap 1"
-#define INDEX_PAGE "reprap.htm"
-#define FOUR04_FILE "html404.htm"
-#define CONFIG_FILE "config.g"					// The file that sets the machine's parameters
-#define DEFAULT_FILE "default.g"				// If the config file isn't found
-#define HOME_X_G "homex.g"
-#define HOME_Y_G "homey.g"
-#define HOME_Z_G "homez.g"
-#define HOME_ALL_G "homeall.g"
-#define HOME_DELTA_G "homedelta.g"
-#define SET_BED_EQUATION "bed.g"
-#define PAUSE_G "pause.g"
-#define RESUME_G "resume.g"
-#define STOP_G "stop.g"
-#define SLEEP_G "sleep.g"
+// Webserver defaults
 
-#define WEB_DEBUG_TRUE 9
-#define WEB_DEBUG_FALSE 8
+static const char *DEFAULT_PASSWORD = "reprap";				// Default machine password
+static const char *DEFAULT_NAME = "My Duet";				// Default machine name
 
-#define LIST_SEPARATOR ':'						// Lists in G Codes
-#define FILE_LIST_SEPARATOR ','					// Put this between file names when listing them
-#define FILE_LIST_BRACKET '"'					// Put these round file names when listing them
+static const char *INDEX_PAGE_FILE = "reprap.htm";
+static const char *FOUR04_PAGE_FILE = "html404.htm";
 
-#define LONG_TIME 300.0 // Seconds
+// Filesystem and upload defaults
 
-#define EOF_STRING "<!-- **EoF** -->"           // For HTML uploads
+static const char *CONFIG_FILE = "config.g";
+static const char *DEFAULT_FILE = "default.g";
+static const char *HOME_X_G = "homex.g";
+static const char *HOME_Y_G = "homey.g";
+static const char *HOME_Z_G = "homez.g";
+static const char *HOME_ALL_G = "homeall.g";
+static const char *HOME_DELTA_G = "homedelta.g";
+static const char *BED_EQUATION_G = "bed.g";
+static const char *PAUSE_G = "pause.g";
+static const char *RESUME_G = "resume.g";
+static const char *STOP_G = "stop.g";
+static const char *SLEEP_G = "sleep.g";
 
-#define FLASH_LED 'F' 							// Type byte of a message that is to flash an LED; the next two bytes define
-                      	  	  	  	  	  	  	// the frequency and M/S ratio.
-#define DISPLAY_MESSAGE 'L'  					// Type byte of a message that is to appear on a local display; the L is
-                             	 	 	 	 	// not displayed; \f and \n should be supported.
-#define HOST_MESSAGE 'H' 						// Type byte of a message that is to be sent to the host via USB; the H is not sent.
-#define WEB_MESSAGE 'W'							// Type byte of message that is to be sent to the web
-#define WEB_ERROR_MESSAGE 'E'					// Type byte of message that is to be sent to the web - flags an error
-#define BOTH_MESSAGE 'B'						// Type byte of message that is to be sent to the web & host
-#define BOTH_ERROR_MESSAGE 'A'					// Type byte of message that is to be sent to the web & host - flags an error
-#define DEBUG_MESSAGE 'D'						// Type byte of debug message to send in blocking mode to USB
+static const char *EOF_STRING = "<!-- **EoF** -->";
+
+// List defaults
+
+static const char LIST_SEPARATOR = ':';
+static const char FILE_LIST_SEPARATOR = ',';
+static const char FILE_LIST_BRACKET = '"';
+
 #endif
+
+// vim: ts=4:sw=4

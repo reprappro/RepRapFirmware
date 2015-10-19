@@ -20,17 +20,21 @@ M555 P2                             ; Set output to look like Marlin
 G21                                 ; Work in millimetres
 G90                                 ; Send absolute corrdinates...
 M83                                 ; ...but relative extruder moves
-M906 X800 Y1000 Z800 E800           ; Set motor currents (mA)
-;M305 P0 R4700                       ; Set the heated bed thermistor series resistor to 4K7
-;M305 P1 R4700                       ; Set the hot end thermistor series resistor to 4K7
+M574 X0 Y1 Z0 S1                    ; set endstop configuration (Y endstop only, at low end, active high)
+M906 X800 Y1000 Z800 E1000          ; Set motor currents (mA)
+;M305 P0 R4700 H0 L0                 ; Set the heated bed thermistor series resistor to 4K7
+;M305 P1 R4700 H0 L0                 ; Set the hot end thermistor series resistor to 4K7
+;M305 P2 R4700 H0 L0                 ; Set the second hot end thermistor series resistor to 4K7
 M569 P0 S0                          ; Set X axis direction
 M92 E420                            ; Set extruder steps per mm
 M558 P2                             ; Use a modulated Z probe
 G31 Z0.8 P600                       ; Set the probe height and threshold (deliberately too high to avoid bed crashes on initial setup)
-M556 S75 X0 Y0 Z0                   ; Put your axis compensation here
-M201 X500 Y500 Z15 E500             ; Accelerations (mm/s^2)
-M203 X15000 Y15000 Z100 E3600       ; Maximum speeds (mm/min)
-M566 X200 Y200 Z30 E20              ; Minimum speeds mm/minute
+M556 S78 X0 Y0 Z0                   ; Put your axis compensation here
+M201 X1000 Y1000 Z20 E1000          ; Accelerations (mm/s^2)
+M203 X15000 Y15000 Z180 E3600       ; Maximum speeds (mm/min)
+M566 X1800 Y1800 Z30 E20            ; Maximum instantaneous speed changes mm/minute
+M208 X-24 S1                        ; Set axis minimum (adjust to make X=0 the edge of the bed)
+M208 X214 Y210                      ; Set axis maxima (adjust to suit your machine)
 M563 P0 D0 H1                       ; Define tool 0
 G10 P0 S-273 R-273                  ; Set tool 0 operating and standby temperatures
 ;M563 P1 D1 H2                       ; Define tool 1, uncomment if you have a dual colour upgrade
