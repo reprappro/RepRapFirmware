@@ -3,10 +3,10 @@
     {
       "name": "RepRap",
       "maintainer": "Christian Hammacher",
-      "websiteURL": "https://github.com/chrishamm/RepRapFirmware",
+      "websiteURL": "https://github.com/reprappro/RepRapFirmware",
       "email": "bmasterc@gmail.com",
       "help": {
-        "online": "https://github.com/chrishamm/RepRapFirmware"
+        "online": "https://github.com/reprappro/RepRapFirmware"
       },
       "platforms": [
         {
@@ -15,9 +15,9 @@
           "version": "1.0.3",
           "category": "RepRap",
           "help": {
-            "online": "https://github.com/chrishamm/RepRapFirmware/tree/dev/Hardware"
+            "online": "https://github.com/reprappro/RepRapFirmware/tree/dev/Hardware"
           },
-          "url": "https://github.com/chrishamm/RepRapFirmware/raw/dev/Hardware/Duet-1.0.3.zip",
+          "url": "https://github.com/reprappro/RepRapFirmware/raw/dev/Hardware/Duet-1.0.3.zip",
           "archiveFileName": "Duet-1.0.3.zip",
           "checksum": "SHA-256:60998eee0569e2c8d2c90378f074d44a460e7257ec3bbb53d0e05abc5cbc9991",
           "size": "17305085",
