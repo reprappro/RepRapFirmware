@@ -2,7 +2,7 @@
 *.o
 *~
 *orig
-/Release/
+/Release/*
 !/Release/RepRapFirmware*bin
 /arduino
 .*
