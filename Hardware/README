@@ -11,7 +11,7 @@ This tree is based upon the official "Arduino Due" 1.6.5 platform files, however
 To include this hardware tree, open the Arduino IDE.  Open the Boards Manager and install the Due device tree.  Then
 go to File -> Preferences and set "Additional Boards Manager URLs" to:
 
-  https://github.com/chrishamm/RepRapFirmware/raw/dev/Hardware/package_reprap_index.json
+  https://github.com/reprappro/RepRapFirmware/raw/dev/Hardware/package_reprap_index.json
   
 Then open the Boards Manager and install the Duet device tree.
 
